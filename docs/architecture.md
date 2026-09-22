@@ -34,7 +34,8 @@ lib\
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
-  qbar.html / translate.html / dictionary.html / chat.html
+  qbar.html / translate.html / dictionary.html / chat.html   WebView2 面板页面
+  usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   settings.js                      翻译与 AI 面板共用的设置窗口组件
 vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
 loadScript\                        JS 扩展目录

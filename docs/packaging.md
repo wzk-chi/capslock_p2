@@ -53,7 +53,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`qbar.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.js`
+- `pages\`：`qbar.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.js`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`
 - `loadScript\`：JavaScript 扩展
 - `resources\dictionary.db`：ECDICT 本地词典

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>capslock_p2 · 使用介绍</title>
+<meta name="description" content="capslock_p2 使用介绍：把 CapsLock 变成一层高效快捷键，另有 qbar、翻译、AI 问答、Everything 搜索与独立剪贴板。">
+<script>document.documentElement.classList.add("js");</script>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --text: #1c1e22;
+    --muted: #6d7178;
+    --line: #e7e5de;
+    --accent: #356ae6;
+    --accent-soft: rgba(53, 106, 230, .09);
+    --code: #f0eee7;
+    --shadow: 0 1px 2px rgba(20, 24, 40, .05), 0 8px 28px rgba(20, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191e;
+      --surface: #1f2127;
+      --text: #eef0f4;
+      --muted: #9aa0ab;
+      --line: #2c2f37;
+      --accent: #6d92ff;
+      --accent-soft: rgba(109, 146, 255, .13);
+      --code: #262930;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 28px rgba(0, 0, 0, .35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191e;
+    --surface: #1f2127;
+    --text: #eef0f4;
+    --muted: #9aa0ab;
+    --line: #2c2f37;
+    --accent: #6d92ff;
+    --accent-soft: rgba(109, 146, 255, .13);
+    --code: #262930;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 28px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal, .hero-inner, .nav, .mode-chip, .card, .krow, footer { transition: none !important; opacity: 1 !important; transform: none !important; }
+  }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- top bar ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 960px; margin: 0 auto; padding: 0 24px;
+    height: 56px; display: flex; align-items: center; gap: 20px;
+  }
+  .brand { font-weight: 700; letter-spacing: .2px; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .brand-dot { width: 10px; height: 10px; border-radius: 3px; background: linear-gradient(135deg, #356ae6, #7b4de0); }
+  .nav-links { margin-left: auto; display: flex; gap: 4px; }
+  .nav-links a {
+    color: var(--muted); text-decoration: none; font-size: 13.5px; padding: 6px 10px; border-radius: 8px;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--accent-soft); }
+  @media (max-width: 620px) { .nav-links a[data-wiki], .nav-links a[data-start] { display: none; } }
+  .theme-toggle {
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 8px; height: 30px; padding: 0 10px; font-size: 12.5px; cursor: pointer;
+  }
+  .theme-toggle:hover { border-color: var(--accent); }
+
+  /* ---------- layout ---------- */
+  main { max-width: 960px; margin: 0 auto; padding: 0 24px 96px; }
+
+  section { margin-top: 72px; }
+  .kicker {
+    font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin: 0 0 10px;
+  }
+  h2 { font-size: 26px; line-height: 1.35; margin: 0 0 8px; letter-spacing: -.01em; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 640px; }
+
+  /* ---------- hero ---------- */
+  .hero { margin-top: 0; padding: 72px 0 40px; }
+  .js .hero-inner { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .hero-inner.in { opacity: 1; transform: none; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--muted); border: 1px solid var(--line);
+    background: var(--surface); border-radius: 999px; padding: 5px 13px; margin-bottom: 26px;
+  }
+  .badge b { color: var(--accent); font-weight: 600; }
+  h1 { font-size: 44px; line-height: 1.2; margin: 0 0 18px; letter-spacing: -.02em; font-weight: 800; }
+  h1 em { font-style: normal; background: linear-gradient(120deg, var(--accent), #9a6bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero-sub { color: var(--muted); font-size: 16.5px; max-width: 620px; margin: 0 0 32px; }
+  .modes { display: flex; gap: 14px; flex-wrap: wrap; }
+  .mode-chip {
+    flex: 1 1 240px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .mode-chip b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .mode-chip span { color: var(--muted); font-size: 13.5px; }
+
+  /* ---------- feature grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 22px 20px; box-shadow: var(--shadow);
+    transition: opacity .5s ease, transform .5s ease, border-color .2s;
+  }
+  .js .card { opacity: 0; transform: translateY(12px); }
+  .card.in { opacity: 1; transform: none; }
+  .card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .card .ic { display: inline-flex; width: 38px; height: 38px; border-radius: 10px; align-items: center; justify-content: center; background: var(--accent-soft); margin-bottom: 14px; }
+  .card .ic svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .card h3 { font-size: 15.5px; margin: 0 0 6px; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0; }
+
+  /* ---------- key rows ---------- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    padding: 8px 28px 16px; box-shadow: var(--shadow); margin-bottom: 26px;
+  }
+  .panel h3 { font-size: 14px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; margin: 22px 0 4px; font-weight: 700; }
+  .krow {
+    display: grid; grid-template-columns: minmax(190px, 260px) 1fr; gap: 18px; align-items: baseline;
+    padding: 9px 0; border-top: 1px solid var(--line);
+    transition: opacity .4s ease, transform .4s ease;
+  }
+  .js .krow { opacity: 0; transform: translateY(6px); }
+  .krow:first-child { border-top: 0; }
+  .krow.in { opacity: 1; transform: none; }
+  @media (max-width: 620px) { .krow { grid-template-columns: 1fr; gap: 4px; } }
+  .keys { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; color: var(--text); }
+  .keys i { font-style: normal; color: var(--muted); margin: 0 3px; }
+  .desc { color: var(--muted); font-size: 14px; }
+  .desc b { color: var(--text); font-weight: 600; }
+  kbd {
+    display: inline-block; font: inherit; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color: var(--text); background: var(--code); border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 6px; padding: 1px 7px; font-size: 12.5px; line-height: 1.6;
+  }
+  .alt-note {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+    border-radius: 14px; padding: 18px 20px; margin-bottom: 26px; font-size: 14px;
+  }
+  .alt-note svg { flex: none; width: 20px; height: 20px; margin-top: 2px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .alt-note p { margin: 0 0 6px; }
+  .alt-note .note-sub { color: var(--muted); font-size: 13.5px; }
+
+  /* ---------- steps / faq ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
+  .mini {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .mini h3 { margin: 0 0 8px; font-size: 15.5px; }
+  .mini p, .mini li { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .mini ul { margin: 6px 0 0; padding-left: 18px; }
+  .mini li { margin: 4px 0; }
+
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px; margin-bottom: 10px; }
+  details summary { cursor: pointer; font-size: 14.5px; font-weight: 600; padding: 12px 0; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  details summary::after { content: "＋"; color: var(--muted); }
+  details[open] summary::after { content: "－"; }
+  details p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 88px; padding: 40px 24px 56px; color: var(--muted); font-size: 13px; }
+  footer .foot-inner { max-width: 912px; margin: 0 auto; display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  footer .spacer { flex: 1; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand"><span class="brand-dot"></span>capslock_p2</div>
+    <nav class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#keymap">按键</a>
+      <a href="#start" data-start>快速开始</a>
+      <a href="#faq" data-wiki>常见问题</a>
+    </nav>
+    <button class="theme-toggle" type="button" id="theme" title="切换明暗">明 / 暗</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ~~~~~~~~~~~~ hero ~~~~~~~~~~~~ -->
+  <section class="hero">
+    <div class="hero-inner" id="heroFade">
+      <span class="badge">AutoHotkey v2 · 脱胎于 <b>Capslock+</b>（GPL v2）</span>
+      <h1>一个 CapsLock，<em>一层快捷键。</em></h1>
+      <p class="hero-sub">
+        按住 CapsLock，字母区立刻变成移动、选择与编辑的控制层；点按 CapsLock，一键切换大小写或输入法。
+        再配上 qbar 启动器、翻译词典、AI 问答、Everything 搜索与三组独立剪贴板——常用操作不再离开键盘。
+      </p>
+      <div class="modes">
+        <div class="mode-chip"><b>按住 = 临时快捷键</b><span>按住 CapsLock 不放，字母区暂时变成功能键：按 <kbd>S</kbd> 光标左移，按 <kbd>J</kbd> 向左选中文本，按 <kbd>Q</kbd> 打开 qbar。松开手指，恢复平常打字。</span></div>
+        <div class="mode-chip"><b>点按一下 = 一个快捷动作</b><span>只点一下、不碰其他键，触发一个动作：默认切换大小写。很多人会把它改成「切换中英文输入法」（示例配置就是这么设的）。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ~~~~~~~~~~~~ features ~~~~~~~~~~~~ -->
+  <section id="features">
+    <p class="kicker">What you get</p>
+    <h2>它有什么用</h2>
+    <p class="lead">这版是对原版 Capslock+ 的 AutoHotkey v2 重写：同款键层思路，UI 换成现代 WebView2 面板，再加上几个原版没有的新工具。</p>
+    <div class="grid">
+      <div class="card reveal" data-i="0">
+        <div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h4M7 9h2M7 15h2"/><rect x="11.7" y="9.4" width="3.3" height="5.2" rx=".8"/></svg></div>
+        <h3>键层导航 / 选择 / 编辑</h3>
+        <p>方向、按词、按行、选到行首行尾、删词删行——原生 v2 速度，干净利落。加 Alt 就是增强版（见按键节）。</p>
+      </div>
+      <div class="card reveal" data-i="1">
+        <div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></div>
+        <h3>qbar 启动器</h3>
+        <p>输入即过滤：启动程序、打开网址、搜索（内置引擎+自定义）、浏览路径、Everything 文件搜索，选中文本自动预填。</p>
+      </div>
+      <div class="card reveal" data-i="2">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="20" cy="18" r="1.6"/></svg></div>
+        <h3>翻译 · 词典 · AI 问答</h3>
+        <p>三引擎翻译（LLM 流式优先，有道、火山兜底），多段文本保留分段；单个英文单词自动查本地 4.9 万词词典；AI 问答支持多轮追问。</p>
+      </div>
+      <div class="card reveal" data-i="3">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 6l8 5 8-5M4 6h16v12H4z"/></svg></div>
+        <h3>Everything 即时搜索</h3>
+        <p>边输入边出结果，支持原生查询语法（<span class="keys"><kbd>*.pdf</kbd></span>、<span class="keys"><kbd>ext:pdf</kbd></span>），Ctrl+回车直接在资源管理器定位。</p>
+      </div>
+      <div class="card reveal" data-i="4">
+        <div class="ic"><svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="7" height="10" rx="1.5"/><rect x="9.5" y="4" width="7" height="16" rx="1.5"/><rect x="16.5" y="7" width="5" height="10" rx="1.5"/></svg></div>
+        <h3>独立剪贴板 + 窗口绑定</h3>
+        <p>三组槽位复制粘贴互不覆盖；<span class="keys"><kbd>1</kbd>~<kbd>0</kbd></span> 秒切绑定窗口，绑定跨重启保留。</p>
+      </div>
+      <div class="card reveal" data-i="5">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4zM4 15h16M4 19h10"/></svg></div>
+        <h3>配置热重载 + 屏幕自适应</h3>
+        <p>改 <span class="keys"><kbd>capslock_p2.ini</kbd></span> 保存即生效，无需重启；面板窗口随屏幕缩放，自动跟随系统明暗主题。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ~~~~~~~~~~~~ keymap ~~~~~~~~~~~~ -->
+  <section id="keymap">
+    <p class="kicker">Default keymap</p>
+    <h2>默认按键布局</h2>
+    <p class="lead">这里只列常用项；完整布局在示例 ini 的 <span class="keys"><kbd>[Keys]</kbd></span> 段，所有键都可改成任意 <span class="keys"><kbd>keyFunc_*</kbd></span>。</p>
+
+    <div class="alt-note">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+      <div>
+        <p><b>记住一条规则就够：多数功能键加上 Alt，就是它的「增强版」。</b></p>
+        <p class="note-sub">方向与选择加 Alt → 大步长（右 5 格、下 30 行）；词操作加 Alt → ×3；删除加 Alt → 从删一个字符变成删词、删行甚至删除全部。</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>移动 | 光标</h3>
+      <div class="krow reveal" data-i="0"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>S</kbd> / <kbd>F</kbd></span><span class="desc">向左 / 右移动</span></div>
+      <div class="krow reveal" data-i="0"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>A</kbd> / <kbd>G</kbd></span><span class="desc">按词向左 / 右移动</span></div>
+      <div class="krow reveal" data-i="0"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>E</kbd> / <kbd>D</kbd></span><span class="desc">向上 / 下移动</span></div>
+      <div class="krow reveal" data-i="0"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>P</kbd> / <kbd>;</kbd></span><span class="desc">行首 / 行尾（Home / End）</span></div>
+      <div class="krow reveal" data-i="0"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>-</kbd> / <kbd>=</kbd></span><span class="desc">上一页 / 下一页</span></div>
+      <h3>选择</h3>
+      <div class="krow reveal" data-i="1"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd>/<kbd>I</kbd></span><span class="desc">选中 左 / 下 / 右 / 上</span></div>
+      <div class="krow reveal" data-i="1"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>H</kbd> / <kbd>.</kbd></span><span class="desc">按词向左 / 右选中</span></div>
+      <div class="krow reveal" data-i="1"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>,</kbd></span><span class="desc">选中当前词</span></div>
+      <div class="krow reveal" data-i="1"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>U</kbd> / <kbd>O</kbd></span><span class="desc">选中到行首 / 行尾</span></div>
+      <div class="krow reveal" data-i="1"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>N</kbd></span><span class="desc">向下选中 10 行</span></div>
+      <h3>编辑</h3>
+      <div class="krow reveal" data-i="2"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>W</kbd> / <kbd>R</kbd></span><span class="desc">退格 / 删除</span></div>
+      <div class="krow reveal" data-i="2"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>[</kbd> / <kbd>/</kbd></span><span class="desc">删除到行首 / 行尾</span></div>
+      <div class="krow reveal" data-i="2"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Backspace</kbd></span><span class="desc">删除整行</span></div>
+      <h3>剪贴板（独立槽位）</h3>
+      <div class="krow reveal" data-i="3"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></span><span class="desc">复制 / 剪切 / 粘贴 · 槽位 1</span></div>
+      <div class="krow reveal" data-i="3"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Alt</kbd><i>+</i><kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></span><span class="desc">复制 / 剪切 / 粘贴 · 槽位 2，不互相覆盖</span></div>
+      <div class="krow reveal" data-i="3"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F12</kbd></span><span class="desc">循环切换「粘贴来源」：系统 / 槽位 1 / 槽位 2</span></div>
+      <h3>工具</h3>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Q</kbd></span><span class="desc">qbar 启动器（搜索 / 启动 / 路径 / Everything）</span></div>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Tab</kbd></span><span class="desc">文本替换（热串）→ 没命中就当场计算</span></div>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>T</kbd> / <kbd>F3</kbd></span><span class="desc">翻译面板；选中的单个单词命中本地词典时直接出词典卡片</span></div>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F2</kbd></span><span class="desc">数学板：整段粘贴多行表达式批量计算</span></div>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F1</kbd></span><span class="desc">打开本页 · 使用介绍</span></div>
+      <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F5</kbd></span><span class="desc">重新加载配置</span></div>
+      <h3>窗口</h3>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>1</kbd>~<kbd>0</kbd></span><span class="desc">激活绑定的窗口 1~10</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><b style="color:inherit">Win</b><i>+</i><kbd>1</kbd>~<kbd>0</kbd></span><span class="desc">绑定当前窗口到该编号（或大幅<kbd style="margin:0 1px">Alt</kbd>+数字），短按 / 连按两次 / 连按三次对应三种绑定模式</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F4</kbd> / <kbd>F6</kbd></span><span class="desc">窗口透明度循环切换 / 置顶切换</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Alt</kbd><i>+</i>滚轮</span><span class="desc">临时调节鼠标速度，松开恢复</span></div>
+    </div>
+  </section>
+
+  <!-- ~~~~~~~~~~~~ start ~~~~~~~~~~~~ -->
+  <section id="start">
+    <p class="kicker">Get started</p>
+    <h2>快速开始</h2>
+    <p class="lead">一行配置都不用改就能用；想微调时，配置是活的。</p>
+    <div class="split">
+      <div class="mini reveal" data-i="0">
+        <h3>运行</h3>
+        <ul>
+          <li>源码运行：装好 <b>AutoHotkey v2</b> 后双击 <span class="keys"><kbd>capslock_p2.ahk</kbd></span>，托盘出现图标即成功。</li>
+          <li>Windows 10 用户顺手装一下 <b>WebView2 Runtime</b>（Win11 自带）。</li>
+        </ul>
+      </div>
+      <div class="mini reveal" data-i="1">
+        <h3>开机自启</h3>
+        <p>右键托盘菜单「开机自启动」一键开启；或写 <span class="keys"><kbd>[Global] autostart=1</kbd></span>。重装程序不会丢你的配置。</p>
+      </div>
+      <div class="mini reveal" data-i="2">
+        <h3>配置文件</h3>
+        <p>一切在这一个文件里：<span class="keys"><kbd>capslock_p2.ini</kbd></span>。参考抄写完整示例 <span class="keys"><kbd>capslock_p2-settingsDemo.ini</kbd></span>。改完保存，<b>0.5 秒内自动重新加载</b>。</p>
+      </div>
+      <div class="mini reveal" data-i="3">
+        <h3>Everything（可选）</h3>
+        <p>本机已运行就直接用；没有则自动拉起内置实例，<b>首次建索引需一次管理员确认</b>。不配置也完全不影响其他功能。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ~~~~~~~~~~~~ faq ~~~~~~~~~~~~ -->
+  <section id="faq">
+    <p class="kicker">Straight answers</p>
+    <h2>常见问题</h2>
+    <p class="lead">原版说明书经常坦率地写失败模式，我们也照做。</p>
+
+    <details open>
+      <summary>它与原版 Capslock+ 是什么关系？</summary>
+      <p>这是对 <a href="https://github.com/capslox/capslock-plus">Capslock+</a>（AHK v1 源码，GPL v2）的 <b>AutoHotkey v2 重写</b>。键层思路、<span class="keys"><kbd>Alt</kbd></span> 增强规则、Tab 热串、winbind、qbar 这些核心保留；UI 面板改成 WebView2，并新增 <b>LLM / 有道 / 火山三引擎翻译、AI 多轮问答、Everything 即时搜索、屏适应窗口</b>。原版文档见 <a href="https://capslox.com/capslock-plus">capslox.com/capslock-plus</a>。</p>
+    </details>
+    <details>
+      <summary>内置 Everything / 安装包被杀软报警怎么办？</summary>
+      <p>Everything 命令行工具和单文件安装包是启发式查杀常客，通常是误报。源码可自行查验；首次运行 Everything 只需一次管理员确认建立索引，之后随程序启停。</p>
+    </details>
+    <details>
+      <summary>选区读取的取舍</summary>
+      <p>读取选中文本用的是剪贴板快照。按原版规则，<b>以换行结尾的选区</b>会先视为「在 IDE 复制了整行」而丢弃（避免误触）；qbar 预填与翻译多段会针对多行选区放行。完整选中一行再按 qbar 时可能把当前行预填进去，这是不吞真选区的代价。</p>
+    </details>
+    <details>
+      <summary>计算器会算错吗？</summary>
+      <p>CapsLock+Tab 用表达式求值（失败回退 JavaScript）。浮点运算存在尾差属正常范围，复杂业务计算建议再用真算式核对一遍。</p>
+    </details>
+  </section>
+
+  <footer>
+    <div class="foot-inner">
+      <span>capslock_p2 · 按键位照 <b>capslox</b> 方案的 v2 移植（GPL v2）</span>
+      <span class="spacer"></span>
+      <span><a href="https://github.com/capslox/capslock-plus">原版 Capslock+ 仓库</a></span>
+      <span>·</span>
+      <span><a href="https://capslox.com/capslock-plus">官网文档</a></span>
+      <span>·</span>
+      <span>想不起来按键？按 <kbd>CapsLock</kbd>+<kbd>F1</kbd> 随时回来</span>
+    </div>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  // 明暗主题：按钮切换 + 跟随系统
+  var root = document.documentElement;
+  var btn = document.getElementById("theme");
+  var key = "cp2-theme";
+  var saved;
+  try { saved = localStorage.getItem(key) || ""; } catch (e) { saved = ""; }
+  if (saved) root.setAttribute("data-theme", saved);
+  btn.textContent = saved === "dark" ? "亮" : saved === "light" ? "暗" : "明 / 暗";
+  btn.addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme");
+    var next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
+    if (next) root.setAttribute("data-theme", next); else root.removeAttribute("data-theme");
+    btn.textContent = next === "dark" ? "亮" : next === "light" ? "暗" : "明 / 暗";
+    try { localStorage.setItem(key, next); } catch (e) {}
+  });
+
+  // 进入视口渐显（禁用动画时自动豁免）
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var els = document.querySelectorAll(".reveal");
+  if (reduce || !("IntersectionObserver" in window)) {
+    els.forEach(function (el) { el.classList.add("in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.08 });
+    els.forEach(function (el, i) { el.style.transitionDelay = Math.min(i % 6, 5) * 40 + "ms"; io.observe(el); });
+  }
+  document.getElementById("heroFade").classList.add("in");
+})();
+</script>
+
+</body>
+</html>

@@ -5,7 +5,7 @@
 
 本项目脱胎于 [Capslock+](https://github.com/capslox/capslock-plus)（AHK v1 原版，GPL v2），
 用 **AutoHotkey v2 重写并加以改进**：UI 面板改用 WebView2、新增翻译引擎注册表（LLM / 有道 / 火山）、
-Everything 文件搜索、屏幕自适应等。原版源码在 `capslock-plus/` 目录仅作参考；
+Everything 文件搜索、屏幕自适应等。
 开发者请翻阅 [`docs/architecture.md`](docs/architecture.md)。
 
 ## 功能总览
@@ -66,7 +66,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+- / = | PgUp / PgDn | CapsLock+Enter | 回车 |
 | CapsLock+Q | qbar 启动器 | CapsLock+T / F3 | 翻译 / 词典 |
 | CapsLock+Tab | 热串替换 / 计算器 | CapsLock+F2 | 数学板 |
-| CapsLock+F1 | 打开原版文档 | CapsLock+F4 | 窗口透明切换 |
+| CapsLock+F1 | 打开使用介绍 | CapsLock+F4 | 窗口透明切换 |
 | CapsLock+F5 | 重载配置 | CapsLock+F6 | 窗口置顶切换 |
 | CapsLock+1~0 | 激活绑定的窗口 1~10 | CapsLock+Win+1~0 | 绑定当前窗口（短按/双击/三击三种模式） |
 | CapsLock+LAlt+滚轮 | 调节鼠标速度 | CapsLock+F12 | 切换粘贴用剪贴板槽位 |

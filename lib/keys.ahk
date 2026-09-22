@@ -344,7 +344,14 @@ keyFunc_tabScript(*) {
 }
 
 keyFunc_openCpasDocs(*) {
-    Run(IsChineseLanguage() ? "https://capslox.com/capslock-plus" : "https://capslox.com/capslock-plus/en.html")
+    ; F1 opens the in-app usage page (pages\usage.html) in the default browser.
+    ; Installed copies always carry it; fall back to the original Capslock+
+    ; docs if the page was stripped from a bare payload.
+    usagePath := A_ScriptDir . "\pages\usage.html"
+    if FileExist(usagePath)
+        Run(usagePath)
+    else
+        Run(IsChineseLanguage() ? "https://capslox.com/capslock-plus" : "https://capslox.com/capslock-plus/en.html")
 }
 
 keyFunc_mediaPrev(*) {
