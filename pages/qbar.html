@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>qbar</title>
+<style>
+/* Geometry must stay in sync with lib/qbar.ahk
+   (QbarInputHeight / QbarRowHeight / QbarPadding / QbarGap).
+   --card-radius must also match the radius lib/qbar.ahk clips the window to, or
+   the CSS curve and the window's rounded region show as two different arcs.
+   Palette, typography and radii mirror translate.html so both panels
+   read as one product. */
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+
+  --bg: #f5f7fb;
+  --text: #20242b;
+  --muted: #697386;
+  --surface: #fff;
+  --border: #d5dae3;
+  --accent: #356ae6;
+  --accent-soft: #e8eefb;
+  --ring: #4b7bec22;
+
+  /* Overridable from [QStyle]; transparent keeps the shared flat look. */
+  --list-bg: transparent;
+  --list-color: var(--text);
+
+  --card-radius: 12px;                            /* [QStyle] borderRadius */
+  --radius: max(0px, calc(var(--card-radius) - 3px));   /* input + rows */
+  --input-height: 34px;
+  --row-height: 30px;
+  --padding: 10px;
+  --gap: 6px;
+  --input-font-size: 14px;
+  --list-font-size: 13px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #20242b;
+    --text: #eef1f6;
+    --muted: #aab4c4;
+    --surface: #2b313b;
+    --border: #46505f;
+    --accent: #8db0f5;
+    --accent-soft: #2b3547;
+    --ring: #4b7bec44;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+/* The panel IS the card: it fills the window, and the window is clipped to the
+   same radius by the host, so the two curves coincide. The outline is drawn
+   with an inset ring rather than a border because a real border would eat 2px
+   of the layout box and push the last list row out of the window. */
+#panel {
+  height: 100%;
+  padding: var(--padding);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+#input { 
+  height: var(--input-height);
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: var(--input-font-size)/1.5 Consolas, "Microsoft YaHei", monospace;
+  outline: none;
+  user-select: text;
+}
+#input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+#input:disabled { opacity: .72; cursor: wait; }
+#input::placeholder { color: var(--muted); }
+.loading {
+  height: var(--row-height);
+  flex: 0 0 auto;
+  margin-top: var(--gap);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: var(--list-font-size);
+}
+.loading.hidden { display: none; }
+.loading .spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: qbar-spin .8s linear infinite;
+}
+@keyframes qbar-spin { to { transform: rotate(360deg); } }
+#list {
+  flex: 1 1 auto;
+  margin-top: var(--gap);
+  overflow-y: auto;
+  border-radius: var(--radius);
+  background: var(--list-bg);
+}
+#list.hidden { display: none; }
+.row {
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--list-color);
+  font-size: var(--list-font-size);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+}
+.row .glyph { flex: 0 0 auto; width: 16px; text-align: center; opacity: .75; }
+.row .glyph img { width: 16px; height: 16px; display: block; margin: 0 auto; }
+.row .text { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.row.selected { background: var(--accent-soft); color: var(--accent); }
+.row.selected .glyph { opacity: 1; }
+.row.pinned .text { font-weight: 650; }
+.empty {
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: var(--list-font-size);
+}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <input id="input" spellcheck="false" autocomplete="off" disabled>
+  <div id="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="loadingText">Loading…</span>
+  </div>
+  <div id="list" class="hidden"></div>
+</div>
+<script>
+const input = document.getElementById('input');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loadingText');
+const list = document.getElementById('list');
+
+let MAX_VISIBLE_ROWS = 12;     // mirrors QbarMaxRows; overridden by [QStyle] listCount
+const MAX_RENDERED = 60;       // rows rendered into the DOM
+
+// Type ranks mirror the reference implementation's ListView column 1.
+const TYPE_RANK = { search: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
+const TYPE_GLYPH = { search: '🔍', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖' };
+
+const STRINGS = {
+  en: { placeholder: 'Type to search…', loading: 'Loading…' },
+  zh: { placeholder: '输入以搜索…', loading: '加载中…' }
+};
+
+// [QStyle] ini keys -> CSS custom properties. Only values present in the ini are
+// applied, so an unconfigured panel keeps the shared theme above.
+const STYLE_VARS = {
+  borderBackgroundColor: '--bg',
+  textBackgroundColor: '--surface',
+  textColor: '--text',
+  listBackgroundColor: '--list-bg',
+  listColor: '--list-color'
+};
+const STYLE_SIZES = {
+  borderRadius: '--card-radius',
+  textFontSize: '--input-font-size',
+  listFontSize: '--list-font-size'
+};
+
+let lang = 'en';
+let results = [];
+let placeholder = '';   // supplied by AHK, already localized (e.g. "(empty folder)")
+let selectedIndex = -1;
+let listHidden = false;
+let folderMode = false;   // AHK is listing a directory, so completions splice paths
+let reportedRows = -1;
+let ICONS = {};   // iconKey -> PNG data URI, pushed by AHK once per key
+let loadingVisible = true;
+let composing = false;
+let deferredQuery = false;
+let querySerial = 0;
+
+function t(key) {
+  return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+}
+
+function post(obj) {
+  if (window.chrome && chrome.webview)
+    chrome.webview.postMessage(JSON.stringify(obj));
+}
+
+function postType(type, text = '') {
+  post({ type, text });
+}
+
+function qbarDebug(event, details = '') {
+  const suffix = details ? ' ' + details : '';
+  postType('debug', event + ' value=' + JSON.stringify(input.value) + suffix);
+}
+
+// Tells AHK the page script is alive and how big its viewport is, so a blank
+// panel can be told apart from a zero-sized one.
+postType('ready', window.innerWidth + 'x' + window.innerHeight);
+
+function requestQuery(reason = 'input') {
+  if (composing) {
+    deferredQuery = true;
+    qbarDebug('query-deferred reason=' + reason);
+    return;
+  }
+  deferredQuery = false;
+  querySerial += 1;
+  qbarDebug('query-post serial=' + querySerial + ' reason=' + reason);
+  postType('query', input.value);
+}
+
+// Tell AHK how tall the window should be. Everything is measured in rows so the
+// two sides only have to agree on the row height.
+function reportRows() {
+  if (reportedRows === visibleRows())
+    return;
+  reportedRows = visibleRows();
+  postType('resize', String(reportedRows));
+}
+
+function visibleRows() {
+  if (loadingVisible)
+    return 1;
+  if (listHidden || !hasContent())
+    return 0;
+  return Math.min(Math.max(results.length, 1), MAX_VISIBLE_ROWS);
+}
+
+function hasContent() {
+  return results.length > 0 || !!placeholder;
+}
+
+function sortResults(items) {
+  return items.slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    const rankA = TYPE_RANK[a.type] ?? 9;
+    const rankB = TYPE_RANK[b.type] ?? 9;
+    if (rankA !== rankB) return rankA - rankB;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function render() {
+  list.textContent = '';
+  const rows = sortResults(results).slice(0, MAX_RENDERED);
+
+  if (!rows.length) {
+    if (placeholder) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = placeholder;
+      list.appendChild(empty);
+    }
+  } else {
+    rows.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'row'
+        + (item.pinned ? ' pinned' : '')
+        + (index === selectedIndex ? ' selected' : '');
+      const glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      const iconSrc = item.icon ? ICONS[item.icon] : '';
+      if (iconSrc) {
+        const img = document.createElement('img');
+        img.src = iconSrc;
+        img.alt = '';
+        img.draggable = false;
+        glyph.appendChild(img);
+      } else {
+        glyph.textContent = TYPE_GLYPH[item.type] || '•';
+      }
+      const text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = item.label;
+      row.appendChild(glyph);
+      row.appendChild(text);
+      row.addEventListener('mousedown', event => event.preventDefault());
+      row.addEventListener('click', () => {
+        selectedIndex = index;
+        execute(false);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  loading.classList.toggle('hidden', !loadingVisible);
+  list.classList.toggle('hidden', listHidden || !hasContent());
+  if (loadingVisible)
+    list.classList.add('hidden');
+  reportRows();
+}
+
+function select(index) {
+  const rows = sortResults(results).slice(0, MAX_RENDERED);
+  if (!rows.length)
+    return;
+  const count = rows.length;
+  selectedIndex = ((index % count) + count) % count;
+  const nodes = list.querySelectorAll('.row');
+  nodes.forEach((node, i) => node.classList.toggle('selected', i === selectedIndex));
+  if (nodes[selectedIndex])
+    nodes[selectedIndex].scrollIntoView({ block: 'nearest' });
+}
+
+/* Completion, following the reference's tabAction: the highlighted row's short
+   key replaces the leaf of a path while a directory is being browsed, and
+   replaces the whole line everywhere else. Returns the row that was used. */
+function completeSelected() {
+  const rows = sortResults(results).slice(0, MAX_RENDERED);
+  const row = selectedIndex >= 0 ? rows[selectedIndex] : null;
+  if (!row)
+    return null;
+  input.value = (folderMode ? folderPrefix() : '') + row.short;
+  input.setSelectionRange(input.value.length, input.value.length);
+  return row;
+}
+
+// Everything up to and including the last "\" — what a folder-mode completion
+// keeps while replacing the name being typed.
+function folderPrefix() {
+  const cut = input.value.lastIndexOf('\\');
+  return cut >= 0 ? input.value.slice(0, cut + 1) : '';
+}
+
+function execute(ctrlHeld) {
+  const rows = sortResults(results).slice(0, MAX_RENDERED);
+  const row = (!listHidden && selectedIndex >= 0) ? rows[selectedIndex] : null;
+  post({
+    type: 'execute',
+    text: input.value,
+    selected: row ? row.short : '',
+    selectedType: row ? row.type : '',
+    ctrl: ctrlHeld ? 'true' : 'false'
+  });
+}
+
+/* ---- AHK -> page ---- */
+
+window.setStyle = function (style) {
+  lang = style.uiLanguage === 'zh' ? 'zh' : 'en';
+  const root = document.documentElement.style;
+  for (const [key, cssVar] of Object.entries(STYLE_VARS)) {
+    if (style[key]) root.setProperty(cssVar, style[key]);
+  }
+  for (const [key, cssVar] of Object.entries(STYLE_SIZES)) {
+    if (style[key]) root.setProperty(cssVar, style[key] + 'px');
+  }
+  if (style.maxRows) MAX_VISIBLE_ROWS = Math.max(1, parseInt(style.maxRows, 10) || MAX_VISIBLE_ROWS);
+  input.placeholder = t('placeholder');
+  if (loadingVisible)
+    loadingText.textContent = t('loading');
+};
+
+window.setInput = function (text) {
+  input.value = text || '';
+  // The reference implementation puts the caret in front of the prefilled
+  // selection so a command can be typed ahead of it.
+  input.setSelectionRange(0, 0);
+  requestQuery();
+};
+
+window.setLoading = function (on, text) {
+  loadingVisible = !!on;
+  input.disabled = loadingVisible;
+  if (loadingVisible)
+    loadingText.textContent = text || t('loading');
+  render();
+};
+
+window.focusInput = function () {
+  input.focus();
+};
+
+// AHK resets the window to its collapsed height on every show, but this page
+// keeps its state while hidden. Clear the last reported count so the next
+// render re-reports its rows instead of skipping the resize AHK is waiting
+// for (a same-count prefill query would otherwise leave the window collapsed
+// with the first list row clipped to a sliver).
+window.resetRows = function () {
+  reportedRows = -1;
+};
+
+// Arm a search engine: keep the trigger and put the caret after it.
+window.startSearch = function (shortKey) {
+  input.value = (shortKey || '') + ' ';
+  input.setSelectionRange(input.value.length, input.value.length);
+  input.focus();
+  requestQuery();
+};
+
+window.setResults = function (items, isFolder, placeholderText) {
+  results = Array.isArray(items) ? items : [];
+  folderMode = !!isFolder;
+  placeholder = placeholderText || '';
+  selectedIndex = results.length ? 0 : -1;
+  loadingVisible = false;
+  input.disabled = false;
+  render();
+};
+
+// Merge a batch of iconKey -> data URI pushed by AHK and redraw; normally it
+// arrives before setResults, so this render is just a safety net.
+window.addIcons = function (map) {
+  Object.assign(ICONS, map || {});
+  render();
+};
+
+/* ---- input handling ---- */
+
+input.addEventListener('compositionstart', () => {
+  composing = true;
+  deferredQuery = true;
+  qbarDebug('compositionstart');
+});
+
+input.addEventListener('compositionupdate', event => {
+  qbarDebug('compositionupdate', 'data=' + JSON.stringify(event.data || ''));
+});
+
+input.addEventListener('compositionend', event => {
+  composing = false;
+  qbarDebug('compositionend', 'data=' + JSON.stringify(event.data || '')
+    + ' deferred=' + deferredQuery);
+  requestQuery('compositionend');
+});
+
+input.addEventListener('input', event => {
+  // A fresh query resets the selection; setResults re-selects the first row.
+  qbarDebug('input', 'isComposing=' + !!event.isComposing);
+  if (event.isComposing || composing) {
+    deferredQuery = true;
+    return;
+  }
+  requestQuery('input');
+});
+
+input.addEventListener('keydown', event => {
+  if (event.isComposing || composing)
+    qbarDebug('keydown', 'key=' + JSON.stringify(event.key));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    postType('hide');
+    return;
+  }
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    if (!results.length) return;
+    // Hidden list: bring it back. Visible: complete the highlighted row, which
+    // is what the reference's Tab does there.
+    if (listHidden) {
+      listHidden = false;
+      render();
+      return;
+    }
+    if (completeSelected()) requestQuery();
+    return;
+  }
+  if ((event.key === '\\' || event.key === '/') && !listHidden) {
+    // Both keys complete the highlighted row; a folder also drops straight into
+    // browsing it, which is what the reference used them for. With nothing to
+    // complete they fall through and are typed as ordinary characters.
+    const row = completeSelected();
+    if (row) {
+      if (folderMode && row.type === 'folder') input.value += '\\';
+      requestQuery();
+      event.preventDefault();
+    }
+    return;
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    select(selectedIndex + 1);
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    select(selectedIndex - 1);
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    execute(event.ctrlKey);
+  }
+});
+
+input.placeholder = t('placeholder');
+loadingText.textContent = t('loading');
+</script>
+</body>
+</html>

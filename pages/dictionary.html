@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 词典</title>
+<style>
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --card: #fbf9f3;
+  --card-edge: #e7e1d3;
+  --ink: #2d2a23;
+  --muted: #8b8577;
+  --faint: #b5ae9e;
+  --line: #eae4d6;
+  --accent: #b0452d;
+  --accent-ink: #93381f;
+  --accent-soft: #f3e1d8;
+  --gold: #bd8f2c;
+  --chip: #ede8da;
+  --chip-ink: #7a7361;
+  --shadow: 0 12px 32px rgba(74, 60, 34, .09), 0 2px 6px rgba(74, 60, 34, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card: #1f2127;
+    --card-edge: #2e3138;
+    --ink: #e9e6de;
+    --muted: #97917f;
+    --faint: #6f6a5d;
+    --line: #2d3037;
+    --accent: #d4795a;
+    --accent-ink: #e08a6c;
+    --accent-soft: #38261f;
+    --gold: #cfa54e;
+    --chip: #292c33;
+    --chip-ink: #a09a89;
+    --shadow: 0 12px 32px rgba(0, 0, 0, .38);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--card); color: var(--ink); }
+::selection { background: var(--accent-soft); }
+
+/* The window frame is the chrome; the page just fills it. */
+.card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.search-wrap { position: relative; flex: 1; min-width: 0; max-width: 300px; }
+#search {
+  width: 100%;
+  border: 1px solid var(--card-edge);
+  background: transparent;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+#search::placeholder { color: var(--faint); }
+#search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.suggest::-webkit-scrollbar { width: 8px; }
+.suggest::-webkit-scrollbar-thumb { background: var(--chip); border-radius: 6px; }
+.suggest-item {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font: 13.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+.suggest-item.active, .suggest-item:hover { background: var(--accent-soft); color: var(--accent-ink); }
+.topbar .spacer { flex: 1; }
+.iconbtn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.iconbtn:hover { background: var(--chip); color: var(--ink); }
+.iconbtn svg { display: block; }
+
+/* ---------- scrolling body ---------- */
+.scroll { flex: 1; overflow-y: auto; padding: 26px 34px 32px; }
+.scroll::-webkit-scrollbar { width: 10px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--chip); border-radius: 8px; border: 2px solid var(--card); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+.boot { color: var(--faint); text-align: center; margin-top: 120px; font-size: 13px; letter-spacing: .3em; }
+
+/* ---------- headword ---------- */
+.head-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.headword {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 38px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: .01em;
+  overflow-wrap: anywhere;
+}
+/* Phonetic and speaker stay glued together; the group keeps the headword's
+   baseline (its own first-baseline) while the button centers on the text. */
+.head-sound { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.phonetic { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.speak-btn {
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  width: 27px; height: 27px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.speak-btn:hover { background: var(--accent-soft); }
+.head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.btn {
+  border: 1px solid var(--card-edge);
+  background: transparent;
+  color: var(--accent-ink);
+  border-radius: 8px;
+  padding: 5px 13px;
+  font: 500 12.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+
+/* ---------- badges ---------- */
+.badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.badge {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2.5px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--chip-ink);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.badge.oxford { background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; }
+.badge.stars { background: transparent; color: var(--gold); font-size: 13px; letter-spacing: 2.5px; padding-left: 0; }
+.freq { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: 8px; }
+
+/* ---------- sections ---------- */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 26px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .22em;
+  color: var(--faint);
+}
+.section-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.sense { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 4px 0; font-size: 14.5px; line-height: 1.85; }
+.pos-chip {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent-ink);
+  text-align: right;
+  padding-top: 1px;
+}
+.pos-chip.domain { font-style: normal; font-family: inherit; color: var(--muted); font-size: 12px; }
+.sense-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- word forms ---------- */
+.forms { display: flex; flex-wrap: wrap; gap: 7px; }
+.form-chip {
+  border: 1px solid var(--card-edge);
+  background: transparent;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 4px 11px;
+  font: 12.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.form-chip:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+.form-chip .form-label { color: var(--muted); font-size: 11.5px; }
+.form-chip .form-word { color: var(--accent-ink); font-weight: 600; }
+
+/* ---------- miss state ---------- */
+.miss { text-align: center; padding: 90px 20px 0; }
+.miss-word { font-family: Georgia, serif; font-size: 30px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.miss-title { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.miss-hint { color: var(--faint); font-size: 12.5px; margin-bottom: 22px; }
+.miss .btn { padding: 7px 18px; font-size: 13px; }
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="card">
+  <header class="topbar">
+    <div class="search-wrap">
+      <input id="search" spellcheck="false" data-i18n-ph="searchPh" placeholder="查询单词…"
+             aria-label="search" autocomplete="off">
+      <div class="suggest" id="suggest" hidden></div>
+    </div>
+    <span class="spacer"></span>
+    <button id="closeBtn" class="iconbtn" data-i18n-title="close" title="关闭" aria-label="close">
+      <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" fill="none"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </header>
+  <div class="scroll" id="scroll">
+    <div class="boot" id="boot">···</div>
+
+    <section id="entryView" hidden>
+      <div class="head-row">
+        <h1 class="headword" id="word"></h1>
+        <span class="head-sound">
+          <span class="phonetic" id="phonetic"></span>
+          <button class="speak-btn" id="speakBtn" data-i18n-title="speak" title="发音">
+            <svg viewBox="0 0 24 24" width="15" height="15">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19" fill="currentColor"/>
+              <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+      <div class="badges" id="badges"></div>
+      <div id="zhSection" hidden>
+        <div class="section-title" data-i18n="chineseDefs">中文释义</div>
+        <div id="zhDefs"></div>
+      </div>
+      <div id="enSection" hidden>
+        <div class="section-title" data-i18n="englishDefs">英文释义</div>
+        <div id="enDefs"></div>
+      </div>
+      <div id="formsSection" hidden>
+        <div class="section-title" data-i18n="forms">词形变化</div>
+        <div class="forms" id="forms"></div>
+      </div>
+    </section>
+
+    <section class="miss" id="missView" hidden>
+      <div class="miss-word" id="missWord"></div>
+      <div class="miss-title" data-i18n="notFound">未收录</div>
+      <div class="miss-hint" data-i18n="notFoundHint">该词不在本地词典中。</div>
+    </section>
+  </div>
+</main>
+
+<script>
+const scroll = document.getElementById('scroll');
+const boot = document.getElementById('boot');
+const entryView = document.getElementById('entryView');
+const missView = document.getElementById('missView');
+const wordEl = document.getElementById('word');
+const phoneticEl = document.getElementById('phonetic');
+const badgesEl = document.getElementById('badges');
+const formsSection = document.getElementById('formsSection');
+const formsEl = document.getElementById('forms');
+const zhSection = document.getElementById('zhSection');
+const zhDefs = document.getElementById('zhDefs');
+const enSection = document.getElementById('enSection');
+const enDefs = document.getElementById('enDefs');
+const missWord = document.getElementById('missWord');
+const search = document.getElementById('search');
+const suggestBox = document.getElementById('suggest');
+
+// Bilingual UI, following the same rule as the translate panel: the AHK host
+// sends uiLanguage with every entry.
+const STRINGS = {
+  en: {
+    brand: 'Dict',
+    searchPh: 'Look up a word…',
+    chineseDefs: 'Chinese definitions',
+    englishDefs: 'English definitions',
+    forms: 'Word forms',
+    notFound: 'Not in dictionary',
+    notFoundHint: 'This word is not in the local dictionary.',
+    close: 'Close',
+    speak: 'Speak',
+    oxford: 'Oxford 3000',
+    collinsTip: 'Collins frequency',
+    bnc: 'BNC',
+    frq: 'COCA',
+    pos: { n: 'noun', v: 'verb', a: 'adj.', ad: 'adv.', prep: 'prep.', pron: 'pron.',
+           conj: 'conj.', int: 'interj.', num: 'num.', art: 'art.', aux: 'aux.', u: 'other' },
+    tag: { zk: 'Zhongkao', gk: 'Gaokao', cet4: 'CET-4', cet6: 'CET-6', ky: 'Kaoyan',
+           toefl: 'TOEFL', ielts: 'IELTS', gre: 'GRE', gmat: 'GMAT', sat: 'SAT' },
+    exchange: { 0: 'base', 1: 'variant', p: 'past', d: 'past part.', i: 'present part.',
+                3: '3rd sing.', r: 'comparative', t: 'superlative', s: 'plural' }
+  },
+  zh: {
+    brand: '词典',
+    searchPh: '查询单词…',
+    chineseDefs: '中文释义',
+    englishDefs: '英文释义',
+    forms: '词形变化',
+    notFound: '未收录',
+    notFoundHint: '该词不在本地词典中。',
+    close: '关闭',
+    speak: '发音',
+    oxford: '牛津3000',
+    collinsTip: '柯林斯词频星级',
+    bnc: 'BNC',
+    frq: '当代',
+    pos: { n: '名词', v: '动词', a: '形容词', ad: '副词', prep: '介词', pron: '代词',
+           conj: '连词', int: '感叹词', num: '数词', art: '冠词', aux: '助动词', u: '其他' },
+    tag: { zk: '中考', gk: '高考', cet4: '四级', cet6: '六级', ky: '考研',
+           toefl: '托福', ielts: '雅思', gre: 'GRE', gmat: 'GMAT', sat: 'SAT' },
+    exchange: { 0: '原形', 1: '变体', p: '过去式', d: '过去分词', i: '现在分词',
+                3: '三单', r: '比较级', t: '最高级', s: '复数' }
+  }
+};
+
+let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+let currentWord = '';
+
+function t(key) {
+  return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.zh[key] || key;
+}
+function tMap(key, code) {
+  const group = STRINGS[lang] && STRINGS[lang][key] || {};
+  return group[code] || (STRINGS.en[key] && STRINGS.en[key][code]) || code;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  for (const node of document.querySelectorAll('[data-i18n]'))
+    node.textContent = t(node.dataset.i18n);
+  for (const node of document.querySelectorAll('[data-i18n-ph]'))
+    node.placeholder = t(node.dataset.i18nPh);
+  for (const node of document.querySelectorAll('[data-i18n-title]'))
+    node.title = t(node.dataset.i18nTitle);
+}
+
+function post(obj) {
+  if (window.chrome && chrome.webview)
+    chrome.webview.postMessage(JSON.stringify(obj));
+}
+function postType(type, text = '') {
+  post({ type, text });
+}
+
+// Windows hides the pointer while typing when that system option is enabled.
+// Report mouse movement so the WebView2 host can restore the cursor without
+// polling, matching the other panels.
+let cursorMovePostedAt = 0;
+document.addEventListener('mousemove', () => {
+  const now = performance.now();
+  if (now - cursorMovePostedAt < 80) return;
+  cursorMovePostedAt = now;
+  postType('cursorMove');
+}, { passive: true });
+
+// --- rendering helpers -------------------------------------------------
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function lines(text) {
+  return (text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+// "vt. 翻译, 解释" → { prefix: 'vt.', text: '翻译, 解释', domain: false }
+// "[计] 转换"      → { prefix: '[计]', text: '转换', domain: true }
+function parseSense(line) {
+  let m = line.match(/^([a-z]{1,4}\.)\s*(.+)$/i);
+  if (m) return { prefix: m[1], text: m[2], domain: false };
+  m = line.match(/^\[(.+?)\]\s*(.*)$/);
+  if (m) return { prefix: '[' + m[1] + ']', text: m[2], domain: true };
+  return { prefix: '', text: line, domain: false };
+}
+
+function senseRow(line) {
+  const sense = parseSense(line);
+  const row = el('div', 'sense');
+  row.append(el('span', 'pos-chip' + (sense.domain ? ' domain' : ''), sense.prefix));
+  row.append(el('span', 'sense-text', sense.text));
+  return row;
+}
+
+function renderDefs(container, text) {
+  container.replaceChildren(...lines(text).map(senseRow));
+}
+
+function renderBadges(entry) {
+  badgesEl.replaceChildren();
+  const stars = Number(entry.collins) || 0;
+  if (stars >= 1 && stars <= 5) {
+    const star = el('span', 'badge stars', '★'.repeat(stars));
+    star.title = `${t('collinsTip')} ${stars}`;
+    badgesEl.append(star);
+  }
+  if (Number(entry.oxford) === 1)
+    badgesEl.append(el('span', 'badge oxford', t('oxford')));
+  for (const code of (entry.tag || '').split(/\s+/).filter(Boolean))
+    badgesEl.append(el('span', 'badge', tMap('tag', code)));
+  // Part-of-speech distribution ("n:15/v:85"), largest share first.
+  const posList = (entry.pos || '').split('/')
+    .map(item => {
+      const i = item.indexOf(':');
+      return i > 0 ? { code: item.slice(0, i), pct: Number(item.slice(i + 1)) || 0 } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.pct - a.pct);
+  for (const { code, pct } of posList) {
+    const name = tMap('pos', code);
+    badgesEl.append(el('span', 'badge', pct ? `${name} ${pct}%` : name));
+  }
+  const bnc = Number(entry.bnc) || 0;
+  const frq = Number(entry.frq) || 0;
+  if (bnc > 0) badgesEl.append(el('span', 'freq', `${t('bnc')} #${bnc}`));
+  if (frq > 0) badgesEl.append(el('span', 'freq', `${t('frq')} #${frq}`));
+  badgesEl.hidden = badgesEl.children.length === 0;
+}
+
+function renderForms(exchangeStr) {
+  const chips = [];
+  for (const token of (exchangeStr || '').split('/')) {
+    const i = token.indexOf(':');
+    if (i < 1) continue;
+    const code = token.slice(0, i);
+    const word = token.slice(i + 1);
+    if (!word || !STRINGS.en.exchange[code]) continue;
+    const chip = el('button', 'form-chip');
+    chip.type = 'button';
+    chip.append(el('span', 'form-label', tMap('exchange', code)));
+    chip.append(el('span', 'form-word', word));
+    chip.addEventListener('click', () => lookup(word));
+    chips.push(chip);
+  }
+  formsEl.replaceChildren(...chips);
+  formsSection.hidden = chips.length === 0;
+}
+
+function lookup(word) {
+  const clean = word.trim();
+  if (!clean) return;
+  hideSuggestions();
+  postType('lookup', clean);
+}
+
+// --- suggestions (prefix / substring / fuzzy, computed by the host) ------
+
+let suggestActive = false;   // a dropdown is wanted for the current query
+let suggestWords = [];
+let suggestIndex = -1;
+let suggestTimer = 0;
+
+window.setSuggestions = function (words) {
+  // A response for an older query (or after a lookup) must not reopen the list.
+  if (!suggestActive || !Array.isArray(words))
+    return;
+  suggestWords = words.filter(w => typeof w === 'string' && w);
+  if (!suggestWords.length) {
+    hideSuggestions();
+    return;
+  }
+  suggestIndex = -1;
+  suggestBox.replaceChildren(...suggestWords.map(w => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'suggest-item';
+    item.textContent = w;
+    return item;
+  }));
+  suggestBox.hidden = false;
+};
+
+function hideSuggestions() {
+  suggestActive = false;
+  suggestWords = [];
+  suggestIndex = -1;
+  suggestBox.hidden = true;
+}
+
+function moveSuggestSelection(step) {
+  if (suggestBox.hidden || !suggestWords.length) return;
+  suggestIndex = (suggestIndex + step + suggestWords.length) % suggestWords.length;
+  for (let i = 0; i < suggestBox.children.length; i++)
+    suggestBox.children[i].classList.toggle('active', i === suggestIndex);
+  const active = suggestBox.children[suggestIndex];
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function pickSuggestion() {
+  const word = suggestWords[suggestIndex >= 0 ? suggestIndex : 0];
+  if (!word) return;
+  search.value = word;
+  lookup(word);
+}
+
+search.addEventListener('input', () => {
+  clearTimeout(suggestTimer);
+  const value = search.value.trim();
+  if (!value) {
+    hideSuggestions();
+    return;
+  }
+  // Debounce so a fast typist sends one query, not one per letter.
+  suggestTimer = setTimeout(() => {
+    suggestActive = true;
+    postType('suggest', value);
+  }, 120);
+});
+
+// Clicking anywhere outside the search area closes the dropdown; the
+// pointerdown suppression keeps focus in the input when an item is clicked.
+document.addEventListener('pointerdown', event => {
+  if (!suggestBox.hidden && !event.target.closest('.search-wrap'))
+    hideSuggestions();
+});
+suggestBox.addEventListener('pointerdown', event => event.preventDefault());
+suggestBox.addEventListener('click', event => {
+  const item = event.target.closest('.suggest-item');
+  if (item) {
+    search.value = item.textContent;
+    lookup(item.textContent);
+  }
+});
+
+// --- host entry points -------------------------------------------------
+
+// setEntry carries one dictionary row (all string fields) or {word, miss}.
+window.setEntry = function (entry) {
+  if (!entry) return;
+  hideSuggestions();
+  lang = entry.uiLanguage === 'en' ? 'en' : 'zh';
+  applyLanguage();
+  boot.hidden = true;
+
+  if (entry.miss) {
+    currentWord = entry.word || '';
+    missWord.textContent = currentWord;
+    entryView.hidden = true;
+    missView.hidden = false;
+    document.title = `${currentWord} · ${t('brand')}`;
+    syncSearch(currentWord);
+    scroll.scrollTop = 0;
+    return;
+  }
+
+  currentWord = entry.word || '';
+  wordEl.textContent = currentWord;
+  const phonetic = (entry.phonetic || '').trim();
+  phoneticEl.textContent = phonetic ? `/${phonetic}/` : '';
+  phoneticEl.hidden = !phonetic;
+  renderBadges(entry);
+  renderForms(entry.exchange);
+  const zh = lines(entry.translation);
+  const en = lines(entry.definition);
+  renderDefs(zhDefs, entry.translation);
+  renderDefs(enDefs, entry.definition);
+  zhSection.hidden = zh.length === 0;
+  enSection.hidden = en.length === 0;
+  entryView.hidden = false;
+  missView.hidden = true;
+  document.title = `${currentWord} · ${t('brand')}`;
+  syncSearch(currentWord);
+  scroll.scrollTop = 0;
+};
+
+function syncSearch(word) {
+  if (document.activeElement !== search)
+    search.value = word;
+}
+
+// --- speech ------------------------------------------------------------
+
+function speak() {
+  if (!currentWord || !('speechSynthesis' in window)) return;
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  const utterance = new SpeechSynthesisUtterance(currentWord);
+  utterance.lang = 'en-US';
+  utterance.rate = 0.85;
+  const voice = synth.getVoices().find(v => /^en[-_]/i.test(v.lang))
+    || synth.getVoices().find(v => /^en/i.test(v.lang));
+  if (voice) utterance.voice = voice;
+  synth.speak(utterance);
+}
+
+// Reading a word aloud must not survive the panel closing.
+window.addEventListener('blur', () => {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+});
+
+// --- actions -----------------------------------------------------------
+
+document.getElementById('speakBtn').addEventListener('click', speak);
+document.getElementById('closeBtn').addEventListener('click', () => postType('hide'));
+
+// The window has no title bar; empty topbar areas drag it via the host.
+document.querySelector('.topbar').addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  if (event.target.closest('#search, .suggest, button')) return;
+  postType('drag');
+});
+
+search.addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    moveSuggestSelection(1);
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    moveSuggestSelection(-1);
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    if (!suggestBox.hidden && suggestWords.length)
+      pickSuggestion();
+    else
+      lookup(search.value);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!suggestBox.hidden)
+      hideSuggestions();
+    else
+      search.value = '';
+  }
+});
+
+// Escape closes the panel unless the user is clearing the search box first.
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    postType('hide');
+  }
+});
+
+applyLanguage();
+search.focus();
+</script>
+</body>
+</html>

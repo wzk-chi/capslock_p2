@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 AI</title>
+<style>
+:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f5f7fb; color: #20242b; cursor: default; }
+main { height: 100vh; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.topbar { display: flex; align-items: center; gap: 10px; }
+h1 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
+#status { color: #697386; font-size: 12px; text-align: right; flex: 1; }
+button { border: 0; border-radius: 8px; padding: 7px 14px; background: #356ae6; color: white; cursor: pointer; font-weight: 600; }
+button:hover { background: #2859c7; }
+button:disabled { background: #9aa8c2; cursor: wait; }
+button.secondary { background: transparent; color: #356ae6; border: 1px solid #b9c6e8; font-weight: 500; }
+button.secondary:hover { background: #e8eefb; }
+#messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
+.msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: #356ae6; color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant { align-self: flex-start; background: #fff; border: 1px solid #d5dae3; border-bottom-left-radius: 4px; }
+.msg.thinking { align-self: flex-start; color: #697386; background: transparent; border: 1px dashed #b9c6e8; }
+/* Markdown content inside assistant bubbles. */
+.msg.assistant > :last-child { margin-bottom: 0; }
+.msg.assistant p { margin: 0 0 8px; }
+.msg.assistant pre { background: #f0f2f7; border: 1px solid #d5dae3; border-radius: 8px; padding: 8px 10px; overflow-x: auto; margin: 8px 0; }
+.msg.assistant code { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+.msg.assistant :not(pre) > code { background: #f0f2f7; padding: 1px 4px; border-radius: 4px; }
+.msg.assistant ul, .msg.assistant ol { margin: 8px 0; padding-left: 22px; }
+.msg.assistant li { margin: 2px 0; }
+.msg.assistant blockquote { margin: 8px 0; padding: 2px 10px; border-left: 3px solid #b9c6e8; color: #697386; }
+.msg.assistant table { border-collapse: collapse; margin: 8px 0; }
+.msg.assistant th, .msg.assistant td { border: 1px solid #d5dae3; padding: 4px 8px; font-size: 13px; }
+.msg.assistant a { color: #356ae6; }
+.msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 { margin: 10px 0 6px; font-size: 15px; }
+.composer { display: flex; gap: 10px; align-items: flex-end; }
+textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid #d5dae3; border-radius: 10px; background: #fff; color: #20242b; font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
+textarea:focus { border-color: #4b7bec; box-shadow: 0 0 0 3px #4b7bec22; }
+@media (prefers-color-scheme: dark) {
+  body { background: #20242b; color: #eef1f6; }
+  textarea { border-color: #46505f; background: #2b313b; color: #eef1f6; }
+  .msg.assistant { background: #2b313b; border-color: #46505f; }
+  .msg.thinking { color: #aab4c4; border-color: #4a5b82; }
+  #status { color: #aab4c4; }
+  button.secondary { color: #8db0f5; border-color: #4a5b82; }
+  button.secondary:hover { background: #2b3547; }
+  .msg.assistant pre { background: #232833; border-color: #46505f; }
+  .msg.assistant :not(pre) > code { background: #232833; }
+  .msg.assistant th, .msg.assistant td { border-color: #46505f; }
+  .msg.assistant a { color: #8db0f5; }
+  .msg.assistant blockquote { border-color: #4a5b82; color: #aab4c4; }
+}
+</style>
+</head>
+<body>
+<main id="mainView">
+  <div class="topbar">
+    <h1 id="appTitle">capslock_p2 AI</h1>
+    <span id="status"></span>
+    <button id="newChat" class="secondary"></button>
+    <button id="openSettings" class="secondary"></button>
+  </div>
+  <div id="messages"></div>
+  <div class="composer">
+    <textarea id="input" rows="1" spellcheck="false"></textarea>
+    <button id="send"></button>
+  </div>
+</main>
+
+<!-- marked + DOMPurify render assistant answers as sanitized markdown. -->
+<script src="../vendor/marked.min.js"></script>
+<script src="../vendor/purify.min.js"></script>
+<script src="settings.js"></script>
+<script>
+const input = document.getElementById('input');
+const messages = document.getElementById('messages');
+const status = document.getElementById('status');
+const sendBtn = document.getElementById('send');
+const newChatBtn = document.getElementById('newChat');
+const settingsBtn = document.getElementById('openSettings');
+const appTitle = document.getElementById('appTitle');
+
+const STRINGS = {
+  en: {
+    appTitle: 'capslock_p2 AI',
+    newChat: 'New chat',
+    settings: 'Settings',
+    send: 'Send',
+    thinking: 'Thinking…',
+    inputPlaceholder: 'Ask anything. Enter to send, Shift+Enter for a new line.'
+  },
+  zh: {
+    appTitle: 'capslock_p2 AI',
+    newChat: '新会话',
+    settings: '设置',
+    send: '发送',
+    thinking: '思考中…',
+    inputPlaceholder: '输入问题：Enter 发送，Shift+Enter 换行'
+  }
+};
+
+let lang = 'en';
+
+function t(key) {
+  return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('appTitle');
+  appTitle.textContent = t('appTitle');
+  newChatBtn.textContent = t('newChat');
+  settingsBtn.textContent = t('settings');
+  sendBtn.textContent = t('send');
+  input.placeholder = t('inputPlaceholder');
+}
+
+function post(obj) {
+  if (window.chrome && chrome.webview)
+    chrome.webview.postMessage(JSON.stringify(obj));
+}
+
+function postType(type, text) {
+  post({ type: type, text: text || '' });
+}
+
+// Windows hides the pointer while typing when that system option is enabled.
+// Native edit controls show it again on mouse movement; report that movement
+// so the WebView2 host can restore the same behavior without polling.
+let cursorMovePostedAt = 0;
+document.addEventListener('mousemove', () => {
+  const now = performance.now();
+  if (now - cursorMovePostedAt < 80) return;
+  cursorMovePostedAt = now;
+  postType('cursorMove', '');
+}, { passive: true });
+
+function scrollToBottom() {
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+// Assistant answers arrive as markdown; marked parses it and DOMPurify strips
+// anything dangerous from the model output before it becomes HTML.
+function renderMarkdown(text) {
+  if (window.marked && window.DOMPurify) {
+    try {
+      return DOMPurify.sanitize(marked.parse(text || '', { breaks: true, gfm: true }));
+    } catch (error) {
+      // fall through to plain text
+    }
+  }
+  return escapeHtml(text);
+}
+
+/* ---- host -> page ---- */
+
+// The AHK side owns the conversation history and echoes every message back,
+// so rendering is purely a mirror of that history.
+window.appendMessage = function (role, text) {
+  const bubble = document.createElement('div');
+  const isUser = role === 'user';
+  bubble.className = 'msg ' + (isUser ? 'user' : 'assistant');
+  if (isUser)
+    bubble.textContent = text || '';
+  else
+    bubble.innerHTML = renderMarkdown(text);
+  messages.appendChild(bubble);
+  scrollToBottom();
+};
+
+window.startStreamingMessage = function () {
+  window.setThinking(false);
+  const old = messages.querySelector('.msg.assistant.streaming');
+  if (old) old.remove();
+  const bubble = document.createElement('div');
+  bubble.className = 'msg assistant streaming';
+  bubble.dataset.raw = '';
+  messages.appendChild(bubble);
+  status.textContent = t('thinking');
+  input.disabled = true;
+  sendBtn.disabled = true;
+  scrollToBottom();
+};
+
+window.appendStreaming = function (text) {
+  const bubble = messages.querySelector('.msg.assistant.streaming');
+  if (!bubble) return;
+  bubble.dataset.raw += text || '';
+  bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
+  scrollToBottom();
+};
+
+window.finishStreamingMessage = function () {
+  const bubble = messages.querySelector('.msg.assistant.streaming');
+  if (bubble) bubble.classList.remove('streaming');
+  status.textContent = '';
+  input.disabled = false;
+  sendBtn.disabled = false;
+  input.focus();
+};
+
+window.removeStreamingMessage = function () {
+  const bubble = messages.querySelector('.msg.assistant.streaming');
+  if (bubble) bubble.remove();
+  input.disabled = false;
+  sendBtn.disabled = false;
+  input.focus();
+};
+
+window.setThinking = function (on) {
+  let bubble = messages.querySelector('.msg.thinking');
+  if (on) {
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'msg thinking';
+      messages.appendChild(bubble);
+    }
+    bubble.textContent = t('thinking');
+  } else if (bubble)
+    bubble.remove();
+  scrollToBottom();
+};
+
+window.setError = function (text) {
+  window.setThinking(false);
+  status.textContent = text || '';
+};
+
+window.newSession = function () {
+  messages.textContent = '';
+  status.textContent = '';
+};
+
+window.trimMessages = function (limit) {
+  const bubbles = Array.from(messages.children);
+  const keep = Math.max(0, Number(limit) || 0);
+  while (bubbles.length > keep)
+    bubbles.shift().remove();
+};
+
+/* ---- page -> host ---- */
+
+function send() {
+  const text = input.value.trim();
+  if (!text)
+    return;
+  // The history lives in AHK; it echoes the user bubble back and answers.
+  post({ type: 'ask', text: text });
+  input.value = '';
+  input.style.height = 'auto';
+  input.focus();
+}
+
+input.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    send();
+    return;
+  }
+  if (event.key === 'Escape') {
+    // The borderless window has no system close; Esc is the escape hatch.
+    event.preventDefault();
+    postType('hide');
+  }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+});
+sendBtn.addEventListener('click', send);
+
+// Links inside answers open in the default browser (the AHK side handles it),
+// never navigate this panel away.
+messages.addEventListener('click', event => {
+  const link = event.target.closest('a');
+  if (!link)
+    return;
+  event.preventDefault();
+  post({ type: 'openUrl', text: link.href });
+});
+
+newChatBtn.addEventListener('click', () => postType('newSession'));
+settingsBtn.addEventListener('click', () => {
+  postType('getSettings');
+  LLMSettings.open(false);
+});
+
+// Pushed settings carry the ui language the page should use.
+window.onHostSettings = function (s) {
+  lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
+  applyLanguage();
+};
+
+LLMSettings.mount({ targetLanguage: false });
+applyLanguage();
+input.focus();
+</script>
+</body>
+</html>

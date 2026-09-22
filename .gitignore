@@ -1,0 +1,23 @@
+# Build & packaging outputs
+build/
+dist/
+out.txt
+
+# Personal / runtime files (capslock_p2.ini 含个人 API 凭据，禁止入库)
+capslock_p2.ini
+capslock_p2-winsInfosRecorder.ini
+capslock_p2-debug.log
+*.log
+
+# 参考的 v1 原版源码（只读参考，不属于本项目的源）
+capslock-plus/
+
+# Claude Code 本地会话状态
+.claude/
+
+# 编辑器与系统噪音
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 Translate</title>
+<style>
+:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f5f7fb; color: #20242b; }
+main { height: 100vh; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+h1 { margin: 0; font-size: 16px; font-weight: 650; flex: 1; }
+label { flex: 1; font-size: 12px; font-weight: 600; color: #697386; }
+textarea { width: 100%; padding: 10px 12px; border: 1px solid #d5dae3; border-radius: 9px; background: #fff; color: #20242b; font: 14px/1.55 Consolas, "Microsoft YaHei", monospace; outline: none; }
+#source { min-height: 100px; resize: vertical; }
+#result { flex: 1; min-height: 80px; resize: none; }
+textarea:focus { border-color: #4b7bec; box-shadow: 0 0 0 3px #4b7bec22; }
+.topbar { display: flex; align-items: center; gap: 10px; }
+.pane { display: flex; flex-direction: column; gap: 6px; }
+.pane.grow { flex: 1; min-height: 0; }
+.pane-head { display: flex; align-items: center; gap: 8px; }
+.actionbar { display: flex; align-items: center; gap: 10px; }
+#status { flex: 1; color: #697386; font-size: 12px; }
+button { border: 0; border-radius: 8px; padding: 8px 18px; background: #356ae6; color: white; cursor: pointer; font-weight: 600; }
+button:hover { background: #2859c7; }
+button:disabled { background: #9aa8c2; cursor: default; }
+button.secondary { background: transparent; color: #356ae6; border: 1px solid #b9c6e8; font-weight: 500; }
+button.secondary:hover { background: #e8eefb; }
+button.secondary:disabled { color: #9aa8c2; border-color: #ccd3df; background: transparent; }
+button.small { padding: 3px 12px; font-size: 12px; border-radius: 7px; }
+button.copied { color: #157347; border-color: #93cfab; }
+button.copied:hover { background: #eaf6ef; }
+@media (prefers-color-scheme: dark) {
+  body { background: #20242b; color: #eef1f6; }
+  textarea { border-color: #46505f; background: #2b313b; color: #eef1f6; }
+  label, #status { color: #aab4c4; }
+  button.secondary { color: #8db0f5; border-color: #4a5b82; }
+  button.secondary:hover { background: #2b3547; }
+  button.secondary:disabled { color: #5c6778; border-color: #3a4454; background: transparent; }
+  button.copied { color: #7fd8a5; border-color: #406852; }
+  button.copied:hover { background: #24382c; }
+}
+</style>
+</head>
+<body>
+<main id="mainView">
+  <header class="topbar">
+    <h1 data-i18n="appTitle">capslock_p2 Translate</h1>
+    <button id="openSettings" class="secondary small" data-i18n="settings">Settings</button>
+  </header>
+  <section class="pane">
+    <div class="pane-head">
+      <label for="source" data-i18n="source">Source</label>
+      <button id="copySource" class="secondary small" data-i18n="copySource" disabled>Copy source</button>
+    </div>
+    <textarea id="source" spellcheck="false" autofocus></textarea>
+  </section>
+  <div class="actionbar">
+    <span id="status"></span>
+    <button id="translate" data-i18n="translate" title="Ctrl + Enter">Translate</button>
+  </div>
+  <section class="pane grow">
+    <div class="pane-head">
+      <label for="result" data-i18n="translation">Translation</label>
+      <button id="copyResult" class="secondary small" data-i18n="copyResult" disabled>Copy translation</button>
+    </div>
+    <textarea id="result" readonly spellcheck="false"></textarea>
+  </section>
+</main>
+
+<!-- The settings dialog lives in settings.js, shared with the AI panel. -->
+<script src="settings.js"></script>
+<script>
+const source = document.getElementById('source');
+const result = document.getElementById('result');
+const status = document.getElementById('status');
+const translateBtn = document.getElementById('translate');
+const settingsBtn = document.getElementById('openSettings');
+const copySourceBtn = document.getElementById('copySource');
+const copyResultBtn = document.getElementById('copyResult');
+
+// The panel is bilingual: the UI follows the configured target language
+// (Chinese target → Chinese UI, anything else → English). AHK decides and
+// sends uiLanguage with the settings.
+const STRINGS = {
+  en: {
+    appTitle: 'capslock_p2 Translate',
+    source: 'Source',
+    translation: 'Translation',
+    settings: 'Settings',
+    translate: 'Translate',
+    copySource: 'Copy source',
+    copyResult: 'Copy translation',
+    copied: 'Copied',
+    copyFailed: 'Copy failed',
+    ready: 'Ready',
+    translating: 'Translating…',
+    done: 'Done',
+    failed: 'Translation failed'
+  },
+  zh: {
+    appTitle: 'capslock_p2 翻译',
+    source: '原文',
+    translation: '译文',
+    settings: '设置',
+    translate: '翻译',
+    copySource: '复制原文',
+    copyResult: '复制译文',
+    copied: '已复制',
+    copyFailed: '复制失败',
+    ready: '就绪',
+    translating: '翻译中…',
+    done: '完成',
+    failed: '翻译失败'
+  }
+};
+
+let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+
+function t(key) {
+  return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('appTitle');
+  for (const node of document.querySelectorAll('[data-i18n]'))
+    node.textContent = t(node.dataset.i18n);
+  // A copy button mid-flash keeps its feedback label under the new language.
+  for (const btn of [copySourceBtn, copyResultBtn])
+    if (btn.dataset.flash)
+      btn.textContent = t(btn.dataset.flash);
+  if (!translateBtn.disabled)
+    status.textContent = status.dataset.state === 'done' ? t('done') : t('ready');
+}
+
+function setStatus(key, state) {
+  status.textContent = t(key);
+  status.dataset.state = state || '';
+}
+
+function post(obj) {
+  if (window.chrome && chrome.webview)
+    chrome.webview.postMessage(JSON.stringify(obj));
+}
+
+function postType(type, text = '') {
+  post({ type, text });
+}
+
+// Windows hides the pointer while typing when that system option is enabled.
+// Native edit controls show it again on mouse movement; report that movement
+// so the WebView2 host can restore the same behavior without polling.
+let cursorMovePostedAt = 0;
+document.addEventListener('mousemove', () => {
+  const now = performance.now();
+  if (now - cursorMovePostedAt < 80) return;
+  cursorMovePostedAt = now;
+  postType('cursorMove');
+}, { passive: true });
+
+function updateCopyButtons() {
+  copySourceBtn.disabled = !source.value.trim();
+  copyResultBtn.disabled = !result.value.trim();
+}
+
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // The async API can be unavailable or denied; fall back to the legacy
+    // execCommand path with a throwaway selection.
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    helper.setAttribute('readonly', '');
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    helper.remove();
+    return ok;
+  }
+}
+
+function flashCopyButton(button, ok) {
+  const key = ok ? 'copied' : 'copyFailed';
+  button.dataset.flash = key;
+  button.textContent = t(key);
+  button.classList.toggle('copied', ok);
+  clearTimeout(button._flashTimer);
+  button._flashTimer = setTimeout(() => {
+    delete button.dataset.flash;
+    button.classList.remove('copied');
+    button.textContent = t(button.dataset.i18n);
+  }, 1200);
+}
+
+async function copyFrom(textarea, button) {
+  if (!textarea.value.trim()) return;
+  flashCopyButton(button, await writeClipboard(textarea.value));
+}
+
+copySourceBtn.addEventListener('click', () => copyFrom(source, copySourceBtn));
+copyResultBtn.addEventListener('click', () => copyFrom(result, copyResultBtn));
+source.addEventListener('input', updateCopyButtons);
+result.addEventListener('input', updateCopyButtons);
+
+window.setSource = function (text) {
+  source.value = text || '';
+  result.value = '';
+  updateCopyButtons();
+  setStatus('ready');
+  source.focus();
+  source.select();
+};
+
+window.startTranslate = function () {
+  const text = source.value.trim();
+  if (!text) return;
+  postType('translate', text);
+};
+
+window.startStreaming = function () {
+  result.value = '';
+  source.disabled = true;
+  translateBtn.disabled = true;
+  updateCopyButtons();
+  setStatus('translating', 'loading');
+};
+
+window.appendStreaming = function (text) {
+  result.value += text || '';
+  result.scrollTop = result.scrollHeight;
+  updateCopyButtons();
+};
+
+window.setLoading = function (loading) {
+  translateBtn.disabled = !!loading;
+  if (loading)
+    setStatus('translating', 'loading');
+  else if (status.dataset.state === 'loading')
+    setStatus('ready');
+};
+
+window.setResult = function (text) {
+  result.value = text || '';
+  updateCopyButtons();
+  setStatus('done', 'done');
+  source.disabled = false;
+  translateBtn.disabled = false;
+  result.focus();
+};
+
+window.setError = function (text) {
+  result.value = '';
+  updateCopyButtons();
+  status.textContent = text || t('failed');
+  status.dataset.state = 'error';
+  source.disabled = false;
+  translateBtn.disabled = false;
+};
+
+// The shared settings overlay owns window.setSettings/openSettings/
+// setTestResult/setSaved; this hook keeps the panel language in step.
+window.onHostSettings = function (s) {
+  lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
+  applyLanguage();
+};
+
+translateBtn.addEventListener('click', window.startTranslate);
+source.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.key === 'Enter') {
+    event.preventDefault();
+    window.startTranslate();
+  }
+});
+
+settingsBtn.addEventListener('click', () => {
+  postType('getSettings');
+  LLMSettings.open(false);
+});
+
+LLMSettings.mount({ targetLanguage: true, engines: true, provider: true });
+applyLanguage();
+setStatus('ready');
+</script>
+</body>
+</html>
