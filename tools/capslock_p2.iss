@@ -6,7 +6,7 @@
 ; root capslock_p2.ini, which may contain personal API credentials.
 
 #define MyAppName "capslock_p2"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define ProjectRoot "D:\develop\project\cpaslock_p2"
 #define PayloadDir ProjectRoot + "\build\payload"
 #define OutputDir ProjectRoot + "\dist"

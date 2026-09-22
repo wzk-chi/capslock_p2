@@ -37,7 +37,7 @@ Everything 为可选（`resources/` 已内置一份，首次运行会自动建�
 3. **全部配置在 `capslock_p2.ini`，保存后程序自动重读，无需重启。** 完整可抄的示例见
    `capslock_p2-settingsDemo.ini`（只读参考，程序不加载它）。
 
-发布版是**单文件安装包** `capslock_p2-setup.exe`（也常按版本命名如 `capslock_p2-setup-0.1.0.exe`）。
+发布版是**单文件安装包** `capslock_p2-setup.exe`（也常按版本命名如 `capslock_p2-setup-0.1.1.exe`）。
 运行后自动释放主程序、WebView2 页面、词典、SQLite、Everything 和配置模板，默认安装到
 `%LocalAppData%\capslock_p2\`。安装向导允许改目录（推荐用户有写权限的位置，程序会在安装目录旁
 保存配置、日志和窗口绑定记录）。**重新安装或升级会保留已有的 `capslock_p2.ini`**，API 配置不丢。
