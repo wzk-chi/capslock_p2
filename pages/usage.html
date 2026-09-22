@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>capslock_p2 · 使用介绍</title>
 <meta name="description" content="capslock_p2 使用介绍：把 CapsLock 变成一层高效快捷键，另有 qbar、翻译、AI 问答、Everything 搜索与独立剪贴板。">
+<link rel="icon" type="image/png" href="../resources/capslock_p2-icon.png">
 <script>document.documentElement.classList.add("js");</script>
 <style>
   :root {
@@ -69,8 +70,8 @@
     max-width: 960px; margin: 0 auto; padding: 0 24px;
     height: 56px; display: flex; align-items: center; gap: 20px;
   }
-  .brand { font-weight: 700; letter-spacing: .2px; font-size: 15px; display: flex; align-items: center; gap: 10px; }
-  .brand-dot { width: 10px; height: 10px; border-radius: 3px; background: linear-gradient(135deg, #356ae6, #7b4de0); }
+  .brand { font-weight: 700; letter-spacing: .2px; font-size: 15px; display: flex; align-items: center; gap: 9px; }
+  .brand-icon { width: 20px; height: 20px; border-radius: 5px; }
   .nav-links { margin-left: auto; display: flex; gap: 4px; }
   .nav-links a {
     color: var(--muted); text-decoration: none; font-size: 13.5px; padding: 6px 10px; border-radius: 8px;
@@ -142,7 +143,7 @@
     transition: opacity .4s ease, transform .4s ease;
   }
   .js .krow { opacity: 0; transform: translateY(6px); }
-  .krow:first-child { border-top: 0; }
+  .panel h3 + .krow { border-top: 0; }
   .krow.in { opacity: 1; transform: none; }
   @media (max-width: 620px) { .krow { grid-template-columns: 1fr; gap: 4px; } }
   .keys { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; color: var(--text); }
@@ -192,7 +193,7 @@
 
 <header class="nav">
   <div class="nav-inner">
-    <div class="brand"><span class="brand-dot"></span>capslock_p2</div>
+    <div class="brand"><img class="brand-icon" alt="" src="../resources/capslock_p2-icon.png">capslock_p2</div>
     <nav class="nav-links">
       <a href="#features">特性</a>
       <a href="#keymap">按键</a>
@@ -212,12 +213,11 @@
       <span class="badge">AutoHotkey v2 · 脱胎于 <b>Capslock+</b>（GPL v2）</span>
       <h1>一个 CapsLock，<em>一层快捷键。</em></h1>
       <p class="hero-sub">
-        按住 CapsLock，字母区立刻变成移动、选择与编辑的控制层；点按 CapsLock，一键切换大小写或输入法。
-        再配上 qbar 启动器、翻译词典、AI 问答、Everything 搜索与三组独立剪贴板——常用操作不再离开键盘。
+        按住 CapsLock，字母区立刻变成移动、选择与编辑的控制层。再配上 qbar 启动器、翻译词典、
+        AI 问答、Everything 搜索与独立剪贴板——常用操作不再离开键盘。
       </p>
       <div class="modes">
-        <div class="mode-chip"><b>按住 = 临时快捷键</b><span>按住 CapsLock 不放，字母区暂时变成功能键：按 <kbd>S</kbd> 光标左移，按 <kbd>J</kbd> 向左选中文本，按 <kbd>Q</kbd> 打开 qbar。松开手指，恢复平常打字。</span></div>
-        <div class="mode-chip"><b>点按一下 = 一个快捷动作</b><span>只点一下、不碰其他键，触发一个动作：默认切换大小写。很多人会把它改成「切换中英文输入法」（示例配置就是这么设的）。</span></div>
+        <div class="mode-chip"><b>按住 = 临时快捷键</b><span>按住 CapsLock 不放，字母区暂时变成功能键：按 <kbd>S</kbd> 光标左移，按 <kbd>J</kbd> 向左选中文本，按 <kbd>Q</kbd> 打开 qbar。松开立刻恢复打字，随时进出。</span></div>
       </div>
     </div>
   </section>
@@ -251,7 +251,7 @@
       <div class="card reveal" data-i="4">
         <div class="ic"><svg viewBox="0 0 24 24"><rect x="2.5" y="7" width="7" height="10" rx="1.5"/><rect x="9.5" y="4" width="7" height="16" rx="1.5"/><rect x="16.5" y="7" width="5" height="10" rx="1.5"/></svg></div>
         <h3>独立剪贴板 + 窗口绑定</h3>
-        <p>三组槽位复制粘贴互不覆盖；<span class="keys"><kbd>1</kbd>~<kbd>0</kbd></span> 秒切绑定窗口，绑定跨重启保留。</p>
+        <p>系统之外有两组独立槽位，复制粘贴互不覆盖，<span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F12</kbd></span> 切换粘贴来源；<span class="keys"><kbd>1</kbd>~<kbd>0</kbd></span> 秒切绑定窗口，绑定跨重启保留。</p>
       </div>
       <div class="card reveal" data-i="5">
         <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4zM4 15h16M4 19h10"/></svg></div>
@@ -305,8 +305,9 @@
       <div class="krow reveal" data-i="4"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F5</kbd></span><span class="desc">重新加载配置</span></div>
       <h3>窗口</h3>
       <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>1</kbd>~<kbd>0</kbd></span><span class="desc">激活绑定的窗口 1~10</span></div>
-      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><b style="color:inherit">Win</b><i>+</i><kbd>1</kbd>~<kbd>0</kbd></span><span class="desc">绑定当前窗口到该编号（或大幅<kbd style="margin:0 1px">Alt</kbd>+数字），短按 / 连按两次 / 连按三次对应三种绑定模式</span></div>
-      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F4</kbd> / <kbd>F6</kbd></span><span class="desc">窗口透明度循环切换 / 置顶切换</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Win</kbd><i>+</i><kbd>1</kbd>~<kbd>0</kbd></span><span class="desc">绑定当前窗口到该编号（或按 <kbd style="margin:0 1px">Alt</kbd>+数字），短按 / 连按两次 / 连按三次对应三种绑定模式</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F4</kbd></span><span class="desc">窗口透明度循环切换</span></div>
+      <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>F6</kbd></span><span class="desc">窗口置顶切换</span></div>
       <div class="krow reveal" data-i="5"><span class="keys"><kbd>CapsLock</kbd><i>+</i><kbd>Alt</kbd><i>+</i>滚轮</span><span class="desc">临时调节鼠标速度，松开恢复</span></div>
     </div>
   </section>
