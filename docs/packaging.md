@@ -63,7 +63,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 - `resources\capslock_p2-icon.png`：运行时托盘图标
 - `resources\capslock_p2-icon.ico`：EXE、安装器和快捷方式图标
 - `WebView2\64bit\WebView2Loader.dll`
-- `capslock_p2-settingsDemo.ini` 和 `README.md`
+- `capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
 
 安装器默认创建当前用户的开始菜单和桌面快捷方式。用户可以在安装向导中改选安装目录，但程序需要对该目录具有写入权限，因为配置、日志和窗口绑定记录位于程序目录旁。
 

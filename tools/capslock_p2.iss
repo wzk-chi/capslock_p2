@@ -57,9 +57,10 @@ Source: "{#ProjectRoot}\resources\Everything-1.4.1.1032.x64\*"; DestDir: "{app}\
 ; The application is compiled as 64-bit and selects this loader at runtime.
 Source: "{#ProjectRoot}\WebView2\64bit\WebView2Loader.dll"; DestDir: "{app}\WebView2\64bit"; Flags: ignoreversion
 
-; Keep the example and README available after installation.
+; Keep the example, README and the GPL v2 license text available after installation.
 Source: "{#ProjectRoot}\capslock_p2-settingsDemo.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#ProjectRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Never overwrite the user's API settings during an upgrade.
 Source: "{#ProjectRoot}\tools\capslock_p2-default.ini"; DestDir: "{app}"; DestName: "capslock_p2.ini"; Flags: onlyifdoesntexist ignoreversion
