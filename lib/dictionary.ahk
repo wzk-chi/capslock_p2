@@ -91,7 +91,7 @@ DictionaryTryShow(text) {
     return true
 }
 
-DictionaryShow(entry) {
+DictionaryShow(entry := 0) {
     global DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
     global DictionaryPendingEntry
     DictionaryVisible := true
@@ -109,8 +109,12 @@ DictionaryShow(entry) {
     SetTimer(DictionaryFocusMonitor, 100)
     DictionaryFocusTimer := true
 
-    if DictionaryPageReady
-        DictionaryPushEntry(entry)
+    if DictionaryPageReady {
+        if IsObject(entry)
+            DictionaryPushEntry(entry)
+        else
+            DictionaryClearPage()
+    }
 }
 
 DictionaryEnsureWebView() {
@@ -184,8 +188,11 @@ DictionaryNavigationCompleted(sender, args) {
         ShowMsg("The dictionary page could not be loaded.", 3500)
         return
     }
-    if DictionaryVisible && IsObject(DictionaryPendingEntry) {
-        DictionaryPushEntry(DictionaryPendingEntry)
+    if DictionaryVisible {
+        if IsObject(DictionaryPendingEntry)
+            DictionaryPushEntry(DictionaryPendingEntry)
+        else
+            DictionaryClearPage()
         DictionaryPendingEntry := 0
     }
 }
@@ -242,6 +249,32 @@ DictionaryPushMiss(word) {
     try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
     catch
         return
+}
+
+; Open the dictionary page without carrying over the previous lookup result.
+DictionaryClearPage() {
+    global DictionaryWebView, DictionaryPageReady
+    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+        return
+    try {
+        DictionaryWebView.ExecuteScriptAsync("window.clearEntry();")
+        SetTimer(DictionaryFocusSearch, -1)
+    }
+    catch
+        return
+}
+
+; WinActivate can complete just after the clear script is queued. Move the
+; controller focus first, then focus the page's search input on the next tick.
+DictionaryFocusSearch(*) {
+    global DictionaryVisible, DictionaryController, DictionaryWebView, DictionaryPageReady
+    if !DictionaryVisible || !DictionaryPageReady
+        return
+    if IsObject(DictionaryController)
+        try DictionaryController.MoveFocus(0)
+    if IsObject(DictionaryWebView)
+        try DictionaryWebView.ExecuteScriptAsync(
+            "window.focus();document.getElementById('search').focus({preventScroll:true});")
 }
 
 ; Word suggestions for the search box, in three tiers: words starting with the

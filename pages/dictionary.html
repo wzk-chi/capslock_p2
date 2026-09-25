@@ -56,12 +56,14 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: center;
+  position: relative;
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
   flex: none;
 }
-.search-wrap { position: relative; flex: 1; min-width: 0; max-width: 300px; }
+.search-wrap { position: relative; flex: 0 1 300px; width: 300px; max-width: calc(100% - 44px); }
 #search {
   width: 100%;
   border: 1px solid var(--card-edge);
@@ -103,7 +105,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   cursor: pointer;
 }
 .suggest-item.active, .suggest-item:hover { background: var(--accent-soft); color: var(--accent-ink); }
-.topbar .spacer { flex: 1; }
+.topbar .spacer { display: none; }
 .iconbtn {
   border: 0;
   background: transparent;
@@ -114,6 +116,10 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   place-items: center;
   cursor: pointer;
   flex: none;
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .iconbtn:hover { background: var(--chip); color: var(--ink); }
 .iconbtn svg { display: block; }
@@ -605,6 +611,32 @@ window.setEntry = function (entry) {
   scroll.scrollTop = 0;
 };
 
+// The translate hotkey can open the dictionary without a selection. Keep the
+// page usable as a blank lookup surface and discard any result from a previous
+// visit.
+window.clearEntry = function () {
+  hideSuggestions();
+  currentWord = '';
+  wordEl.textContent = '';
+  phoneticEl.textContent = '';
+  phoneticEl.hidden = true;
+  badgesEl.replaceChildren();
+  badgesEl.hidden = true;
+  renderDefs(zhDefs, '');
+  renderDefs(enDefs, '');
+  zhSection.hidden = true;
+  enSection.hidden = true;
+  renderForms('');
+  boot.hidden = true;
+  entryView.hidden = true;
+  missView.hidden = true;
+  document.title = t('brand');
+  search.value = '';
+  scroll.scrollTop = 0;
+  window.focus();
+  search.focus({ preventScroll: true });
+};
+
 function syncSearch(word) {
   if (document.activeElement !== search)
     search.value = word;
@@ -674,7 +706,8 @@ document.addEventListener('keydown', event => {
 });
 
 applyLanguage();
-search.focus();
+window.focus();
+search.focus({ preventScroll: true });
 </script>
 </body>
 </html>

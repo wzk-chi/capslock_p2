@@ -257,7 +257,7 @@ keyFunc_translate(*) {
             return
         LLMTranslateShow(selectedText)
     } else
-        ShowMsg("Select text or place the cursor inside a word first.", 2000)
+        DictionaryShow()
 }
 
 keyFunc_tabPrve(*) {
