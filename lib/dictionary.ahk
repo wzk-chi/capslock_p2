@@ -10,6 +10,7 @@ global DictionaryWebView := 0
 global DictionaryPageReady := false
 global DictionaryVisible := false
 global DictionaryPendingEntry := 0
+global DictionaryPendingQuery := ""
 global DictionaryFocusTimer := false
 global DictionaryDB := 0
 
@@ -91,14 +92,16 @@ DictionaryTryShow(text) {
     return true
 }
 
-DictionaryShow(entry := 0) {
+DictionaryShow(entry := 0, query := "") {
     global DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
-    global DictionaryPendingEntry
+    global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := true
     DictionaryPendingEntry := entry
+    DictionaryPendingQuery := Trim(query)
     if !DictionaryEnsureWebView() {
         DictionaryVisible := false
         DictionaryPendingEntry := 0
+        DictionaryPendingQuery := ""
         return
     }
     dictionarySize := ScreenFitSize(640, 640, 460, 380)
@@ -112,9 +115,15 @@ DictionaryShow(entry := 0) {
     if DictionaryPageReady {
         if IsObject(entry)
             DictionaryPushEntry(entry)
-        else
+        else {
             DictionaryClearPage()
+            DictionaryPushQuery(DictionaryPendingQuery)
+        }
     }
+}
+
+DictionaryShowQuery(text) {
+    DictionaryShow(0, text)
 }
 
 DictionaryEnsureWebView() {
@@ -179,7 +188,7 @@ DictionaryEnsureWebView() {
 }
 
 DictionaryNavigationCompleted(sender, args) {
-    global DictionaryPageReady, DictionaryPendingEntry, DictionaryVisible
+    global DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryVisible
     try success := args.IsSuccess
     catch
         success := false
@@ -191,9 +200,12 @@ DictionaryNavigationCompleted(sender, args) {
     if DictionaryVisible {
         if IsObject(DictionaryPendingEntry)
             DictionaryPushEntry(DictionaryPendingEntry)
-        else
+        else {
             DictionaryClearPage()
+            DictionaryPushQuery(DictionaryPendingQuery)
+        }
         DictionaryPendingEntry := 0
+        DictionaryPendingQuery := ""
     }
 }
 
@@ -212,6 +224,9 @@ DictionaryWebMessageReceived(sender, args) {
             DictionaryPushEntry(entry)
         else
             DictionaryPushMiss(word)
+    } else if messageType = "openTranslate" {
+        text := LLMMsgField(msg, "text")
+        SetTimer(() => DictionaryOpenTranslate(text), -1)
     } else if messageType = "suggest" {
         DictionarySendSuggestions(LLMMsgField(msg, "text"))
     } else if messageType = "drag" {
@@ -249,6 +264,25 @@ DictionaryPushMiss(word) {
     try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
     catch
         return
+}
+
+DictionaryPushQuery(text) {
+    global DictionaryWebView, DictionaryPageReady
+    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+        return
+    text := Trim(text)
+    if text = ""
+        return
+    autoLookup := DictionaryNormalizeWord(text) != ""
+    script := "window.setQuery(" . LLMJsonQuote(text) . "," . (autoLookup ? "true" : "false") . ");"
+    try DictionaryWebView.ExecuteScriptAsync(script)
+    catch
+        return
+}
+
+DictionaryOpenTranslate(text) {
+    DictionaryHide()
+    LLMTranslateShow(text, true)
 }
 
 ; Open the dictionary page without carrying over the previous lookup result.
@@ -384,9 +418,10 @@ DictionaryFocusMonitor(*) {
 
 DictionaryHide(*) {
     global DictionaryGui, DictionaryVisible, DictionaryFocusTimer
-    global DictionaryPendingEntry
+    global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := false
     DictionaryPendingEntry := 0
+    DictionaryPendingQuery := ""
     if IsObject(DictionaryGui)
         DictionaryGui.Hide()
     SetTimer(DictionaryFocusMonitor, 0)
@@ -395,10 +430,11 @@ DictionaryHide(*) {
 
 DictionaryShutdown(*) {
     global DictionaryGui, DictionaryController, DictionaryWebView
-    global DictionaryVisible, DictionaryPageReady, DictionaryPendingEntry, DictionaryDB
+    global DictionaryVisible, DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryDB
     DictionaryVisible := false
     DictionaryPageReady := false
     DictionaryPendingEntry := 0
+    DictionaryPendingQuery := ""
     SetTimer(DictionaryFocusMonitor, 0)
     try DictionaryDB := 0
     try DictionaryWebView := 0

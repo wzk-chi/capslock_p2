@@ -46,6 +46,7 @@ button.copied:hover { background: #eaf6ef; }
 <main id="mainView">
   <header class="topbar">
     <h1 data-i18n="appTitle">capslock_p2 Translate</h1>
+    <button id="openDictionary" class="secondary small" data-i18n="dictionary">Dictionary</button>
     <button id="openSettings" class="secondary small" data-i18n="settings">Settings</button>
   </header>
   <section class="pane">
@@ -76,6 +77,7 @@ const result = document.getElementById('result');
 const status = document.getElementById('status');
 const translateBtn = document.getElementById('translate');
 const settingsBtn = document.getElementById('openSettings');
+const dictionaryBtn = document.getElementById('openDictionary');
 const copySourceBtn = document.getElementById('copySource');
 const copyResultBtn = document.getElementById('copyResult');
 
@@ -88,6 +90,7 @@ const STRINGS = {
     source: 'Source',
     translation: 'Translation',
     settings: 'Settings',
+    dictionary: 'Dictionary',
     translate: 'Translate',
     copySource: 'Copy source',
     copyResult: 'Copy translation',
@@ -103,6 +106,7 @@ const STRINGS = {
     source: '原文',
     translation: '译文',
     settings: '设置',
+    dictionary: '词典',
     translate: '翻译',
     copySource: '复制原文',
     copyResult: '复制译文',
@@ -295,6 +299,8 @@ settingsBtn.addEventListener('click', () => {
   postType('getSettings');
   LLMSettings.open(false);
 });
+
+dictionaryBtn.addEventListener('click', () => postType('openDictionary', source.value));
 
 LLMSettings.mount({ targetLanguage: true, engines: true, provider: true });
 applyLanguage();

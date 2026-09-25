@@ -80,10 +80,10 @@ GetTranslateProvider() {
     return "auto"
 }
 
-LLMTranslateShow(text) {
+LLMTranslateShow(text, allowEmpty := false) {
     global LLMTranslateGui, LLMTranslatePendingText, LLMTranslateVisible, LLMTranslatePageReady, LLMTranslateFocusTimer
     text := Trim(text)
-    if text = ""
+    if text = "" && !allowEmpty
         return
 
     LLMTranslatePendingText := text
@@ -101,8 +101,9 @@ LLMTranslateShow(text) {
 
     if LLMTranslatePageReady {
         LLMTranslatePushSettings()
-        LLMTranslateSetSource(text, TranslateConfigured())
-        if !TranslateConfigured()
+        configured := TranslateConfigured()
+        LLMTranslateSetSource(text, text != "" && configured)
+        if !configured
             LLMTranslateOpenSettings(true)
     }
 }
@@ -172,10 +173,11 @@ LLMTranslateNavigationCompleted(sender, args) {
         LLMTranslateSetError("WebView2 could not load the translation panel.")
         return
     }
-    if LLMTranslateVisible && LLMTranslatePendingText != "" {
+    if LLMTranslateVisible {
         LLMTranslatePushSettings()
-        LLMTranslateSetSource(LLMTranslatePendingText, TranslateConfigured())
-        if !TranslateConfigured()
+        configured := TranslateConfigured()
+        LLMTranslateSetSource(LLMTranslatePendingText, LLMTranslatePendingText != "" && configured)
+        if !configured
             LLMTranslateOpenSettings(true)
     }
 }
@@ -194,6 +196,9 @@ LLMTranslateWebMessageReceived(sender, args) {
         LLMTranslatePendingText := text
         LLMTranslateSetLoading()
         SetTimer(LLMTranslateStartRequest, -1)
+    } else if messageType = "openDictionary" {
+        text := LLMMsgField(msg, "text")
+        SetTimer(() => LLMTranslateOpenDictionary(text), -1)
     } else if messageType = "hide" {
         LLMTranslateHide()
     } else if messageType = "getSettings" {
@@ -213,6 +218,11 @@ LLMTranslateWebMessageReceived(sender, args) {
         ; open the window must survive losing focus.
         LLMTranslateSettingsOpen := LLMMsgField(msg, "text") = "open"
     }
+}
+
+LLMTranslateOpenDictionary(text) {
+    LLMTranslateHide()
+    DictionaryShowQuery(text)
 }
 
 LLMTranslateSetSource(text, startRequest := false) {
