@@ -798,6 +798,7 @@ ShowLoading() {
     LoadingFrameIndex := 1
 
     LoadingGui := Gui("-Caption +AlwaysOnTop +ToolWindow", "capslock_p2")
+    LoadingGui.OnEvent("Escape", HideLoading)
     LoadingGui.BackColor := background
     LoadingGui.SetFont("s15 c" . foreground, "Segoe UI Semibold")
     LoadingGui.AddText("x28 y22 w284 h28", "capslock_p2")
@@ -830,7 +831,7 @@ LoadingApplyRegion() {
         DllCall("DeleteObject", "ptr", region)
 }
 
-HideLoading() {
+HideLoading(*) {
     global LoadingGui, LoadingText
     SetTimer(AnimateLoading, 0)
     if IsObject(LoadingGui) {

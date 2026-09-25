@@ -278,6 +278,19 @@ source.addEventListener('keydown', event => {
   }
 });
 
+// Let the first Esc leave an editor, then use the next Esc to close the panel.
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const active = document.activeElement;
+  if (active && (active.matches('input, textarea, select') || active.isContentEditable)) {
+    event.preventDefault();
+    active.blur();
+    return;
+  }
+  event.preventDefault();
+  postType('hide');
+});
+
 settingsBtn.addEventListener('click', () => {
   postType('getSettings');
   LLMSettings.open(false);

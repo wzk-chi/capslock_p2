@@ -687,22 +687,21 @@ search.addEventListener('keydown', event => {
       pickSuggestion();
     else
       lookup(search.value);
-  } else if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!suggestBox.hidden)
-      hideSuggestions();
-    else
-      search.value = '';
   }
 });
 
-// Escape closes the panel unless the user is clearing the search box first.
+// Let the first Esc leave an editor, then use the next Esc to close the panel.
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') {
+  if (event.key !== 'Escape') return;
+  const active = document.activeElement;
+  if (active && (active.matches('input, textarea, select') || active.isContentEditable)) {
     event.preventDefault();
-    postType('hide');
+    hideSuggestions();
+    active.blur();
+    return;
   }
+  event.preventDefault();
+  postType('hide');
 });
 
 applyLanguage();

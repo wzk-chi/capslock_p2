@@ -464,11 +464,6 @@ input.addEventListener('input', event => {
 input.addEventListener('keydown', event => {
   if (event.isComposing || composing)
     qbarDebug('keydown', 'key=' + JSON.stringify(event.key));
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    postType('hide');
-    return;
-  }
   if (event.key === 'Tab') {
     event.preventDefault();
     if (!results.length) return;
@@ -508,6 +503,19 @@ input.addEventListener('keydown', event => {
     event.preventDefault();
     execute(event.ctrlKey);
   }
+});
+
+// Let the first Esc leave an editor, then use the next Esc to close the panel.
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const active = document.activeElement;
+  if (active && (active.matches('input, textarea, select') || active.isContentEditable)) {
+    event.preventDefault();
+    active.blur();
+    return;
+  }
+  event.preventDefault();
+  postType('hide');
 });
 
 input.placeholder = t('placeholder');
