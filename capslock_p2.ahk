@@ -39,6 +39,7 @@ A_HotkeyInterval := 2000
 #Include lib\icons.ahk
 #Include lib\keys.ahk
 #Include lib\keymap.ahk
+#Include lib\customHotkeys.ahk
 #Include userAHK\main.ahk
 
 Persistent()

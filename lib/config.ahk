@@ -14,7 +14,7 @@ ConfigLoad() {
     ConfigDefaults := ConfigParseIni(defaultsPath)
     Config := ConfigParseIni(defaultsPath)
     ConfigOverlay(Config, ConfigParseIni(SettingsFile))
-    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "TTranslate", "TYoudao", "TVolcengine"] {
+    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "CustomHotkey", "TTranslate", "TYoudao", "TVolcengine"] {
         if !Config.Has(section)
             Config[section] := Map()
     }

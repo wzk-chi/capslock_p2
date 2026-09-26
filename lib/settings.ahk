@@ -13,10 +13,8 @@ global SettingsShortcutTarget := ""
 
 SettingsShow(initialPage := "general", *) {
     global SettingsHost, SettingsGui, SettingsVisible, SettingsPendingPage
-    allowedPages := Map("general", true, "mouse", true, "llm", true, "translate", true, "ai", true,
-        "shortcuts", true, "tab", true, "qbar", true, "windows", true)
     initialPage := StrLower(Trim(initialPage))
-    SettingsPendingPage := allowedPages.Has(initialPage) ? initialPage : "general"
+    SettingsPendingPage := SettingsPageIsAllowed(initialPage) ? initialPage : "general"
     SettingsVisible := true
     if !SettingsEnsureWebView() {
         SettingsVisible := false
@@ -53,7 +51,7 @@ SettingsEnsureWebView() {
         "dataPath", A_Temp . "\CapsLockPlusSettingsWebView2",
         "initialShow", "w" . settingsSize[1] . " h" . settingsSize[2] . " Center",
         "callbacks", Map(
-            "close", SettingsHide,
+            "close", SettingsRequestClose,
             "resize", SettingsResize,
             "navigation", SettingsNavigationCompleted,
             "message", SettingsWebMessageReceived,
@@ -112,6 +110,8 @@ SettingsWebMessageReceived(sender, args) {
         SettingsHide()
     else if messageType = "getSettings"
         SetTimer(SettingsPushSnapshot, -1)
+    else if messageType = "setSettingsPage"
+        SettingsSetPendingPage(LLMMsgField(msg, "page"))
     else if messageType = "saveSettings"
         SetTimer(() => SettingsApplyDraft(message), -1)
     else if messageType = "testSettings"
@@ -137,6 +137,18 @@ SettingsStartShortcutCapture(message) {
     SettingsShortcutTarget := target
     SettingsShortcutHook := hook
     hook.Start()
+}
+
+SettingsPageIsAllowed(page) {
+    return page = "general" || page = "mouse" || page = "llm" || page = "translate"
+        || page = "ai" || page = "shortcuts" || page = "tab" || page = "qbar" || page = "windows"
+}
+
+SettingsSetPendingPage(page) {
+    global SettingsPendingPage
+    page := StrLower(Trim(String(page)))
+    if SettingsPageIsAllowed(page)
+        SettingsPendingPage := page
 }
 
 SettingsStopShortcutCapture(*) {
@@ -256,7 +268,7 @@ SettingsSendShortcutCapture(target, value, label) {
 
 SettingsConfigSections() {
     return ["Global", "LLM", "LLMTranslate", "TTranslate", "TYoudao", "TVolcengine", "QAI",
-        "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "Qbar"]
+        "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "Qbar", "CustomHotkey"]
 }
 
 SettingsSectionSnapshot(section) {
@@ -271,6 +283,7 @@ SettingsSectionSnapshot(section) {
 
 SettingsIsDynamicSection(section) {
     return section = "TabHotString" || section = "QSearch" || section = "QRun" || section = "QWeb"
+        || section = "CustomHotkey"
 }
 
 SettingsKeySnapshot() {
@@ -321,7 +334,9 @@ SettingsPushSnapshot(*) {
 }
 
 SettingsAllowedKey(section, key) {
-    if RegExMatch(key, "[\[\]=`r`n]") || StrLen(key) > 120
+    if RegExMatch(key, "[=`r`n]") || StrLen(key) > 120
+        return false
+    if section != "CustomHotkey" && RegExMatch(key, "[\[\]]")
         return false
     switch section {
         case "Global":
@@ -375,6 +390,8 @@ SettingsApplyDraft(message) {
     draft := msg["draft"]
     if !draft.Has("sections") || !IsObject(draft["sections"])
         return
+    if msg.Has("page")
+        SettingsSetPendingPage(LLMMsgField(msg, "page"))
     try {
         changes := Map()
         for section in SettingsConfigSections() {
@@ -464,6 +481,14 @@ SettingsCompleteCapture(bindingNumber, bindType) {
 SettingsResize(targetGui, minMax, width, height) {
     global SettingsHost
     PanelHostResize(SettingsHost, minMax)
+}
+
+SettingsRequestClose(*) {
+    global SettingsHost, SettingsPageReady
+    if !IsObject(SettingsHost) || !SettingsPageReady
+        return true
+    PanelHostExecute(SettingsHost, "window.requestCloseSettings();")
+    return true
 }
 
 SettingsIsDarkTheme() {

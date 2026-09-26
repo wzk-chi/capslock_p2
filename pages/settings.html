@@ -100,6 +100,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   display: grid; grid-template-columns: 150px minmax(0, 1fr) 32px; gap: 8px; align-items: center;
 }
 .pair-row textarea { min-height: 38px; }
+.custom-hotkey-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; }
+.custom-hotkey-field { min-width: 0; display: flex; gap: 8px; }
+.custom-hotkey-field input { min-width: 0; flex: 1; }
+.custom-hotkey-record { flex: none; padding: 6px 8px; font-size: 11px; }
 .shortcut-row { grid-template-columns: 180px minmax(0, 1fr) 48px; }
 .shortcut-label { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shortcut-record { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
@@ -129,7 +133,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .result-dialog-body { padding: 20px; }
 .result-dialog h3 { margin: 0 0 8px; font-size: 15px; }
 .result-dialog p { margin: 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.result-dialog-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.result-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 @media (max-width: 820px) {
   .side { width: 178px; }
   .topbar { padding: 0 20px; }
@@ -255,7 +259,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
       </section>
 
       <section class="page" data-page-view="shortcuts">
-        <div class="card"><input id="shortcutFilter" class="filter" placeholder="筛选快捷键"><div id="shortcutList" class="shortcut-list"></div></div>
+        <div class="cards">
+          <div class="card">
+            <div class="card-head"><h3>自定义快捷键</h3><button id="addCustomHotkey" class="btn mini">添加快捷键</button></div>
+            <div id="customHotkeyList" class="pair-list"></div>
+            <div class="hint">触发键 → 发送键，例如 Alt+C → Ctrl+C。</div>
+          </div>
+          <div class="card"><input id="shortcutFilter" class="filter" placeholder="筛选快捷键"><div id="shortcutList" class="shortcut-list"></div></div>
+        </div>
       </section>
 
       <section class="page" data-page-view="tab">
@@ -289,8 +300,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     <div class="result-dialog-actions"><button id="closeTestResult" class="btn">确定</button></div>
   </div>
 </dialog>
+<dialog id="confirmDialog" class="result-dialog">
+  <div class="result-dialog-body">
+    <h3>未保存的修改</h3>
+    <p>当前有未保存的修改，确定放弃吗？</p>
+    <div class="result-dialog-actions"><button id="cancelConfirm" class="btn" autofocus>取消</button><button id="confirmAction" class="btn ghost">确定</button></div>
+  </div>
+</dialog>
 <script>
-const state = { draft: null, page: 'general', dirty: false };
+const state = { draft: null, page: 'general', dirty: false, confirmAction: '' };
 let shortcutRecording = null;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -478,6 +496,18 @@ function ensureShortcutOption(select, action) {
 }
 window.receiveShortcutCapture = function (capture) {
   if (!shortcutRecording || !capture || !capture.value) return;
+  if (shortcutRecording.kind === 'custom') {
+    shortcutRecording.input.value = capture.value;
+    if (shortcutRecording.field === 'trigger') {
+      updateCustomHotkeyKey(shortcutRecording.row, shortcutRecording.input, shortcutRecording.sendInput);
+    } else if (shortcutRecording.row.dataset.key) {
+      state.draft.sections.CustomHotkey[shortcutRecording.row.dataset.key] = capture.value;
+      markDirty();
+    }
+    stopShortcutRecording(false);
+    setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
+    return;
+  }
   const action = 'keyFunc_send(' + capture.value + ')';
   ensureShortcutOption(shortcutRecording.select, action);
   shortcutRecording.select.value = action;
@@ -589,6 +619,90 @@ function renderShortcuts() {
   }
   applyShortcutFilter();
 }
+function updateCustomHotkeyKey(row, triggerInput, sendInput) {
+  const oldKey = row.dataset.key;
+  const newKey = triggerInput.value.trim();
+  if (oldKey && oldKey !== newKey) state.draft.sections.CustomHotkey[oldKey] = '';
+  row.dataset.key = newKey;
+  if (newKey) state.draft.sections.CustomHotkey[newKey] = sendInput.value;
+  markDirty();
+}
+function startCustomHotkeyRecording(row, input, sendInput, field, button) {
+  if (shortcutRecording && shortcutRecording.button === button) {
+    stopShortcutRecording();
+    setStatus('已取消录制');
+    return;
+  }
+  stopShortcutRecording();
+  shortcutRecording = { kind: 'custom', row, input, sendInput, field, button };
+  button.classList.add('recording');
+  button.textContent = '按键…';
+  setStatus('请按下要绑定的按键组合，再次点击可取消');
+  post({ type: 'startShortcutRecording', key: 'custom' });
+}
+function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
+  const row = document.createElement('div');
+  row.className = 'pair-row custom-hotkey-row';
+  row.dataset.key = initialTrigger;
+
+  const triggerField = document.createElement('div');
+  triggerField.className = 'custom-hotkey-field';
+  const triggerInput = document.createElement('input');
+  triggerInput.value = initialTrigger;
+  triggerInput.placeholder = '触发键，例如 !c';
+  const triggerRecord = document.createElement('button');
+  triggerRecord.type = 'button';
+  triggerRecord.className = 'btn ghost custom-hotkey-record';
+  triggerRecord.textContent = '录制';
+  triggerRecord.title = '录制触发键';
+  triggerRecord.addEventListener('click', () =>
+    startCustomHotkeyRecording(row, triggerInput, sendInput, 'trigger', triggerRecord));
+  triggerField.append(triggerInput, triggerRecord);
+
+  const sendField = document.createElement('div');
+  sendField.className = 'custom-hotkey-field';
+  const sendInput = document.createElement('input');
+  sendInput.value = initialSend;
+  sendInput.placeholder = '发送键，例如 ^c';
+  const sendRecord = document.createElement('button');
+  sendRecord.type = 'button';
+  sendRecord.className = 'btn ghost custom-hotkey-record';
+  sendRecord.textContent = '录制';
+  sendRecord.title = '录制发送键';
+  sendRecord.addEventListener('click', () =>
+    startCustomHotkeyRecording(row, sendInput, sendInput, 'send', sendRecord));
+  sendField.append(sendInput, sendRecord);
+
+  const remove = document.createElement('button');
+  remove.className = 'icon-btn';
+  remove.type = 'button';
+  remove.textContent = '×';
+  remove.title = '删除自定义快捷键';
+  remove.addEventListener('click', () => {
+    if (row.dataset.key) state.draft.sections.CustomHotkey[row.dataset.key] = '';
+    if (shortcutRecording && shortcutRecording.row === row) stopShortcutRecording();
+    row.remove();
+    markDirty();
+  });
+
+  triggerInput.addEventListener('input', () => updateCustomHotkeyKey(row, triggerInput, sendInput));
+  sendInput.addEventListener('input', () => {
+    if (row.dataset.key) state.draft.sections.CustomHotkey[row.dataset.key] = sendInput.value;
+    markDirty();
+  });
+  row.append(triggerField, sendField, remove);
+  root.append(row);
+}
+function renderCustomHotkeys() {
+  const root = $('#customHotkeyList');
+  root.replaceChildren();
+  const entries = Object.entries(section('CustomHotkey'));
+  if (!entries.length) {
+    addCustomHotkeyRow(root);
+    return;
+  }
+  entries.forEach(([trigger, send]) => addCustomHotkeyRow(root, trigger, send));
+}
 function renderPairs(sectionName, rootId, multiline = false) {
   const root = $('#' + rootId);
   root.replaceChildren();
@@ -654,18 +768,19 @@ function renderBindings() {
   }
 }
 function renderAll() {
-  refreshStaticControls(); renderShortcuts();
+  refreshStaticControls(); renderCustomHotkeys(); renderShortcuts();
   renderPairs('TabHotString', 'tabList', true);
   renderPairs('QSearch', 'qsearchList'); renderPairs('QRun', 'qrunList'); renderPairs('QWeb', 'qwebList');
   renderBindings();
 }
-function setPage(page) {
+function setPage(page, syncHost = true) {
   if (page !== 'shortcuts') stopShortcutRecording();
   state.page = page;
   $$('.nav button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $$('.page').forEach(node => node.classList.toggle('active', node.dataset.pageView === page));
   const active = $(`.nav button[data-page="${page}"]`);
   $('#pageTitle').textContent = active ? active.textContent : '设置';
+  if (syncHost) post({ type: 'setSettingsPage', page });
 }
 function buildLlmTest() {
   return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
@@ -692,13 +807,13 @@ function receiveSnapshot(snapshot) {
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   updateLanguageSelectLabels();
   renderAll();
-  setPage(snapshot.page || state.page || 'general');
+  setPage(snapshot.page || state.page || 'general', false);
   state.dirty = false; setStatus('');
 }
 function saveDraft() {
   if (!state.draft) return;
   setStatus('保存中…');
-  post({ type: 'saveSettings', draft: { sections: state.draft.sections } });
+  post({ type: 'saveSettings', page: state.page, draft: { sections: state.draft.sections } });
 }
 window.receiveSnapshot = receiveSnapshot;
 window.settingsSaved = function (ok, text) { setStatus(text || (ok ? '已保存' : '保存失败'), !ok); if (ok) state.dirty = false; };
@@ -708,10 +823,21 @@ window.settingsTestResult = function (ok, text) {
   $('#testResultMessage').textContent = ok ? '连接正常' : (text || '未知错误');
   $('#testResultDialog').showModal();
 };
+function requestSettingsExit(action) {
+  if (!state.dirty) {
+    post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
+    return;
+  }
+  state.confirmAction = action;
+  const dialog = $('#confirmDialog');
+  if (!dialog.open) dialog.showModal();
+  requestAnimationFrame(() => $('#cancelConfirm').focus());
+}
+window.requestCloseSettings = () => requestSettingsExit('close');
 
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
-$('#cancelBtn').addEventListener('click', () => post({ type: 'getSettings' }));
+$('#cancelBtn').addEventListener('click', () => requestSettingsExit('discard'));
 $('#testLlm').addEventListener('click', () => { setStatus('测试中…'); post(buildLlmTest()); });
 $('#openLlmSettings').addEventListener('click', () => setPage('llm'));
 $('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
@@ -721,6 +847,29 @@ $('#closeTestResult').addEventListener('click', () => $('#testResultDialog').clo
 $('#testResultDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget) event.currentTarget.close();
 });
+$('#cancelConfirm').addEventListener('click', () => {
+  state.confirmAction = '';
+  $('#confirmDialog').close();
+});
+$('#confirmAction').addEventListener('click', () => {
+  const action = state.confirmAction;
+  state.confirmAction = '';
+  $('#confirmDialog').close();
+  state.dirty = false;
+  post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
+});
+$('#confirmDialog').addEventListener('cancel', event => {
+  event.preventDefault();
+  state.confirmAction = '';
+  event.currentTarget.close();
+});
+$('#confirmDialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget) {
+    state.confirmAction = '';
+    event.currentTarget.close();
+  }
+});
+$('#addCustomHotkey').addEventListener('click', () => addCustomHotkeyRow($('#customHotkeyList')));
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);
 $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const sectionName = button.dataset.addPair;

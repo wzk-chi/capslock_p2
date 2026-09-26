@@ -72,6 +72,8 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
 `keyFunc_moveDown(10)`），完整函数清单见 `lib/keys.ahk`。
+全局自定义快捷键写在 `[CustomHotkey]` 中，格式为「触发键=发送键」，例如
+`!c=^c` 表示按 `Alt+C` 发送 `Ctrl+C`；设置中心的快捷键页可以直接录制。
 设置中心的快捷键页也支持点「录制」直接录入组合键，例如 Ctrl+Space 会保存为
 `keyFunc_send(^{Space})`。
 
@@ -297,7 +299,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 - 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
 - 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
-- 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
+- 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
 - `[Global]` 常用项：
 
   | 键 | 默认 | 说明 |

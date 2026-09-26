@@ -7,7 +7,7 @@
 - 入口 `capslock_p2.ahk` 用 `#include` 引入全部 `lib/*.ahk`；AHK v2 中每个被包含的文件加载时即执行，
   全局变量和函数在所有文件间共享。
 - **键盘层**：按住 CapsLock 进入键层，`lib/keymap.ahk` 做键位方案与层调度，`lib/keys.ahk` 提供
-  `keyFunc_*` 动作函数（配置里的每个键都映射到一个 `keyFunc_`）。
+  `keyFunc_*` 动作函数；`lib/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
 - **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/panelHost.ahk` 创建控制器并承载。
   AHK ⇄ 页面双向通信通过 thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用
   `window.chrome.webview.postMessage` 发 JSON，宿主统一接收并调用页面函数。
@@ -26,6 +26,7 @@ lib\
   core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
+  customHotkeys.ahk                [CustomHotkey] 全局快捷键重映射
   panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与焦点生命周期
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
   qbar.ahk                         qbar 状态与稳定入口

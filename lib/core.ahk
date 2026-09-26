@@ -50,6 +50,7 @@ Initialize() {
     InitializeMouseSpeed()
     RebuildHotStringPattern()
     RegisterCapsHotkeys()
+    RegisterCustomHotkeys()
     RegisterFeatureHotkeys()
     OnClipboardChange(HandleClipboardChange)
     DebugLog("Hotkeys and clipboard watcher registered")
@@ -100,6 +101,7 @@ Shutdown(*) {
 ReloadSettings(*) {
     ConfigLoad()
     BuildKeySet()
+    RegisterCustomHotkeys()
     ApplyGlobalSettings()
     InitializeMouseSpeed()
     RebuildHotStringPattern()
@@ -202,6 +204,8 @@ ApplySettingChange(section, key, value) {
     switch section {
         case "Keys":
             BuildKeySet()
+        case "CustomHotkey":
+            RegisterCustomHotkeys()
         case "TabHotString", "QRun", "QWeb":
             RebuildHotStringPattern()
     }
