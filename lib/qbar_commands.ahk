@@ -382,12 +382,3 @@ QbarLocateInExplorer(path) {
         ShowMsg(QbarText("Cannot open: ", "无法打开：") . path, 2500)
     }
 }
-
-; ---------------------------------------------------------------------------
-; Everything file search ("e <query>", aliases: everything / find / f)
-; ---------------------------------------------------------------------------
-
-; The typed line reads "e <query>": keep the previous results visible and
-; schedule the real es.exe call behind a short debounce -- one keystroke of
-; latency in exchange for far fewer process spawns.
-

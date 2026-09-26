@@ -313,8 +313,3 @@ QbarCollapsedHeight() {
 QbarPushLanguage() {
     QbarExec("window.setLanguage(" . LLMJsonQuote(IsChineseLanguage() ? "zh" : "en") . ");")
 }
-
-; ---------------------------------------------------------------------------
-; Helpers
-; ---------------------------------------------------------------------------
-

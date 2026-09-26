@@ -348,8 +348,3 @@ QbarEsHint(text) {
     QbarEsHintShown := true
     ShowMsg(text, 3000)
 }
-
-; ---------------------------------------------------------------------------
-; Folder navigation (wired to keyFunc_qbar_upperFolderPath / lowerFolderPath)
-; ---------------------------------------------------------------------------
-

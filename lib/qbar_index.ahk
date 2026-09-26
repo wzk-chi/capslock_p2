@@ -341,6 +341,3 @@ QbarGlobToRegEx(glob) {
     pattern := StrReplace(pattern, "?", ".")
     return "iS)" . pattern
 }
-
-; The existing directory prefix of a path, ending with a backslash.
-

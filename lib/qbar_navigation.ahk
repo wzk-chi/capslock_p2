@@ -42,6 +42,3 @@ QbarFolderOf(text) {
 QbarLeafOf(text) {
     return RegExMatch(text, "i)(?<=\\)[^\\]*$", &match) ? match[0] : ""
 }
-
-; Percent-encode UTF-8 bytes, leaving the URI unreserved set intact.
-
