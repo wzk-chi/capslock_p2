@@ -384,8 +384,7 @@ InWinMinimizeStack(atBeginning := false) {
 
 InitializeMouseSpeed() {
     global MouseSpeed
-    value := GetGlobalSetting("mouseSpeed") + 0
-    MouseSpeed := Max(1, Min(20, value ? value : 3))
+    MouseSpeed := SettingInteger("Global", "mouseSpeed", 3, 1, 20)
     SetTimer(MouseSpeedTick, 50)
 }
 

@@ -218,6 +218,28 @@ GetGlobalSetting(key, defaultValue := "") {
     return defaultValue
 }
 
+SettingInteger(section, key, fallback, minimum, maximum) {
+    global Config
+    value := fallback
+    if Config.Has(section) && Config[section].Has(key)
+        value := Config[section][key]
+    if !RegExMatch(Trim(String(value)), "^-?\d+$")
+        return fallback
+    number := Integer(value)
+    return Max(minimum, Min(maximum, number))
+}
+
+SettingNumber(section, key, fallback, minimum, maximum) {
+    global Config
+    value := fallback
+    if Config.Has(section) && Config[section].Has(key)
+        value := Config[section][key]
+    if !RegExMatch(Trim(String(value)), "^-?(?:\d+\.?\d*|\.\d+)$")
+        return fallback
+    number := value + 0
+    return Max(minimum, Min(maximum, number))
+}
+
 GetSettingsModifyTime() {
     global SettingsFile
     if !FileExist(SettingsFile)
@@ -275,15 +297,49 @@ ParseIniFile(filePath) {
 }
 
 SetSettings(section, key, value) {
-    global SettingsFile
+    global Config, SettingsFile, SettingsModifyTime
+    value := String(value)
     try {
         WriteIniValue(SettingsFile, section, key, value)
     } catch as writeError {
         ShowMsg("Unable to write settings: " . writeError.Message, 2500)
         return false
     }
-    ReloadSettings()
+    if !Config.Has(section)
+        Config[section] := Map()
+    Config[section][key] := value
+    SettingsModifyTime := GetSettingsModifyTime()
+    ApplySettingChange(section, key, value)
     return true
+}
+
+ApplySettingChange(section, key, value) {
+    global AllowClipboardWatcher, DebugLogging, MouseSpeed
+    if section = "Global" {
+        switch key {
+            case "allowClipboard":
+                AllowClipboardWatcher := value != "0"
+            case "debug":
+                DebugLogging := value = "1"
+            case "mouseSpeed":
+                MouseSpeed := SettingInteger("Global", "mouseSpeed", 3, 1, 20)
+            case "autostart":
+                EnsureAutostartShortcut(value = "1")
+                TrayMenuRefresh()
+            case "loadingAnimation", "language":
+                TrayMenuRefresh()
+            case "loadScript", "javascriptOriginalReturn":
+                InitializeJavaScriptRuntime()
+        }
+        return
+    }
+
+    switch section {
+        case "Keys":
+            BuildKeySet()
+        case "TabHotString", "QRun", "QWeb":
+            RebuildHotStringPattern()
+    }
 }
 
 ; UTF-8-safe replacement for IniWrite: the Win32 profile APIs treat a
