@@ -1,12 +1,10 @@
 ; Youdao Smart Cloud (有道智云) translation client, v3 signed API (POST form).
-; Reference: capslock-plus\lib\lib_ydTrans.ahk (AHK v1). Config lives in
-; [TTranslate] and reuses the legacy field names appPaidID/appPaidKey, so old
-; settings keep working; targetLanguage holds the Youdao-only target language
-; (independent from [LLMTranslate] targetLanguage). The translate panel
-; prefers [LLM] and falls back to Youdao when only [TTranslate] is configured.
+; Reference: capslock-plus\lib\lib_ydTrans.ahk (AHK v1). Credentials live in
+; [TYoudao]; targetLanguage is shared through [TTranslate]. The translate
+; panel prefers [LLM] and falls back to Youdao when it is configured.
 
 GetYoudaoSetting(key, defaultValue := "") {
-    return ConfigRead("TTranslate", key, defaultValue)
+    return ConfigRead("TYoudao", key, defaultValue)
 }
 
 YoudaoSettingWith(key, defaultValue, overrides) {
@@ -56,9 +54,8 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
         return ""
     }
 
-    ; Source language stays auto; the target follows [TTranslate]
-    ; targetLanguage — its own setting, independent from the LLM one.
-    toLang := YoudaoTargetCode(YoudaoSettingWith("targetLanguage", "", overrides))
+    ; Source language stays auto; every provider uses the shared target.
+    toLang := YoudaoTargetCode(TranslateSettingWith("targetLanguage", "", overrides))
 
     salt := YoudaoSalt()
     if salt = ""
@@ -132,13 +129,17 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
     return result
 }
 
-; Map the [TTranslate] targetLanguage setting to a Youdao `to` code. Empty or
+; Map the shared [TTranslate] targetLanguage setting to a Youdao `to` code. Empty or
 ; unknown values fall back to auto (Chinese source → en, otherwise zh-CHS).
 YoudaoTargetCode(value) {
     value := Trim(value)
     if value = ""
         return "auto"
     lowered := StrLower(value)
+    if lowered = "system" {
+        value := SystemLanguageName()
+        lowered := StrLower(value)
+    }
     if InStr(lowered, "繁") || InStr(lowered, "traditional")
         return "zh-CHT"
     if InStr(lowered, "中") || InStr(lowered, "chinese") || InStr(lowered, "simplified")
@@ -333,7 +334,7 @@ TranslateProviderYoudaoTest(msg, &ok, &text) {
     overrides := Map(
         "appPaidID", Trim(LLMMsgField(msg, "appId")),
         "appPaidKey", LLMMsgField(msg, "appKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage")))
+        "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
     YoudaoTranslate("Hello", &ok, &errorText, overrides)
     if ok
         text := LLMText("Connection OK", "连接正常")

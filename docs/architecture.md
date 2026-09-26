@@ -32,10 +32,10 @@ lib\
   qbar_commands.ahk                命令、运行、网址和 AI 调度
   qbar_everything.ahk              Everything 后端、CSV 与 UTF-8 解析
   qbar_navigation.ahk              文件夹导航和路径补全
-  translate.ahk                    翻译引擎注册表（provider 契约与调度解析）
+  translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
   llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
-  youdaoTranslate.ahk              有道智云翻译 API（[TTranslate]，WinHttp + SHA-256 签名）
+  youdaoTranslate.ahk              有道智云翻译 API（[TYoudao]，WinHttp + SHA-256 签名）
   volcengineTranslate.ahk          火山引擎翻译 API（[TVolcengine]，V4 签名、TextList 分批）
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询）
@@ -62,7 +62,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 该文件**底部一行 `TranslateRegisterProvider("engine", Map(...))` 自注册**。面板
 （`lib/llmTranslate.ahk`）只通过注册表取 provider：
 
-- `TranslateResolve(engine)`：`[LLMTranslate] engine` 指定 ID 则按指定取（未配置也返回，
+- `TranslateResolve(engine)`：`[TTranslate] engine` 指定 ID 则按指定取（未配置也返回，
   用于显示该引擎的 `notConfigured` 提示）；`auto` 优先第一个已配置的 `llm`，否则按注册顺序
   找第一个 `configured()` 为真的引擎。
 - 调度、设置保存、API 测试和 `LLMTranslatePushSettings` 全部按 engine 查表；`TranslateProviders()`
@@ -86,11 +86,11 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 - **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。翻译和 AI
   问答共用 `[LLM]`，问答的专用系统提示词和 `hideOnBlur` 保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
-- **youdao**：有道智云 v3，`[TTranslate] appPaidID/appPaidKey`。同步 WinHttp 请求放到
+- **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言读取 `[TTranslate]`。同步 WinHttp 请求放到
   `SetTimer(fn, -1)` 回调外执行；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
   `input` 按 ≤20 字符规则截取，`salt` 用 `UuidCreate`。多行文本按行提交、结果按行拼回。
-- **volcengine**：火山引擎机器翻译，`[TVolcengine] accessKey/secretKey`（region 默认
-  `cn-north-1`）。V4 签名与地区相关的部分用 `crypto.ahk` 的 `CryptoSha256Hex` /
+- **volcengine**：火山引擎机器翻译，`[TVolcengine] accessKey/secretKey/region`，目标语言读取
+  `[TTranslate]`（region 默认 `cn-north-1`）。V4 签名与地区相关的部分用 `crypto.ahk` 的 `CryptoSha256Hex` /
   `CryptoHmacSha256`（返回二进制 Buffer 供链式调用）。每次请求用 `TextList` 分批
   （≤16 条 / ≤4500 字符），用 `TranslationList` 按序取回后重建原换行结构。
 

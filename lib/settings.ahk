@@ -119,7 +119,7 @@ SettingsWebMessageReceived(sender, args) {
 }
 
 SettingsConfigSections() {
-    return ["Global", "LLM", "LLMTranslate", "TTranslate", "TVolcengine", "QAI",
+    return ["Global", "LLM", "LLMTranslate", "TTranslate", "TYoudao", "TVolcengine", "QAI",
         "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "Qbar"]
 }
 
@@ -195,11 +195,13 @@ SettingsAllowedKey(section, key) {
             return SettingsKeyIn(["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model", "thinking",
                 "temperature", "timeout", "maxInputTokens"], key)
         case "LLMTranslate":
-            return SettingsKeyIn(["targetLanguage", "engine", "systemPrompt"], key)
+            return SettingsKeyIn(["systemPrompt"], key)
         case "TTranslate":
-            return SettingsKeyIn(["appPaidID", "appPaidKey", "targetLanguage"], key)
+            return SettingsKeyIn(["targetLanguage", "engine"], key)
+        case "TYoudao":
+            return SettingsKeyIn(["appPaidID", "appPaidKey"], key)
         case "TVolcengine":
-            return SettingsKeyIn(["accessKey", "secretKey", "targetLanguage", "region"], key)
+            return SettingsKeyIn(["accessKey", "secretKey", "region"], key)
         case "QAI":
             return SettingsKeyIn(["systemPrompt", "hideOnBlur"], key)
         case "Qbar":

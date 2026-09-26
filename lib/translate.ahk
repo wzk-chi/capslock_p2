@@ -6,7 +6,7 @@
 ; the central settings page writes configuration sections directly.
 ;
 ; A provider is a Map with:
-;   key            engine name as written in [LLMTranslate] engine (lowercase)
+;   key            engine name as written in [TTranslate] engine (lowercase)
 ;   streaming      1 when the engine reports fragments via onDelta before
 ;                  completion (the panel shows the streaming UI for these)
 ;   configured     function () -> true when the engine is ready to translate
@@ -20,6 +20,18 @@
 ;   notConfigured  [english, chinese] panel error when pinned but unconfigured
 
 global TranslateRegistry := 0
+
+; Translation-wide settings are shared by every provider. Provider-specific
+; credentials stay in that provider's own section.
+GetTranslateSetting(key, defaultValue := "") {
+    return ConfigRead("TTranslate", key, defaultValue)
+}
+
+TranslateSettingWith(key, defaultValue, overrides) {
+    if IsObject(overrides) && overrides.Has(key)
+        return overrides[key]
+    return GetTranslateSetting(key, defaultValue)
+}
 
 TranslateRegisterProvider(key, provider) {
     global TranslateRegistry

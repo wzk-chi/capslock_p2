@@ -10,7 +10,7 @@ ConfigLoad() {
 
     Config := ConfigParseIni(SettingsFile)
     ConfigApplyDefaults()
-    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "TTranslate", "TVolcengine"] {
+    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "TTranslate", "TYoudao", "TVolcengine"] {
         if !Config.Has(section)
             Config[section] := Map()
     }

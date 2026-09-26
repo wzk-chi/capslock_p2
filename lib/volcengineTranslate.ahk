@@ -2,8 +2,8 @@
 ; V4-signed API (an HMAC-SHA256 chain, same shape as AWS SigV4): the signature
 ; covers a canonical request of method, path, query, lowercase sorted headers
 ; (content-type / host / x-content-sha256 / x-date) and the body hash. Config
-; lives in [TVolcengine] (accessKey / secretKey / targetLanguage, optional
-; region). Reference flow: the TranslateText docs sample against
+; lives in [TVolcengine] (accessKey / secretKey / region); the target language
+; is shared in [TTranslate]. Reference flow: the TranslateText docs sample against
 ; translate.volcengineapi.com, Action=TranslateText, Version=2020-06-01.
 
 GetVolcengineSetting(key, defaultValue := "") {
@@ -48,7 +48,7 @@ VolcengineTranslate(text, &success := false, &errorText := "", overrides := 0) {
     region := Trim(VolcengineSettingWith("region", "", overrides))
     ; TranslateText requires an explicit target language; the source language
     ; is detected server-side.
-    targetCode := VolcengineTargetCode(VolcengineSettingWith("targetLanguage", "", overrides))
+    targetCode := VolcengineTargetCode(TranslateSettingWith("targetLanguage", "", overrides))
 
     lines := StrSplit(StrReplace(StrReplace(text, "`r`n", "`n"), "`r", "`n"), "`n")
     segments := []
@@ -208,7 +208,7 @@ VolcengineTranslateBatch(texts, targetCode, accessKey, secretKey, region, &succe
     return pieces
 }
 
-; Map the [TVolcengine] targetLanguage setting to a TranslateText target
+; Map the shared [TTranslate] targetLanguage setting to a TranslateText target
 ; code. TranslateText has no auto target, so empty or unknown values fall
 ; back to zh. The word list follows YoudaoTargetCode; plain language codes
 ; like "zh-Hant" pass through when they match the generic pattern.
@@ -217,6 +217,10 @@ VolcengineTargetCode(value) {
     if value = ""
         return "zh"
     lowered := StrLower(value)
+    if lowered = "system" {
+        value := SystemLanguageName()
+        lowered := StrLower(value)
+    }
     if InStr(lowered, "繁") || InStr(lowered, "traditional")
         return "zh-Hant"
     if InStr(lowered, "中") || InStr(lowered, "chinese") || InStr(lowered, "simplified")
@@ -265,7 +269,7 @@ TranslateProviderVolcengineTest(msg, &ok, &text) {
     overrides := Map(
         "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")),
         "secretKey", LLMMsgField(msg, "volcSecretKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
+        "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
     if msg.Has("volcRegion")
         overrides["region"] := Trim(LLMMsgField(msg, "volcRegion"))
     VolcengineTranslate("Hello", &ok, &errorText, overrides)

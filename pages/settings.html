@@ -204,10 +204,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
         <div class="page-head"><h2>翻译</h2></div>
         <div class="cards">
           <div class="card">
-            <div class="card-head"><h3>翻译全局配置</h3></div>
+            <div class="card-head"><h3>翻译共用配置</h3></div>
             <div class="grid">
-              <label class="field"><span>引擎</span><select data-section="LLMTranslate" data-key="engine"><option value="auto">自动</option><option value="llm">LLM</option><option value="youdao">有道</option><option value="volcengine">火山</option></select></label>
-              <label class="field"><span>目标语言</span><select data-section="LLMTranslate" data-key="targetLanguage" data-language-select>
+              <label class="field"><span>引擎</span><select data-section="TTranslate" data-key="engine"><option value="auto">自动</option><option value="llm">LLM</option><option value="youdao">有道</option><option value="volcengine">火山</option></select></label>
+              <label class="field"><span>目标语言</span><select data-section="TTranslate" data-key="targetLanguage" data-language-select>
                 <option value="system" data-label-zh="系统语言" data-label-en="System language">系统语言</option>
                 <option value="zh-CN">简体中文</option>
                 <option value="zh-TW">繁體中文</option>
@@ -228,14 +228,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
             <label class="field wide"><span>系统提示词</span><textarea data-section="LLMTranslate" data-key="systemPrompt"></textarea></label>
           </div></div>
           <div class="card"><div class="card-head"><h3>有道翻译</h3><button class="btn" id="testYoudao">测试</button></div><div class="grid">
-            <label class="field"><span>App ID</span><input data-section="TTranslate" data-key="appPaidID"></label>
-            <label class="field"><span>App Key</span><input data-section="TTranslate" data-key="appPaidKey" type="password"></label>
-            <label class="field"><span>目标语言</span><input data-section="TTranslate" data-key="targetLanguage"></label>
+            <label class="field"><span>App ID</span><input data-section="TYoudao" data-key="appPaidID"></label>
+            <label class="field"><span>App Key</span><input data-section="TYoudao" data-key="appPaidKey" type="password"></label>
           </div></div>
           <div class="card"><div class="card-head"><h3>火山翻译</h3><button class="btn" id="testVolcengine">测试</button></div><div class="grid">
             <label class="field"><span>Access Key</span><input data-section="TVolcengine" data-key="accessKey"></label>
             <label class="field"><span>Secret Key</span><input data-section="TVolcengine" data-key="secretKey" type="password"></label>
-            <label class="field"><span>目标语言</span><input data-section="TVolcengine" data-key="targetLanguage"></label>
             <label class="field"><span>Region</span><input data-section="TVolcengine" data-key="region"></label>
           </div></div>
         </div>
@@ -695,24 +693,24 @@ function buildLlmTest() {
   return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
 }
 function buildTranslationTest(target) {
-  const youdao = section('TTranslate'), volcengine = section('TVolcengine');
+  const shared = section('TTranslate'), youdao = section('TYoudao'), volcengine = section('TVolcengine');
   if (target === 'youdao') return {
     type: 'testSettings', target,
     appId: youdao.appPaidID || '', appKey: youdao.appPaidKey || '',
-    youdaoTargetLanguage: youdao.targetLanguage || ''
+    targetLanguage: shared.targetLanguage || ''
   };
   return {
     type: 'testSettings', target,
     volcAccessKey: volcengine.accessKey || '', volcSecretKey: volcengine.secretKey || '',
-    volcTargetLanguage: volcengine.targetLanguage || '', volcRegion: volcengine.region || ''
+    targetLanguage: shared.targetLanguage || '', volcRegion: volcengine.region || ''
   };
 }
 function receiveSnapshot(snapshot) {
   state.draft = { sections: clone(snapshot.sections), bindings: clone(snapshot.bindings) };
   state.draft.sections.Keys = clone(snapshot.keys || state.draft.sections.Keys);
-  if (!state.draft.sections.LLMTranslate) state.draft.sections.LLMTranslate = {};
-  state.draft.sections.LLMTranslate.targetLanguage = normalizeTargetLanguageValue(
-    state.draft.sections.LLMTranslate.targetLanguage);
+  if (!state.draft.sections.TTranslate) state.draft.sections.TTranslate = {};
+  state.draft.sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
+    state.draft.sections.TTranslate.targetLanguage);
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   updateLanguageSelectLabels();
   renderAll();

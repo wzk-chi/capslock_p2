@@ -209,20 +209,20 @@ temperature=0.2
 timeout=30000
 maxInputTokens=200000  翻译与 AI 共用的输入 token 估算上限
 
-[LLMTranslate]             ; 翻译行为配置
-targetLanguage=system       ; 跟随系统语言，也可选 zh-CN / zh-TW / en / ja / ko 等代码
-engine=auto                ; 翻译引擎：auto（默认，优先 LLM，未配置 LLM 时用其他引擎）/ llm / youdao / volcengine
+[LLMTranslate]             ; LLM 翻译专用提示词
 systemPrompt=You are a precise translation engine. Translate the user's message into {{targetLanguage}}. Preserve meaning, tone, formatting, names and code. Keep the source text's line breaks and paragraph structure. Return only the translation, nothing else.
 
-[TTranslate]               ; 有道智云收费版翻译 API
+[TTranslate]               ; 所有翻译引擎共用配置
+targetLanguage=system      ; 跟随系统语言，也可选 zh-CN / zh-TW / en / ja / ko 等代码
+engine=auto                ; auto（默认，优先 LLM，未配置时按已配置引擎回退）/ llm / youdao / volcengine
+
+[TYoudao]                  ; 有道智云收费版翻译 API
 appPaidID=
 appPaidKey=
-; targetLanguage=          有道译文目标语言，留空 = auto（独立于上面的 targetLanguage）
 
 [TVolcengine]              ; 火山引擎机器翻译 API
 accessKey=
 secretKey=
-targetLanguage=zh
 region=cn-north-1
 ```
 
@@ -231,7 +231,7 @@ region=cn-north-1
 翻译目标语言在设置页使用下拉框，默认跟随系统语言；语言选项以各自语言的文字显示，配置中保存为语言代码。
 
 设置中心分为「LLM」「翻译」「AI 问答」三个区域。LLM 区域只配置一套共用的 API、模型和采样参数；
-翻译区域配置翻译引擎、目标语言、有道和火山 API；AI 问答区域只配置问答专用系统提示词。
+翻译区域配置共用的翻译引擎、目标语言，以及有道和火山各自的 API 凭据；AI 问答区域只配置问答专用系统提示词。
 有道应用在
 <https://ai.youdao.com/console/#/> 申请（新账号有试用额度）；火山翻译在
 <https://console.volcengine.com/translate> 开通。
@@ -264,7 +264,7 @@ AI 窗口是普通可调整大小、可最小化和最大化的 WebView2 窗口�
 不会被模型上下文上限整体拒绝；服务端仍报上下文超限时，错误提示会附带处理建议（缩短内容或新建会话）。
 
 托盘「设置」打开设置中心，翻译和 AI 面板内也共用同一套 API 配置。翻译和 AI 问答都使用 `[LLM]` 中的同一套 API、模型和采样配置；
-翻译行为保存在 `[LLMTranslate]`，AI 问答只在 `[QAI]` 中保留专用系统提示词。输入 token 估算上限统一配置在 `[LLM]`：
+翻译共用的目标语言和引擎选择保存在 `[TTranslate]`，LLM 翻译提示词保存在 `[LLMTranslate]`，AI 问答只在 `[QAI]` 中保留专用系统提示词。输入 token 估算上限统一配置在 `[LLM]`：
 
 ```ini
 [QAI]
@@ -296,7 +296,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 
 - 配置文件：**`capslock_p2.ini`**（UTF-8）。保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
-- 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
+- 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
 - `[Global]` 常用项：
 
   | 键 | 默认 | 说明 |

@@ -14,17 +14,8 @@ global LLMTranslateStreamId := 0
 global LLMTranslateStreamAnswer := ""
 global LLMTranslateFocusTimer := false
 
-; Connection settings live in [LLM]. Translation behavior remains in
-; [LLMTranslate], including targetLanguage and systemPrompt.
-GetTranslateSetting(key, defaultValue := "") {
-    return ConfigRead("LLMTranslate", key, defaultValue)
-}
-
-TranslateSettingWith(key, defaultValue, overrides) {
-    if IsObject(overrides) && overrides.Has(key)
-        return overrides[key]
-    return GetTranslateSetting(key, defaultValue)
-}
+; Connection settings live in [LLM]. Translation-wide behavior lives in
+; [TTranslate]. The LLM provider's prompt stays in [LLMTranslate].
 
 TranslateTargetLanguageName(value) {
     value := Trim(value)
@@ -44,7 +35,7 @@ TranslateTargetLanguageName(value) {
     return languageNames.Has(normalized) ? languageNames[normalized] : value
 }
 
-; True when the engine named in [LLMTranslate] can serve a request. Engines
+; True when the engine named in [TTranslate] can serve a request. Engines
 ; are resolved through the registry in lib\translate.ahk; "auto" prefers the
 ; LLM provider and falls back to any other configured one.
 TranslateConfigured() {
@@ -317,7 +308,7 @@ LLMTranslateStreamFinished(answer, success, errorText) {
 ; Build the translation-specific messages. Request construction and transport
 ; are shared by lib\llm.ahk; this module only owns the translation prompt.
 TranslateLlmMessages(text, overrides := 0) {
-    promptTemplate := TranslateSettingWith("systemPrompt", "", overrides)
+    promptTemplate := ConfigRead("LLMTranslate", "systemPrompt", "")
     targetLanguage := TranslateTargetLanguageName(
         TranslateSettingWith("targetLanguage", "system", overrides))
     systemPrompt := LLMRenderPromptTemplate(promptTemplate,
