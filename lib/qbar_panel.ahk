@@ -143,17 +143,14 @@ QbarWebMessageReceived(sender, args) {
         ctrl := LLMMsgField(msg, "ctrl") = "true"
         SetTimer(() => QbarExecute(text, selected, ctrl, selectedType), -1)
     } else if messageType = "resize" {
-        ; The page only ever posts a numeric row count, but a non-numeric
-        ; payload (observed once as boolean true, arriving reentrantly while
-        ; the start-menu scan ran) used to crash this callback twice: the +0
-        ; coercion threw, and after the error dialog the resumed thread hit
-        ; the unassigned local on the next line. Log and ignore instead.
+        ; WebView2 delivers the row count as a JSON string. Validate the
+        ; integer text before converting it; malformed messages are ignored.
         raw := LLMMsgField(msg, "text")
-        if !IsNumber(raw) {
+        if !RegExMatch(raw, "^\d+$") {
             DebugLog("Qbar resize ignored: non-numeric payload type=" . Type(raw))
             return
         }
-        QbarResize(raw + 0)
+        QbarResize(Integer(raw))
     } else if messageType = "ready" {
         ; The page's script is alive; the payload is its viewport size, which
         ; tells a blank panel apart from a zero-sized one.

@@ -112,6 +112,10 @@ LLMMsgField(msg, key) {
     value := msg[key]
     if IsObject(value)
         return ""
+    ; WebView2 form fields are strings. Keep a numeric-looking string such as
+    ; "1" as a string instead of comparing it loosely with boolean true.
+    if Type(value) = "String"
+        return value
     return value = true ? "true" : value = false ? "false" : String(value)
 }
 

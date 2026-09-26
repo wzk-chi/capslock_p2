@@ -110,7 +110,10 @@ body {
 @keyframes qbar-spin { to { transform: rotate(360deg); } }
 #list {
   flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   margin-top: var(--gap);
+  overflow-x: hidden;
   overflow-y: auto;
   border-radius: var(--radius);
   background: var(--list-bg);
@@ -118,6 +121,7 @@ body {
 #list.hidden { display: none; }
 .row {
   height: var(--row-height);
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -131,7 +135,7 @@ body {
 }
 .row .glyph { flex: 0 0 auto; width: 16px; text-align: center; opacity: .75; }
 .row .glyph img { width: 16px; height: 16px; display: block; margin: 0 auto; }
-.row .text { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.row .text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .row.selected { background: var(--accent-soft); color: var(--accent); }
 .row.selected .glyph { opacity: 1; }
 .row.pinned .text { font-weight: 650; }
