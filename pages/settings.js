@@ -25,7 +25,8 @@
       apiKeyLabel: 'API Key',
       modelLabel: 'Model',
       targetLanguageLabel: 'Target Language',
-      targetPlaceholder: 'e.g. Simplified Chinese. Empty = auto (non-Chinese → Simplified Chinese, Chinese → English)',
+      targetPlaceholder: 'Select the target language',
+      systemLanguage: 'System language',
       appIdLabel: 'App ID (appPaidID)',
       appKeyLabel: 'App Secret (appPaidKey)',
       youdaoTargetLanguageLabel: 'Target Language',
@@ -59,7 +60,8 @@
       apiKeyLabel: 'API Key',
       modelLabel: '模型（Model）',
       targetLanguageLabel: '目标语言',
-      targetPlaceholder: '如 简体中文；留空 = 自动（非中文→简体中文，中文→英文）',
+      targetPlaceholder: '选择目标语言',
+      systemLanguage: '系统语言',
       appIdLabel: '应用ID（appPaidID）',
       appKeyLabel: '应用密钥（appPaidKey）',
       youdaoTargetLanguageLabel: '目标语言',
@@ -88,6 +90,35 @@
   // tab when the host page did not mount it; `required` returns the STRINGS
   // key of the missing-field message, or '' when the form is complete.
   const ENGINE_AUTO = ['auto', 'engineAuto'];
+  const TARGET_LANGUAGE_OPTIONS = [
+    { value: 'system', label: 'systemLanguage' },
+    { value: 'zh-CN', label: '简体中文' },
+    { value: 'zh-TW', label: '繁體中文' },
+    { value: 'en', label: 'English' },
+    { value: 'ja', label: '日本語' },
+    { value: 'ko', label: '한국어' },
+    { value: 'fr', label: 'Français' },
+    { value: 'de', label: 'Deutsch' },
+    { value: 'es', label: 'Español' },
+    { value: 'ru', label: 'Русский' },
+    { value: 'it', label: 'Italiano' },
+    { value: 'pt', label: 'Português' },
+    { value: 'ar', label: 'العربية' }
+  ];
+  const TARGET_LANGUAGE_ALIASES = {
+    system: 'system',
+    'zh-cn': 'zh-CN', 'zh-hans': 'zh-CN', '简体中文': 'zh-CN', 'simplified chinese': 'zh-CN',
+    'zh-tw': 'zh-TW', 'zh-hant': 'zh-TW', '繁體中文': 'zh-TW', 'traditional chinese': 'zh-TW',
+    en: 'en', english: 'en', ja: 'ja', japanese: 'ja', '日本語': 'ja',
+    ko: 'ko', korean: 'ko', '한국어': 'ko', fr: 'fr', french: 'fr', 'français': 'fr',
+    de: 'de', german: 'de', deutsch: 'de', es: 'es', spanish: 'es', 'español': 'es',
+    ru: 'ru', russian: 'ru', 'русский': 'ru', it: 'it', italian: 'it', italiano: 'it',
+    pt: 'pt', portuguese: 'pt', 'português': 'pt', ar: 'ar', arabic: 'ar', 'العربية': 'ar'
+  };
+  function normalizeTargetLanguageValue(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    return TARGET_LANGUAGE_ALIASES[raw] || 'system';
+  }
   const PROVIDERS = [
     {
       id: 'llm',
@@ -114,11 +145,10 @@
   ];
   const FIELD_HINTS = { endpoint: 'endpointHint' };
   const FIELD_DATALISTS = {
-    targetLanguage: ['Simplified Chinese', 'Traditional Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Russian'],
     youdaoTargetLanguage: ['Simplified Chinese', 'Traditional Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Russian'],
     volcTargetLanguage: ['Simplified Chinese', 'Traditional Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Russian']
   };
-  const FIELD_PLACEHOLDERS = { targetLanguage: 'targetPlaceholder', youdaoTargetLanguage: 'targetPlaceholder', volcTargetLanguage: 'targetPlaceholder' };
+  const FIELD_PLACEHOLDERS = { youdaoTargetLanguage: 'targetPlaceholder', volcTargetLanguage: 'targetPlaceholder' };
 
   // Scoped styles: the overlay carries its own rules so host pages with
   // different layouts all render the identical dialog.
@@ -216,8 +246,9 @@
     const label = el('label', '', pane);
     label.setAttribute('for', 'llmset-' + name);
     labels[name] = label;   // element; the string key is name + 'Label'
+    const isTargetLanguageSelect = name === 'targetLanguage' && options.targetLanguage;
     let listId = '';
-    if (datalist) {
+    if (datalist && !isTargetLanguageSelect) {
       listId = 'llmset-list-' + name;
       const list = el('datalist', '', pane);
       list.id = listId;
@@ -227,9 +258,18 @@
         list.appendChild(opt);
       }
     }
-    const input = el('input', '', pane);
+    const input = el(isTargetLanguageSelect ? 'select' : 'input', '', pane);
     input.id = 'llmset-' + name;
     input.spellcheck = false;
+    if (isTargetLanguageSelect) {
+      for (const option of TARGET_LANGUAGE_OPTIONS) {
+        const node = document.createElement('option');
+        node.value = option.value;
+        node.dataset.labelKey = option.label;
+        node.textContent = option.label === 'systemLanguage' ? t(option.label) : option.label;
+        input.appendChild(node);
+      }
+    }
     if (listId) input.setAttribute('list', listId);
     inputs[name] = input;
     if (hintKey) {
@@ -267,6 +307,14 @@
     return form;
   }
 
+  function refreshTargetLanguageOptions() {
+    const select = inputs.targetLanguage;
+    if (!select || select.tagName !== 'SELECT')
+      return;
+    for (const option of select.options)
+      option.textContent = t(option.dataset.labelKey);
+  }
+
   function applyTexts() {
     titleNode.textContent = t('settingsTitle');
     hintNode.textContent = t('settingsHint');
@@ -287,6 +335,7 @@
     for (const name of Object.keys(FIELD_PLACEHOLDERS))
       if (inputs[name])
         inputs[name].placeholder = t(FIELD_PLACEHOLDERS[name]);
+    refreshTargetLanguageOptions();
     testBtn.textContent = t('test');
     saveBtn.textContent = t('save');
     backBtn.textContent = t('cancel');
@@ -394,8 +443,12 @@
   window.setSettings = function (s) {
     if (s) values = Object.assign(values, s);
     lang = values.uiLanguage === 'zh' ? 'zh' : 'en';
-    for (const name of Object.keys(inputs))
-      inputs[name].value = values[name] || '';
+    for (const name of Object.keys(inputs)) {
+      const value = name === 'targetLanguage'
+        ? normalizeTargetLanguageValue(values[name])
+        : (values[name] || '');
+      inputs[name].value = value;
+    }
     if (engineSelect)
       engineSelect.value = PROVIDERS.some((p) => p.id === values.engine) ? values.engine : 'auto';
     applyTexts();

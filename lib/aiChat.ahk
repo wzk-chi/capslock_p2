@@ -39,6 +39,11 @@ LLMAiSystemPrompt() {
     return prompt
 }
 
+LLMAiPromptVariables() {
+    return Map(
+        "uiLanguage", LLMUiLanguage() = "zh" ? "Simplified Chinese" : "English")
+}
+
 ; Keep at most 50 user/assistant rounds in memory and in the page mirror.
 LLMAiMaxHistoryTurns() {
     return 50
@@ -85,7 +90,7 @@ LLMAiBuildMessages(history, overrides := 0) {
     ; tokens. Walk from the newest message backwards and drop whatever no
     ; longer fits; a single oversized message is clipped to half the budget,
     ; keeping its tail where error messages and logs usually put the point.
-    systemPrompt := LLMAiSystemPrompt()
+    systemPrompt := LLMRenderPromptTemplate(LLMAiSystemPrompt(), LLMAiPromptVariables())
     budget := LLMInputTokenBudget(overrides)
     systemTokens := LLMEstimateTokens(systemPrompt) + 4
     messageBudget := budget > 0 ? Max(1, budget - systemTokens) : 0

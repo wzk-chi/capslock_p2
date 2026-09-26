@@ -114,6 +114,54 @@ ApplySettingsDefaults() {
                 continue
         }
     }
+    MigratePromptTemplates(defaults)
+    MigrateAiPromptTemplate(defaults)
+}
+
+MigratePromptTemplates(defaults) {
+    global Config, SettingsFile
+    oldTranslationPrompt := "You are a precise translation engine."
+    if !Config.Has("LLMTranslate") || !Config["LLMTranslate"].Has("systemPrompt")
+        return
+    if Trim(Config["LLMTranslate"]["systemPrompt"]) != oldTranslationPrompt
+        return
+    if !IsObject(defaults) || !defaults.Has("LLMTranslate")
+        return
+    if !defaults["LLMTranslate"].Has("systemPrompt")
+        return
+    newPrompt := defaults["LLMTranslate"]["systemPrompt"]
+    if Trim(newPrompt) = ""
+        return
+    Config["LLMTranslate"]["systemPrompt"] := newPrompt
+    try WriteIniValue(SettingsFile, "LLMTranslate", "systemPrompt", newPrompt)
+    if Config["LLMTranslate"].Has("targetLanguage") {
+        legacyTarget := StrLower(Trim(Config["LLMTranslate"]["targetLanguage"]))
+        defaultTarget := ""
+        if defaults["LLMTranslate"].Has("targetLanguage")
+            defaultTarget := StrLower(Trim(defaults["LLMTranslate"]["targetLanguage"]))
+        if legacyTarget = "simplified chinese" && defaultTarget = "system" {
+            Config["LLMTranslate"]["targetLanguage"] := "system"
+            try WriteIniValue(SettingsFile, "LLMTranslate", "targetLanguage", "system")
+        }
+    }
+}
+
+MigrateAiPromptTemplate(defaults) {
+    global Config, SettingsFile
+    if !Config.Has("QAI") || !Config["QAI"].Has("systemPrompt")
+        return
+    if !IsObject(defaults) || !defaults.Has("QAI") || !defaults["QAI"].Has("systemPrompt")
+        return
+
+    currentPrompt := Trim(Config["QAI"]["systemPrompt"])
+    isLegacyPrompt := InStr(currentPrompt, "CapsLock+ launcher") && InStr(currentPrompt, "Simplified Chinese") && !InStr(currentPrompt, "{{uiLanguage}}")
+    if !isLegacyPrompt
+        return
+    newPrompt := defaults["QAI"]["systemPrompt"]
+    if Trim(newPrompt) = ""
+        return
+    Config["QAI"]["systemPrompt"] := newPrompt
+    try WriteIniValue(SettingsFile, "QAI", "systemPrompt", newPrompt)
 }
 
 ReloadSettings(*) {
@@ -804,11 +852,52 @@ IsChineseLanguage() {
     if languageSetting = "2"
         return false
 
+    return IsChineseSystemLanguage()
+}
+
+IsChineseSystemLanguage() {
     switch A_Language {
-        case "0804", "0404", "0c04", "1004", "1404", "7c04":
+        case "0804", "1004", "7c04":
+            return true
+        case "0404", "0c04", "1404":
             return true
         default:
             return false
+    }
+}
+
+SystemLanguageName() {
+    try languageId := Integer("0x" . A_Language)
+    catch
+        return "English"
+
+    primary := languageId & 0x3ff
+    subLanguage := (languageId >> 10) & 0x3f
+    switch primary {
+        case 0x04:
+            return (subLanguage = 1 || subLanguage = 3 || subLanguage = 5) ? "Traditional Chinese" : "Simplified Chinese"
+        case 0x09:
+            return "English"
+        case 0x0a:
+            return "Spanish"
+        case 0x0c:
+            return "French"
+        case 0x07:
+            return "German"
+        case 0x10:
+            return "Italian"
+        case 0x11:
+            return "Japanese"
+        case 0x12:
+            return "Korean"
+        case 0x16:
+            return "Portuguese"
+        case 0x19:
+            return "Russian"
+        case 0x01:
+            return "Arabic"
+        default:
+            return "English"
     }
 }
 

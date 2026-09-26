@@ -13,7 +13,7 @@
   AHK 用 `add_WebMessageReceived` 接收、用 `ExecuteScriptAsync("window.fn(...)")` 调用页面函数。
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
 - **LLM 公共层**：`lib/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
-  OpenAI 兼容请求、处理同步响应和 SSE 流；翻译与 AI 只提供各自的消息内容和结果处理。
+  OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
 
 ## 目录结构与模块职责
 

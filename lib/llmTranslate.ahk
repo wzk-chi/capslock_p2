@@ -30,6 +30,24 @@ TranslateSettingWith(key, defaultValue, overrides) {
     return GetTranslateSetting(key, defaultValue)
 }
 
+TranslateTargetLanguageName(value) {
+    value := Trim(value)
+    if value = "" || StrLower(value) = "system"
+        return SystemLanguageName()
+
+    static languageNames := Map(
+        "zh-cn", "Simplified Chinese", "zh-hans", "Simplified Chinese", "简体中文", "Simplified Chinese",
+        "zh-tw", "Traditional Chinese", "zh-hant", "Traditional Chinese", "繁體中文", "Traditional Chinese",
+        "en", "English", "english", "English", "ja", "Japanese", "japanese", "Japanese", "日本語", "Japanese",
+        "ko", "Korean", "korean", "Korean", "한국어", "Korean", "fr", "French", "french", "French", "français", "French",
+        "de", "German", "german", "German", "deutsch", "German", "es", "Spanish", "spanish", "Spanish", "español", "Spanish",
+        "ru", "Russian", "russian", "Russian", "русский", "Russian", "it", "Italian", "italian", "Italian", "italiano", "Italian",
+        "pt", "Portuguese", "portuguese", "Portuguese", "português", "Portuguese", "ar", "Arabic", "arabic", "Arabic", "العربية", "Arabic",
+        "simplified chinese", "Simplified Chinese", "traditional chinese", "Traditional Chinese")
+    normalized := StrLower(value)
+    return languageNames.Has(normalized) ? languageNames[normalized] : value
+}
+
 ; True when the engine named in [LLMTranslate] can serve a request. Engines
 ; are resolved through the registry in lib\translate.ahk; "auto" prefers the
 ; LLM provider and falls back to any other configured one.
@@ -437,19 +455,12 @@ LLMTranslateStreamFinished(answer, success, errorText) {
 
 ; Build the translation-specific messages. Request construction and transport
 ; are shared by lib\llm.ahk; this module only owns the translation prompt.
-TranslateLlmMessages(text, overrides := 0, structuredOn := false) {
-    baseSystem := Trim(TranslateSettingWith("systemPrompt", "", overrides))
-    targetLanguage := Trim(TranslateSettingWith("targetLanguage", "", overrides))
-    if targetLanguage = ""
-        targetLanguage := "Simplified Chinese if the text is not Chinese, otherwise English"
-    systemPrompt := baseSystem
-        . " Translate the user's message into " . targetLanguage . "."
-        . " Preserve meaning, tone, formatting, names and code."
-        . " Keep the source text's line breaks and paragraph structure."
-        . (structuredOn
-            ? " Respond with a JSON object containing a single key " . Chr(34) . "result" . Chr(34)
-                . " whose value is the translation."
-            : " Return only the translation, nothing else.")
+TranslateLlmMessages(text, overrides := 0) {
+    promptTemplate := TranslateSettingWith("systemPrompt", "", overrides)
+    targetLanguage := TranslateTargetLanguageName(
+        TranslateSettingWith("targetLanguage", "system", overrides))
+    systemPrompt := LLMRenderPromptTemplate(promptTemplate,
+        Map("targetLanguage", targetLanguage))
     userPrompt := LLMLimitInputText(text, systemPrompt, overrides)
     return [
         Map("role", "system", "content", systemPrompt),
@@ -459,7 +470,7 @@ TranslateLlmMessages(text, overrides := 0, structuredOn := false) {
 TranslateLlmComplete(text, &success := false, &errorText := "", overrides := 0) {
     success := false
     errorText := ""
-    messages := TranslateLlmMessages(text, overrides, true)
+    messages := TranslateLlmMessages(text, overrides)
     responseText := LLMChatComplete(messages, &success, &errorText, overrides, true)
     if !success
         return ""
@@ -476,7 +487,7 @@ TranslateLlmComplete(text, &success := false, &errorText := "", overrides := 0) 
 }
 
 TranslateLlmStartStream(text, onDelta, onFinished, overrides := 0) {
-    messages := TranslateLlmMessages(text, overrides, false)
+    messages := TranslateLlmMessages(text, overrides)
     return LLMChatStream(messages, onDelta, onFinished, overrides)
 }
 

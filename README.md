@@ -216,9 +216,9 @@ timeout=30000
 maxInputTokens=200000  翻译与 AI 共用的输入 token 估算上限
 
 [LLMTranslate]             ; 翻译行为配置
-targetLanguage=Simplified Chinese
+targetLanguage=system       ; 跟随系统语言，也可选 zh-CN / zh-TW / en / ja / ko 等代码
 engine=auto                ; 翻译引擎：auto（默认，优先 LLM，未配置 LLM 时用其他引擎）/ llm / youdao / volcengine
-systemPrompt=You are a precise translation engine.
+systemPrompt=You are a precise translation engine. Translate the user's message into {{targetLanguage}}. Preserve meaning, tone, formatting, names and code. Keep the source text's line breaks and paragraph structure. Return only the translation, nothing else.
 
 [TTranslate]               ; 有道智云收费版翻译 API
 appPaidID=
@@ -231,6 +231,10 @@ secretKey=
 targetLanguage=zh
 region=cn-north-1
 ```
+
+系统提示词支持简单模板变量：翻译中的 `{{targetLanguage}}` 会替换为翻译目标语言，AI 问答中的
+`{{uiLanguage}}` 会替换为当前界面语言。未识别的变量会原样保留，便于发现拼写错误。
+翻译目标语言在设置页使用下拉框，默认跟随系统语言；语言选项以各自语言的文字显示，配置中保存为语言代码。
 
 设置中心分为「LLM」「翻译」「AI 问答」三个区域。LLM 区域只配置一套共用的 API、模型和采样参数；
 翻译区域配置翻译引擎、目标语言、有道和火山 API；AI 问答区域只配置问答专用系统提示词。
@@ -269,7 +273,7 @@ qbar 里输入「ai 问题」「q 问题」，或输入未命中任何命令的�
 
 ```ini
 [QAI]
-; systemPrompt=…   问答专用提示词；不填则使用程序默认提示词
+systemPrompt=You are the assistant built into the capslock_p2 launcher. The user's message is either a question to answer or a text to explain; decide which one it is. If it is a question, answer it directly and completely. If it is a text (a word, sentence, paragraph, error message, log entry, code snippet or URL), explain what it means. Reply in the language of the user's message; if the message is not in Chinese or English, reply in {{uiLanguage}}. Be concise.
 ```
 
 ## 独立剪贴板

@@ -200,7 +200,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
             <div class="card-head"><h3>翻译全局配置</h3></div>
             <div class="grid">
               <label class="field"><span>引擎</span><select data-section="LLMTranslate" data-key="engine"><option value="auto">自动</option><option value="llm">LLM</option><option value="youdao">有道</option><option value="volcengine">火山</option></select></label>
-              <label class="field"><span>目标语言</span><input data-section="LLMTranslate" data-key="targetLanguage"></label>
+              <label class="field"><span>目标语言</span><select data-section="LLMTranslate" data-key="targetLanguage" data-language-select>
+                <option value="system" data-label-zh="系统语言" data-label-en="System language">系统语言</option>
+                <option value="zh-CN">简体中文</option>
+                <option value="zh-TW">繁體中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="es">Español</option>
+                <option value="ru">Русский</option>
+                <option value="it">Italiano</option>
+                <option value="pt">Português</option>
+                <option value="ar">العربية</option>
+              </select></label>
             </div>
           </div>
           <div class="card"><div class="card-head"><h3>LLM 系统提示词</h3></div><div class="grid">
@@ -298,9 +312,29 @@ function setDraftValue(sectionName, key, value) {
 function readControl(node) {
   return node.type === 'checkbox' ? (node.checked ? '1' : '0') : node.value;
 }
+const TARGET_LANGUAGE_ALIASES = {
+  'system': 'system',
+  'zh-cn': 'zh-CN', 'zh-hans': 'zh-CN', '简体中文': 'zh-CN', 'simplified chinese': 'zh-CN',
+  'zh-tw': 'zh-TW', 'zh-hant': 'zh-TW', '繁體中文': 'zh-TW', 'traditional chinese': 'zh-TW',
+  'en': 'en', 'english': 'en', 'ja': 'ja', 'japanese': 'ja', '日本語': 'ja',
+  'ko': 'ko', 'korean': 'ko', '한국어': 'ko', 'fr': 'fr', 'french': 'fr', 'français': 'fr',
+  'de': 'de', 'german': 'de', 'deutsch': 'de', 'es': 'es', 'spanish': 'es', 'español': 'es',
+  'ru': 'ru', 'russian': 'ru', 'русский': 'ru', 'it': 'it', 'italian': 'it', 'italiano': 'it',
+  'pt': 'pt', 'portuguese': 'pt', 'português': 'pt', 'ar': 'ar', 'arabic': 'ar', 'العربية': 'ar'
+};
+function normalizeTargetLanguageValue(value) {
+  const raw = String(value ?? '').trim();
+  return TARGET_LANGUAGE_ALIASES[raw.toLowerCase()] || 'system';
+}
+function updateLanguageSelectLabels() {
+  const labelKey = document.documentElement.lang === 'en' ? 'labelEn' : 'labelZh';
+  $$('select[data-language-select] option[value="system"]').forEach(option => {
+    option.textContent = option.dataset[labelKey] || option.textContent;
+  });
+}
 function writeControl(node) {
   const rawValue = section(node.dataset.section)[node.dataset.key] ?? '';
-  const value = rawValue;
+  const value = node.hasAttribute('data-language-select') ? normalizeTargetLanguageValue(rawValue) : rawValue;
   if (node.type === 'checkbox') node.checked = value !== '' && value !== '0';
   else node.value = value;
 }
@@ -495,7 +529,11 @@ function buildTest(target) {
 function receiveSnapshot(snapshot) {
   state.draft = { sections: clone(snapshot.sections), bindings: clone(snapshot.bindings) };
   state.draft.sections.Keys = clone(snapshot.keys || state.draft.sections.Keys);
+  if (!state.draft.sections.LLMTranslate) state.draft.sections.LLMTranslate = {};
+  state.draft.sections.LLMTranslate.targetLanguage = normalizeTargetLanguageValue(
+    state.draft.sections.LLMTranslate.targetLanguage);
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
+  updateLanguageSelectLabels();
   renderAll(); state.dirty = false; setStatus('');
 }
 function saveDraft() {

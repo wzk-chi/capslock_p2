@@ -28,6 +28,21 @@ LLMSettingWith(key, defaultValue, overrides) {
     return GetLLMSetting(key, defaultValue)
 }
 
+; Render prompt templates stored in the ini files. AHK has no separate
+; template engine, so keep the syntax deliberately small and predictable:
+; {{name}} is replaced by the matching scalar value in the variables Map.
+; Unknown placeholders remain visible, which makes misspelled variables easy
+; to spot in the final prompt instead of silently dropping instructions.
+LLMRenderPromptTemplate(template, variables := 0) {
+    template := String(template)
+    if !IsObject(variables)
+        return template
+    for key, value in variables
+        if !IsObject(value)
+            template := StrReplace(template, "{{" . key . "}}", String(value))
+    return template
+}
+
 LLMSettingsSnapshot() {
     result := Map()
     for key in ["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
