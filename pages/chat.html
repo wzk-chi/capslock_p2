@@ -72,7 +72,6 @@ textarea:focus { border-color: #4b7bec; box-shadow: 0 0 0 3px #4b7bec22; }
 <!-- marked + DOMPurify render assistant answers as sanitized markdown. -->
 <script src="../vendor/marked.min.js"></script>
 <script src="../vendor/purify.min.js"></script>
-<script src="settings.js"></script>
 <script>
 const input = document.getElementById('input');
 const messages = document.getElementById('messages');
@@ -307,7 +306,6 @@ window.onHostSettings = function (s) {
   applyLanguage();
 };
 
-LLMSettings.mount({ targetLanguage: false });
 applyLanguage();
 input.focus();
 </script>

@@ -275,31 +275,10 @@ TranslateProviderVolcengineTest(msg, &ok, &text) {
         text := errorText
 }
 
-TranslateProviderVolcengineSave(msg) {
-    global SettingsFile
-    ConfigWriteValue(SettingsFile, "TVolcengine", "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")))
-    ConfigWriteValue(SettingsFile, "TVolcengine", "secretKey", LLMMsgField(msg, "volcSecretKey"))
-    ConfigWriteValue(SettingsFile, "TVolcengine", "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
-    if msg.Has("volcRegion")
-        ConfigWriteValue(SettingsFile, "TVolcengine", "region", Trim(LLMMsgField(msg, "volcRegion")))
-}
-
-; Settings-form fields pushed to the page (names as settings.js uses them).
-TranslateProviderVolcenginePush() {
-    return Map(
-        "volcAccessKey", GetVolcengineSetting("accessKey", ""),
-        "volcSecretKey", GetVolcengineSetting("secretKey", ""),
-        "volcTargetLanguage", GetVolcengineSetting("targetLanguage", ""),
-        "volcRegion", GetVolcengineSetting("region", ""))
-}
-
 TranslateRegisterProvider("volcengine", Map(
     "streaming", 0,
     "configured", VolcengineConfigured,
     "translate", TranslateProviderVolcengineTranslate,
     "test", TranslateProviderVolcengineTest,
-    "save", TranslateProviderVolcengineSave,
-    "push", TranslateProviderVolcenginePush,
     "notConfigured", ["Volcengine translation is not configured. Open Settings.",
-        "未配置火山翻译，请点右上角「设置」填写。"],
-    "saveEmpty", ["the AccessKey and SecretKey", "AccessKey 和 SecretKey"]))
+        "未配置火山翻译，请点右上角「设置」填写。"]))

@@ -12,8 +12,6 @@ global LLMTranslateRequestRunning := false
 global LLMTranslateStreamId := 0
 global LLMTranslateStreamAnswer := ""
 global LLMTranslateFocusTimer := false
-global LLMTranslateTestMessage := ""
-global LLMTranslateSettingsOpen := false
 
 ; Connection settings live in [LLM]. Translation behavior remains in
 ; [LLMTranslate], including targetLanguage and systemPrompt.
@@ -81,11 +79,11 @@ LLMTranslateShow(text, allowEmpty := false) {
     LLMTranslateFocusTimer := true
 
     if LLMTranslatePageReady {
-        LLMTranslatePushSettings()
+        LLMTranslatePushLanguage()
         configured := TranslateConfigured()
         LLMTranslateSetSource(text, text != "" && configured)
         if !configured
-            LLMTranslateOpenSettings(true)
+            SetTimer(() => SettingsShow("llm"), -1)
     }
 }
 
@@ -155,16 +153,16 @@ LLMTranslateNavigationCompleted(sender, args) {
         return
     }
     if LLMTranslateVisible {
-        LLMTranslatePushSettings()
+        LLMTranslatePushLanguage()
         configured := TranslateConfigured()
         LLMTranslateSetSource(LLMTranslatePendingText, LLMTranslatePendingText != "" && configured)
         if !configured
-            LLMTranslateOpenSettings(true)
+            SetTimer(() => SettingsShow("llm"), -1)
     }
 }
 
 LLMTranslateWebMessageReceived(sender, args) {
-    global LLMTranslatePendingText, LLMTranslateTestMessage, LLMTranslateSettingsOpen
+    global LLMTranslatePendingText
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -181,25 +179,14 @@ LLMTranslateWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         SetTimer(() => LLMTranslateOpenDictionary(text), -1)
     } else if messageType = "openSettings" {
-        SetTimer(SettingsShow, -1)
+        SetTimer(() => SettingsShow("llm"), -1)
     } else if messageType = "hide" {
         LLMTranslateHide()
-    } else if messageType = "getSettings" {
-        LLMTranslatePushSettings()
-    } else if messageType = "saveSettings" {
-        LLMTranslateSaveSettings(message)
-    } else if messageType = "testSettings" {
-        LLMTranslateTestMessage := message
-        SetTimer(LLMTranslateRunTest, -1)
     } else if messageType = "cursorMove" {
         ; WebView2 does not always replay the native cursor after Windows'
         ; mouse-vanish-on-typing behavior. Restore it on an actual page mouse
         ; move, matching the behavior of native edit controls.
         ShowSystemCursor()
-    } else if messageType = "settings" {
-        ; The page tells us which view is shown: while the settings view is
-        ; open the window must survive losing focus.
-        LLMTranslateSettingsOpen := LLMMsgField(msg, "text") = "open"
     }
 }
 
@@ -251,30 +238,12 @@ LLMTranslateSetError(text) {
         return
 }
 
-LLMTranslatePushSettings() {
+LLMTranslatePushLanguage() {
     global LLMTranslateWebView, LLMTranslatePageReady
     if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
         return
-    payload := Map(
-        "engine", GetTranslateProvider(),
-        "uiLanguage", LLMUiLanguage(),
-        "configured", TranslateConfigured() ? JSON.true : JSON.false)
-    ; Each provider contributes its own settings-form fields.
-    for key, provider in TranslateProviders()
-        if provider.Has("push")
-            for fieldKey, fieldValue in provider["push"].Call()
-                payload[fieldKey] := fieldValue
-    try LLMTranslateWebView.ExecuteScriptAsync("window.setSettings(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
-}
-
-LLMTranslateOpenSettings(firstRun) {
-    global LLMTranslateWebView, LLMTranslatePageReady, LLMTranslateSettingsOpen
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    LLMTranslateSettingsOpen := true
-    try LLMTranslateWebView.ExecuteScriptAsync("window.openSettings(" . (firstRun ? "true" : "false") . ");")
+    payload := Map("uiLanguage", LLMUiLanguage())
+    try LLMTranslateWebView.ExecuteScriptAsync("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
     catch
         return
 }
@@ -303,87 +272,6 @@ LLMTranslateOpenSettings(firstRun) {
 ; One SSE event's JSON → the streamed text delta. Chat-completions streams
 ; put it at choices[].delta.content; some gateways use a flat content/text.
 
-
-LLMTranslateSaveSettings(message) {
-    global SettingsFile
-    msg := LLMMessageParse(message)
-    engine := StrLower(Trim(LLMMsgField(msg, "engine")))
-    if !TranslateProviderExists(engine)
-        engine := "auto"
-    ; The form's provider decides which ini fields get written; a missing or
-    ; unknown provider falls back to the LLM one.
-    provider := TranslateGetProvider(LLMMsgField(msg, "provider"))
-    if !IsObject(provider)
-        provider := TranslateGetProvider("llm")
-    try {
-        ConfigWriteValue(SettingsFile, "LLMTranslate", "engine", engine)
-        provider["save"].Call(msg)
-    } catch as saveError {
-        LLMTranslateSetSaved(false, LLMText("Save failed: ", "保存失败：") . saveError.Message)
-        return
-    }
-    ReloadSettings()
-    LLMTranslatePushSettings()
-    if provider["configured"].Call()
-        LLMTranslateSetSaved(true, LLMText("Settings saved.", "设置已保存。"))
-    else
-        LLMTranslateSetSaved(false, LLMText(
-            "Saved, but " . provider["saveEmpty"][1] . " are still empty.",
-            "已保存，但" . provider["saveEmpty"][2] . "仍为空。"
-        ))
-}
-
-LLMTranslateRunTest(*) {
-    global LLMTranslateTestMessage, LLMTranslateRequestRunning
-    if LLMTranslateRequestRunning {
-        LLMTranslateSetTestResult(false, LLMText(
-            "Another request is already running.",
-            "已有请求正在执行，请稍候。"
-        ))
-        return
-    }
-    LLMTranslateRequestRunning := true
-    msg := LLMMessageParse(LLMTranslateTestMessage)
-    ; The form posts the provider it belongs to; unknown names test the LLM
-    ; provider, same as before.
-    provider := TranslateGetProvider(LLMMsgField(msg, "provider"))
-    if !IsObject(provider)
-        provider := TranslateGetProvider("llm")
-    DebugLog("translate settings test provider=" . provider["key"])
-    ok := false
-    text := ""
-    try {
-        provider["test"].Call(msg, &ok, &text)
-    } catch as requestError {
-        ok := false
-        text := requestError.Message
-    } finally {
-        LLMTranslateSetTestResult(ok, text)
-        LLMTranslateRequestRunning := false
-    }
-}
-
-LLMTranslateSetTestResult(ok, text) {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync(
-        "window.setTestResult(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
-    )
-    catch
-        return
-}
-
-LLMTranslateSetSaved(ok, text) {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync(
-        "window.setSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
-    )
-    catch
-        return
-}
 
 LLMTranslateStartRequest(*) {
     global LLMTranslatePendingText, LLMTranslateRequestRunning
@@ -509,18 +397,6 @@ TranslateProviderLlmTest(msg, &ok, &text) {
         text := errorText
 }
 
-TranslateProviderLlmSave(msg) {
-    global SettingsFile
-    LLMSaveSettings(msg)
-    ConfigWriteValue(SettingsFile, "LLMTranslate", "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
-}
-
-TranslateProviderLlmPush() {
-    payload := LLMSettingsSnapshot()
-    payload["targetLanguage"] := GetTranslateSetting("targetLanguage", "")
-    return payload
-}
-
 LLMTranslateResize(targetGui, minMax, width, height) {
     global LLMTranslateController
     if minMax != -1 && IsObject(LLMTranslateController)
@@ -528,15 +404,13 @@ LLMTranslateResize(targetGui, minMax, width, height) {
 }
 
 LLMTranslateFocusMonitor(*) {
-    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer, LLMTranslateSettingsOpen
+    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer, SettingsVisible
     if !LLMTranslateVisible || !IsObject(LLMTranslateGui) {
         SetTimer(LLMTranslateFocusMonitor, 0)
         LLMTranslateFocusTimer := false
         return
     }
-    ; Keep the window while the settings view is open so the user can copy
-    ; values from elsewhere (endpoint, key, model) without it disappearing.
-    if LLMTranslateSettingsOpen {
+    if SettingsVisible {
         return
     }
     if !WinActive("ahk_id " . LLMTranslateGui.Hwnd)
@@ -544,7 +418,7 @@ LLMTranslateFocusMonitor(*) {
 }
 
 LLMTranslateHide(*) {
-    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer, LLMTranslateSettingsOpen
+    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer
     global LLMTranslateStreamId, LLMTranslateRequestRunning
     if LLMTranslateStreamId {
         LLMAbortChatStream(LLMTranslateStreamId)
@@ -552,7 +426,6 @@ LLMTranslateHide(*) {
     }
     LLMTranslateRequestRunning := false
     LLMTranslateVisible := false
-    LLMTranslateSettingsOpen := false
     if IsObject(LLMTranslateGui)
         LLMTranslateGui.Hide()
     SetTimer(LLMTranslateFocusMonitor, 0)
@@ -561,7 +434,7 @@ LLMTranslateHide(*) {
 
 LLMTranslateShutdown(*) {
     global LLMTranslateGui, LLMTranslateController, LLMTranslateWebView
-    global LLMTranslateVisible, LLMTranslatePageReady, LLMTranslateSettingsOpen
+    global LLMTranslateVisible, LLMTranslatePageReady
     global LLMTranslateStreamId
     if LLMTranslateStreamId {
         LLMAbortChatStream(LLMTranslateStreamId)
@@ -569,7 +442,6 @@ LLMTranslateShutdown(*) {
     }
     LLMTranslateVisible := false
     LLMTranslatePageReady := false
-    LLMTranslateSettingsOpen := false
     SetTimer(LLMTranslateFocusMonitor, 0)
     try LLMTranslateWebView := 0
     try LLMTranslateController := 0
@@ -577,6 +449,13 @@ LLMTranslateShutdown(*) {
         try LLMTranslateGui.Destroy()
         LLMTranslateGui := 0
     }
+}
+
+LLMTranslateOnSettingsSaved() {
+    global LLMTranslateVisible, LLMTranslatePendingText
+    if !LLMTranslateVisible || !TranslateConfigured() || LLMTranslatePendingText = ""
+        return
+    LLMTranslateSetSource(LLMTranslatePendingText, true)
 }
 
 ; ---- provider registry: the LLM translation engine ----
@@ -588,8 +467,5 @@ TranslateRegisterProvider("llm", Map(
     "configured", LLMSettingsConfigured,
     "translate", TranslateProviderLlmTranslate,
     "test", TranslateProviderLlmTest,
-    "save", TranslateProviderLlmSave,
-    "push", TranslateProviderLlmPush,
     "notConfigured", ["No LLM API configured. Open Settings.",
-        "未配置 LLM API，请点右上角「设置」填写。"],
-    "saveEmpty", ["endpoint and API key", " API 地址和 Key "]))
+        "未配置 LLM API，请点右上角「设置」填写。"]))

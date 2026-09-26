@@ -69,8 +69,6 @@ button.copied:hover { background: #eaf6ef; }
   </section>
 </main>
 
-<!-- The settings dialog lives in settings.js, shared with the AI panel. -->
-<script src="settings.js"></script>
 <script>
 const source = document.getElementById('source');
 const result = document.getElementById('result');
@@ -267,8 +265,8 @@ window.setError = function (text) {
   translateBtn.disabled = false;
 };
 
-// The shared settings overlay owns window.setSettings/openSettings/
-// setTestResult/setSaved; this hook keeps the panel language in step.
+// The standalone settings center pushes the interface language through the
+// host snapshot; this hook keeps the translation panel language in step.
 window.onHostSettings = function (s) {
   lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
   applyLanguage();
@@ -301,7 +299,6 @@ settingsBtn.addEventListener('click', () => {
 
 dictionaryBtn.addEventListener('click', () => postType('openDictionary', source.value));
 
-LLMSettings.mount({ targetLanguage: true, engines: true, provider: true });
 applyLanguage();
 setStatus('ready');
 </script>

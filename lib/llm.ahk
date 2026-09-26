@@ -50,27 +50,6 @@ LLMRenderPromptTemplate(template, variables := 0) {
     return template
 }
 
-LLMSettingsSnapshot() {
-    result := Map()
-    for key in ["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-        "thinking", "temperature", "timeout", "maxInputTokens"]
-        result[key] := GetLLMSetting(key, "")
-    return result
-}
-
-LLMSaveSettings(msg) {
-    global SettingsFile
-    for key in ["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-        "thinking", "temperature", "timeout", "maxInputTokens"] {
-        if !IsObject(msg) || !msg.Has(key) || IsObject(msg[key])
-            continue
-        value := LLMMsgField(msg, key)
-        if key = "endpoint" || key = "apiKeyHeader" || key = "apiKeyPrefix" || key = "model"
-            value := Trim(value)
-        ConfigWriteValue(SettingsFile, "LLM", key, value)
-    }
-}
-
 LLMInputTokenBudget(overrides := 0) {
     value := Trim(LLMSettingWith("maxInputTokens", "", overrides))
     if !RegExMatch(value, "^\d+$") || value + 0 < 1

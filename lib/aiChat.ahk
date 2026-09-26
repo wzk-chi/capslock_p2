@@ -15,7 +15,6 @@ global AiChatPendingQuestion := ""
 global AiChatRequestRunning := false
 global AiChatStreamId := 0
 global AiChatStreamAnswer := ""
-global AiChatSettingsOpen := false
 global AiChatSeenActive := false  ; the focus monitor grants a grace period
                                   ; until the first activation, so a slow
                                   ; WinActivate cannot flash-hide the panel
@@ -144,9 +143,9 @@ AiChatShow(question) {
 ; Everything that happens once the page is known to be alive.
 AiChatAfterReady() {
     global AiChatPendingQuestion
-    AiChatPushSettings()
+    AiChatPushLanguage()
     if !LLMSettingsConfigured() {
-        AiChatOpenSettings(true)
+        SetTimer(() => SettingsShow("llm"), -1)
         return
     }
     if AiChatPendingQuestion != "" {
@@ -225,7 +224,7 @@ AiChatNavigationCompleted(sender, args) {
 }
 
 AiChatWebMessageReceived(sender, args) {
-    global AiChatSettingsOpen, AiChatHistory
+    global AiChatHistory
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -240,7 +239,7 @@ AiChatWebMessageReceived(sender, args) {
         AiChatHistory := []
         AiChatExec("window.newSession();")
     } else if messageType = "openSettings" {
-        SetTimer(SettingsShow, -1)
+        SetTimer(() => SettingsShow("llm"), -1)
     } else if messageType = "hide" {
         AiChatHide()
     } else if messageType = "openUrl" {
@@ -249,20 +248,11 @@ AiChatWebMessageReceived(sender, args) {
         url := LLMMsgField(msg, "text")
         if url != ""
             SetTimer(() => QbarOpenUrl(url), -1)
-    } else if messageType = "getSettings" {
-        AiChatPushSettings()
-    } else if messageType = "saveSettings" {
-        SetTimer(() => AiChatSaveSettings(message), -1)
-    } else if messageType = "testSettings" {
-        SetTimer(() => AiChatRunTest(message), -1)
     } else if messageType = "cursorMove" {
         ; WebView2 does not always replay the native cursor after Windows'
         ; mouse-vanish-on-typing behavior. Restore it on an actual page mouse
         ; move, matching the behavior of native edit controls.
         ShowSystemCursor()
-    } else if messageType = "settings" {
-        ; While the settings view is open the window must survive losing focus.
-        AiChatSettingsOpen := LLMMsgField(msg, "text") = "open"
     }
 }
 
@@ -326,80 +316,23 @@ AiChatExec(script) {
         return
 }
 
-AiChatPushSettings() {
+AiChatPushLanguage() {
     global AiChatWebView, AiChatPageReady
     if !AiChatPageReady || !IsObject(AiChatWebView)
         return
-    payload := LLMSettingsSnapshot()
-    payload["uiLanguage"] := LLMUiLanguage()
-    payload["configured"] := LLMSettingsConfigured() ? JSON.true : JSON.false
-    try AiChatWebView.ExecuteScriptAsync("window.setSettings(" . JSON.stringify(payload, 0) . ");")
+    payload := Map("uiLanguage", LLMUiLanguage())
+    try AiChatWebView.ExecuteScriptAsync("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
     catch
         return
 }
 
-AiChatOpenSettings(firstRun) {
-    global AiChatWebView, AiChatPageReady, AiChatSettingsOpen
-    if !AiChatPageReady || !IsObject(AiChatWebView)
+AiChatOnSettingsSaved() {
+    global AiChatPendingQuestion, AiChatVisible
+    if !AiChatVisible || !LLMSettingsConfigured() || AiChatPendingQuestion = ""
         return
-    AiChatSettingsOpen := true
-    try AiChatWebView.ExecuteScriptAsync("window.openSettings(" . (firstRun ? "true" : "false") . ");")
-    catch
-        return
-}
-
-; The chat settings edit the single shared [LLM] configuration.
-AiChatSaveSettings(message) {
-    msg := LLMMessageParse(message)
-    try {
-        LLMSaveSettings(msg)
-    } catch as saveError {
-        AiChatExec("window.setSaved(false," . LLMJsonQuote(LLMText("Save failed: ", "保存失败：") . saveError.Message) . ");")
-        return
-    }
-    ReloadSettings()
-    AiChatPushSettings()
-    if LLMSettingsConfigured() {
-        AiChatExec("window.setSaved(true," . LLMJsonQuote(LLMText("Settings saved.", "设置已保存。")) . ");")
-        ; A question that arrived before the API was configured is waiting.
-        global AiChatPendingQuestion
-        if AiChatPendingQuestion != "" {
-            question := AiChatPendingQuestion
-            AiChatPendingQuestion := ""
-            SetTimer(() => AiChatAsk(question), -1)
-        }
-    } else {
-        AiChatExec("window.setSaved(false," . LLMJsonQuote(LLMText(
-            "Saved, but endpoint and API key are still empty.",
-            "已保存，但 API 地址和 Key 仍为空。")) . ");")
-    }
-}
-
-AiChatRunTest(message) {
-    global AiChatRequestRunning
-    if AiChatRequestRunning {
-        AiChatExec("window.setTestResult(false," . LLMJsonQuote(LLMText(
-            "Another request is already running.",
-            "已有请求正在执行，请稍候。")) . ");")
-        return
-    }
-    AiChatRequestRunning := true
-    msg := LLMMessageParse(message)
-    overrides := LLMMessageOverrides(msg, [
-        "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-        "temperature", "timeout", "thinking", "maxInputTokens"])
-    history := [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")]
-    try {
-        answer := LLMAiChatComplete(history, &ok, &errorText, overrides)
-        if ok
-            AiChatExec("window.setTestResult(true," . LLMJsonQuote(LLMText("Connection OK → ", "连接正常 → ") . SubStr(answer, 1, 120)) . ");")
-        else
-            AiChatExec("window.setTestResult(false," . LLMJsonQuote(errorText) . ");")
-    } catch as requestError {
-        AiChatExec("window.setTestResult(false," . LLMJsonQuote(requestError.Message) . ");")
-    } finally {
-        AiChatRequestRunning := false
-    }
+    question := AiChatPendingQuestion
+    AiChatPendingQuestion := ""
+    SetTimer(() => AiChatAsk(question), -1)
 }
 
 AiChatResize(targetGui, minMax, width, height) {
@@ -409,15 +342,13 @@ AiChatResize(targetGui, minMax, width, height) {
 }
 
 AiChatFocusMonitor(*) {
-    global AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSettingsOpen, AiChatSeenActive
+    global AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSeenActive, SettingsVisible
     if !AiChatVisible || !IsObject(AiChatGui) {
         SetTimer(AiChatFocusMonitor, 0)
         AiChatFocusTimer := false
         return
     }
-    ; Keep the window while the settings view is open so the user can copy
-    ; values from elsewhere (endpoint, key, model) without it disappearing.
-    if AiChatSettingsOpen {
+    if SettingsVisible {
         return
     }
     if !WinActive("ahk_id " . AiChatGui.Hwnd) {

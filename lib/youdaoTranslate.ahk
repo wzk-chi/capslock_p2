@@ -342,27 +342,10 @@ TranslateProviderYoudaoTest(msg, &ok, &text) {
         text := errorText
 }
 
-TranslateProviderYoudaoSave(msg) {
-    global SettingsFile
-    ConfigWriteValue(SettingsFile, "TTranslate", "appPaidID", Trim(LLMMsgField(msg, "appId")))
-    ConfigWriteValue(SettingsFile, "TTranslate", "appPaidKey", LLMMsgField(msg, "appKey"))
-    ConfigWriteValue(SettingsFile, "TTranslate", "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage")))
-}
-
-TranslateProviderYoudaoPush() {
-    return Map(
-        "appId", GetYoudaoSetting("appPaidID", ""),
-        "appKey", GetYoudaoSetting("appPaidKey", ""),
-        "youdaoTargetLanguage", GetYoudaoSetting("targetLanguage", ""))
-}
-
 TranslateRegisterProvider("youdao", Map(
     "streaming", 0,
     "configured", YoudaoConfigured,
     "translate", TranslateProviderYoudaoTranslate,
     "test", TranslateProviderYoudaoTest,
-    "save", TranslateProviderYoudaoSave,
-    "push", TranslateProviderYoudaoPush,
     "notConfigured", ["Youdao translation is not configured. Open Settings.",
-        "未配置有道翻译，请点右上角「设置」填写。"],
-    "saveEmpty", ["the app ID and app secret", "应用ID和应用密钥"]))
+        "未配置有道翻译，请点右上角「设置」填写。"]))

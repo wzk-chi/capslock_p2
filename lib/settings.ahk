@@ -6,9 +6,14 @@ global SettingsController := 0
 global SettingsWebView := 0
 global SettingsPageReady := false
 global SettingsVisible := false
+global SettingsPendingPage := "general"
 
-SettingsShow(*) {
-    global SettingsGui, SettingsVisible
+SettingsShow(initialPage := "general", *) {
+    global SettingsGui, SettingsVisible, SettingsPendingPage
+    allowedPages := Map("general", true, "llm", true, "translate", true, "ai", true,
+        "shortcuts", true, "tab", true, "qbar", true, "windows", true)
+    initialPage := StrLower(Trim(initialPage))
+    SettingsPendingPage := allowedPages.Has(initialPage) ? initialPage : "general"
     SettingsVisible := true
     if !SettingsEnsureWebView() {
         SettingsVisible := false
@@ -18,6 +23,8 @@ SettingsShow(*) {
     SettingsGui.Show()
     WinActivate("ahk_id " . SettingsGui.Hwnd)
     ShowSystemCursor()
+    if SettingsPageReady
+        SetTimer(SettingsPushSnapshot, -1)
 }
 
 SettingsEnsureWebView() {
@@ -163,6 +170,7 @@ SettingsPushSnapshot(*) {
         sections[section] := SettingsSectionSnapshot(section)
     payload := Map(
         "uiLanguage", LLMUiLanguage(),
+        "page", SettingsPendingPage,
         "sections", sections,
         "keys", SettingsKeySnapshot(),
         "bindings", SettingsBindingSnapshot())
@@ -229,6 +237,8 @@ SettingsApplyDraft(message) {
                 SettingsWriteSection(section, draft["sections"][section])
         }
         ReloadSettings()
+        AiChatOnSettingsSaved()
+        LLMTranslateOnSettingsSaved()
         SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
         SettingsPushSnapshot()
     } catch as saveError {
@@ -310,7 +320,7 @@ SettingsCaptureWindow(message) {
 SettingsCompleteCapture(bindingNumber, bindType) {
     bindType := WindowBindingType(bindType)
     BindWindowFromActive(bindingNumber, bindType)
-    SettingsShow()
+    SettingsShow("windows")
     SetTimer(SettingsPushSnapshot, -1)
 }
 
@@ -338,8 +348,9 @@ SettingsHide(*) {
 }
 
 SettingsShutdown(*) {
-    global SettingsGui, SettingsController, SettingsWebView, SettingsPageReady, SettingsVisible
+    global SettingsGui, SettingsController, SettingsWebView, SettingsPageReady, SettingsVisible, SettingsPendingPage
     SettingsVisible := false
+    SettingsPendingPage := "general"
     SettingsPageReady := false
     try SettingsWebView := 0
     try SettingsController := 0

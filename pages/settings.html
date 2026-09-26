@@ -697,7 +697,9 @@ function receiveSnapshot(snapshot) {
     state.draft.sections.LLMTranslate.targetLanguage);
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   updateLanguageSelectLabels();
-  renderAll(); state.dirty = false; setStatus('');
+  renderAll();
+  setPage(snapshot.page || state.page || 'general');
+  state.dirty = false; setStatus('');
 }
 function saveDraft() {
   if (!state.draft) return;
