@@ -382,6 +382,10 @@ keyFunc_reload(*) {
     Reload()
 }
 
+keyFunc_openSettings(*) {
+    SettingsShow()
+}
+
 keyFunc_send_dot(*) {
     if !QbarLowerFolderPath()
         SendText(".")

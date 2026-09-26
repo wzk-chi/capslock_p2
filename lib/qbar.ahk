@@ -930,10 +930,10 @@ QbarAddSetting(section, key, value) {
 }
 
 ; "cl <sub>" -- the built-in command surface of the reference bar: version
-; display and a shortcut to the settings files. Its pay/donate entries point at
-; the original author and stay out. Returns true when the line was a cl command.
+; display and a shortcut to the settings center. Its pay/donate entries point
+; at the original author and stay out. Returns true when the line was a cl command.
 QbarTryClCommand(cmd, param) {
-    global AppName, AppVersion, SettingsFile
+    global AppName, AppVersion
     if cmd != "cl"
         return false
     if param = "version" || param = "about" {
@@ -941,20 +941,10 @@ QbarTryClCommand(cmd, param) {
         return true
     }
     if param = "set" || param = "settings" {
-        opened := false
-        if FileExist(SettingsFile) {
-            Run(SettingsFile)
-            opened := true
-        }
-        demoFile := A_ScriptDir . "\capslock_p2-settingsDemo.ini"
-        if FileExist(demoFile) {
-            Run(demoFile)
-            opened := true
-        }
-        if opened
-            QbarHide()
-        else
-            ShowMsg(QbarText("No settings file found.", "未找到设置文件。"), 2500)
+        QbarHide()
+        ; Qbar commands arrive from a WebView2 callback. Defer creation of the
+        ; settings WebView until that callback has returned.
+        SetTimer(SettingsShow, -1)
         return true
     }
     ShowMsg(QbarText("Unknown cl command: ", "未知的 cl 命令：") . param, 2500)

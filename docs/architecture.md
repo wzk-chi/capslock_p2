@@ -140,7 +140,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
   - `any`：无条件保留并去掉末尾换行——qbar 用它，让任何选中都能预填到输入框。
   代价是：在完整选中当前行的编辑器里，qbar 会把当前行预填进去（可见、可编辑）。
 - 独立剪贴板在 `[Global] allowClipboard` 开关下于系统之外维护 3 组槽位，复制/剪切/粘贴键
-  跟随 `allowClipboard` 与 F12 选择的「粘贴来源」。
+  跟随 `allowClipboard` 与 `keyFunc_switchClipboard` 选择的「粘贴来源」。
 
 ## 与原版 capslock-plus 的主要差异
 

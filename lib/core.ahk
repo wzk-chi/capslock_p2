@@ -116,6 +116,7 @@ ApplySettingsDefaults() {
     }
     MigratePromptTemplates(defaults)
     MigrateAiPromptTemplate(defaults)
+    MigrateKeyDefaults()
 }
 
 MigratePromptTemplates(defaults) {
@@ -162,6 +163,16 @@ MigrateAiPromptTemplate(defaults) {
         return
     Config["QAI"]["systemPrompt"] := newPrompt
     try WriteIniValue(SettingsFile, "QAI", "systemPrompt", newPrompt)
+}
+
+MigrateKeyDefaults() {
+    global Config, SettingsFile
+    if !Config.Has("Keys") || !Config["Keys"].Has("caps_f12")
+        return
+    if Trim(Config["Keys"]["caps_f12"]) != "keyFunc_switchClipboard"
+        return
+    Config["Keys"]["caps_f12"] := "keyFunc_openSettings"
+    try WriteIniValue(SettingsFile, "Keys", "caps_f12", "keyFunc_openSettings")
 }
 
 ReloadSettings(*) {

@@ -102,8 +102,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   display: grid; grid-template-columns: 150px minmax(0, 1fr) 32px; gap: 8px; align-items: center;
 }
 .pair-row textarea { min-height: 38px; }
-.shortcut-row { grid-template-columns: 180px minmax(0, 1fr); }
+.shortcut-row { grid-template-columns: 180px minmax(0, 1fr) 48px; }
 .shortcut-label { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shortcut-record { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
+.shortcut-record.recording { background: var(--danger); }
 .shortcut-group { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); overflow: hidden; }
 .shortcut-group summary { display: flex; align-items: center; gap: 8px; padding: 11px 13px; cursor: pointer; list-style: none; user-select: none; color: var(--ink); font-size: 12px; font-weight: 650; }
 .shortcut-group summary::-webkit-details-marker { display: none; }
@@ -129,7 +131,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   .content { padding: 22px 20px 32px; }
   .grid { grid-template-columns: 1fr; }
   .field.wide { grid-column: auto; }
-  .shortcut-row { grid-template-columns: 135px minmax(0, 1fr); }
+  .shortcut-row { grid-template-columns: 135px minmax(0, 1fr) 48px; }
 }
 </style>
 </head>
@@ -283,9 +285,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     </div>
   </main>
 </div>
-<datalist id="actionHints"></datalist>
 <script>
 const state = { draft: null, page: 'general', dirty: false };
+let shortcutRecording = null;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const post = payload => {
@@ -372,6 +374,141 @@ const SHORTCUT_GROUPS = [
 function shortcutActionName(action) {
   return String(action || '').trim().replace(/\s*\(.*/, '').toLowerCase();
 }
+const ACTION_LABELS = {
+  keyFunc_doNothing: '无操作', keyFunc_toggleCapsLock: '切换大小写', keyFunc_send: '发送按键', keyFunc_run: '运行程序',
+  keyFunc_mouseSpeedIncrease: '提高鼠标速度', keyFunc_mouseSpeedDecrease: '降低鼠标速度',
+  keyFunc_moveLeft: '向左移动', keyFunc_moveRight: '向右移动', keyFunc_moveUp: '向上移动', keyFunc_moveDown: '向下移动',
+  keyFunc_moveWordLeft: '按词向左移动', keyFunc_moveWordRight: '按词向右移动',
+  keyFunc_backspace: '退格', keyFunc_delete: '删除字符', keyFunc_deleteAll: '删除全部', keyFunc_deleteWord: '删除单词',
+  keyFunc_forwardDeleteWord: '向后删除单词', keyFunc_end: '移动到行尾', keyFunc_home: '移动到行首',
+  keyFunc_moveToPageBeginning: '移动到页面开头', keyFunc_moveToPageEnd: '移动到页面末尾', keyFunc_deleteLine: '删除整行',
+  keyFunc_deleteToLineBeginning: '删除到行首', keyFunc_deleteToLineEnd: '删除到行尾',
+  keyFunc_deleteToPageBeginning: '删除到页面开头', keyFunc_deleteToPageEnd: '删除到页面末尾',
+  keyFunc_enterWherever: '在任意位置回车', keyFunc_esc: '退出 / 取消', keyFunc_enter: '回车',
+  keyFunc_doubleChar: '输入成对字符', keyFunc_sendChar: '发送字符', keyFunc_doubleAngle: '输入尖括号', keyFunc_doubleQuote: '输入双引号',
+  keyFunc_pageUp: '向上翻页', keyFunc_pageDown: '向下翻页', keyFunc_pageMoveUp: '切换到上一个页面', keyFunc_pageMoveDown: '切换到下一个页面',
+  keyFunc_switchClipboard: '切换粘贴来源', keyFunc_pasteSystem: '粘贴系统剪贴板', keyFunc_cut_1: '剪切到剪贴板 1',
+  keyFunc_copy_1: '复制到剪贴板 1', keyFunc_paste_1: '粘贴剪贴板 1', keyFunc_cut_2: '剪切到剪贴板 2',
+  keyFunc_copy_2: '复制到剪贴板 2', keyFunc_paste_2: '粘贴剪贴板 2', keyFunc_undoRedo: '撤销 / 重做',
+  keyFunc_tabPrve: '切换到上一个标签页', keyFunc_tabNext: '切换到下一个标签页', keyFunc_jumpPageTop: '跳到页面顶部',
+  keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_translate: '打开翻译',
+  keyFunc_getJSEvalString: '获取 JavaScript 表达式', keyFunc_tabScript: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
+  keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
+  keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
+  keyFunc_volumeDown: '减小音量', keyFunc_volumeMute: '静音', keyFunc_winbind_activate: '激活绑定窗口',
+  keyFunc_winbind_binding: '绑定当前窗口', keyFunc_winPin: '切换窗口置顶', keyFunc_winTransparent: '切换窗口透明度',
+  keyFunc_selectUp: '向上选中', keyFunc_selectDown: '向下选中', keyFunc_selectLeft: '向左选中', keyFunc_selectRight: '向右选中',
+  keyFunc_selectHome: '选中到行首', keyFunc_selectEnd: '选中到行尾', keyFunc_selectToPageBeginning: '选中到页面开头',
+  keyFunc_selectToPageEnd: '选中到页面末尾', keyFunc_selectCurrentWord: '选中当前词', keyFunc_selectCurrentLine: '选中当前行',
+  keyFunc_selectWordLeft: '按词向左选中', keyFunc_selectWordRight: '按词向右选中', keyFunc_pageMoveLineUp: '按行向上翻页',
+  keyFunc_pageMoveLineDown: '按行向下翻页', keyFunc_goCjkPage: '切换中日韩页面', keyFunc_click_left: '鼠标左键',
+  keyFunc_click_right: '鼠标右键', keyFunc_mouse_up: '鼠标向上移动', keyFunc_mouse_down: '鼠标向下移动',
+  keyFunc_mouse_left: '鼠标向左移动', keyFunc_mouse_right: '鼠标向右移动', keyFunc_wheel_up: '鼠标滚轮向上',
+  keyFunc_wheel_down: '鼠标滚轮向下'
+};
+function shortcutActionLabel(action) {
+  const raw = String(action || '').trim();
+  const match = raw.match(/^([A-Za-z0-9_]+)(?:\((.*)\))?$/);
+  if (!match || !ACTION_LABELS[match[1]]) return '自定义动作';
+  const name = match[1];
+  const args = (match[2] || '').trim();
+  if (!args) return ACTION_LABELS[name];
+  if (name === 'keyFunc_send') return '发送：' + ahkSendLabel(args);
+  if (name === 'keyFunc_winbind_activate' || name === 'keyFunc_winbind_binding')
+    return ACTION_LABELS[name] + ' ' + args;
+  return ACTION_LABELS[name] + '（' + args + '）';
+}
+function ahkSendLabel(value) {
+  const raw = String(value || '').trim();
+  let index = 0;
+  const modifiers = [];
+  const modifierNames = { '^': 'Ctrl', '!': 'Alt', '+': 'Shift', '#': 'Win' };
+  while (modifierNames[raw[index]]) modifiers.push(modifierNames[raw[index++]]);
+  let key = raw.slice(index);
+  const namedKeys = {
+    '{Space}': 'Space', '{Enter}': 'Enter', '{Tab}': 'Tab', '{Esc}': 'Esc', '{Backspace}': 'Backspace',
+    '{Delete}': 'Delete', '{Insert}': 'Insert', '{Home}': 'Home', '{End}': 'End', '{PgUp}': 'PageUp',
+    '{PgDn}': 'PageDown', '{Up}': 'Up', '{Down}': 'Down', '{Left}': 'Left', '{Right}': 'Right'
+  };
+  key = namedKeys[key] || (key.startsWith('{') && key.endsWith('}') ? key.slice(1, -1) : key);
+  if (key.length === 1) key = key.toUpperCase();
+  return modifiers.concat(key || '按键').join('+');
+}
+function shortcutActionOptions(values) {
+  const current = Object.values(values).filter(Boolean);
+  return [...new Set(current.concat(Object.keys(ACTION_LABELS)))];
+}
+const RECORDED_MODIFIERS = new Set(['Control', 'Ctrl', 'Alt', 'Shift', 'Meta', 'OS', 'AltGraph']);
+const RECORDED_SPECIAL_KEYS = {
+  ' ': ['{Space}', 'Space'], Spacebar: ['{Space}', 'Space'], Enter: ['{Enter}', 'Enter'], Tab: ['{Tab}', 'Tab'],
+  Escape: ['{Esc}', 'Esc'], Esc: ['{Esc}', 'Esc'], Backspace: ['{Backspace}', 'Backspace'],
+  Delete: ['{Delete}', 'Delete'], Insert: ['{Insert}', 'Insert'], Home: ['{Home}', 'Home'], End: ['{End}', 'End'],
+  PageUp: ['{PgUp}', 'PageUp'], PageDown: ['{PgDn}', 'PageDown'], ArrowUp: ['{Up}', 'Up'], ArrowDown: ['{Down}', 'Down'],
+  ArrowLeft: ['{Left}', 'Left'], ArrowRight: ['{Right}', 'Right'], CapsLock: ['{CapsLock}', 'CapsLock'],
+  PrintScreen: ['{PrintScreen}', 'PrintScreen'], ScrollLock: ['{ScrollLock}', 'ScrollLock'], Pause: ['{Pause}', 'Pause'],
+  ContextMenu: ['{AppsKey}', 'ContextMenu']
+};
+const RECORDED_PUNCTUATION = {
+  '`': '{`}', '-': '{-}', '=': '{=}', '[': '{[}', ']': '{]}', '\\': '{\\}', ';': '{;}',
+  "'": "{'}", ',': '{,}', '.': '{.}', '/': '{/}',
+  '!': '{!}', '@': '{@}', '#': '{#}', '$': '{$}', '%': '{%}', '^': '{^}', '&': '{&}', '*': '{*}'
+};
+function recordedKey(event) {
+  if (event.repeat || RECORDED_MODIFIERS.has(event.key)) return null;
+  const modifierValue = (event.ctrlKey ? '^' : '') + (event.altKey ? '!' : '')
+    + (event.shiftKey ? '+' : '') + (event.metaKey ? '#' : '');
+  const modifierLabel = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Win']
+    .filter(Boolean).join('+');
+  let keyValue = '';
+  let keyLabel = '';
+  if (RECORDED_SPECIAL_KEYS[event.key]) {
+    [keyValue, keyLabel] = RECORDED_SPECIAL_KEYS[event.key];
+  } else if (/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(event.key)) {
+    keyValue = '{' + event.key + '}'; keyLabel = event.key;
+  } else if (/^Key[A-Z]$/.test(event.code)) {
+    keyValue = event.code.slice(3).toLowerCase(); keyLabel = event.code.slice(3).toUpperCase();
+  } else if (/^Digit[0-9]$/.test(event.code)) {
+    keyValue = event.code.slice(5); keyLabel = keyValue;
+  } else if (event.code.startsWith('Numpad')) {
+    keyValue = '{' + event.code + '}'; keyLabel = event.code.replace('Numpad', 'Num ');
+  } else if (event.key && event.key.length === 1) {
+    keyValue = RECORDED_PUNCTUATION[event.key] || event.key.toLowerCase();
+    keyLabel = event.key;
+  } else {
+    return null;
+  }
+  return { value: modifierValue + keyValue, label: modifierLabel ? modifierLabel + '+' + keyLabel : keyLabel };
+}
+function stopShortcutRecording() {
+  if (!shortcutRecording) return;
+  shortcutRecording.button.classList.remove('recording');
+  shortcutRecording.button.textContent = '录制';
+  shortcutRecording = null;
+}
+function ensureShortcutOption(select, action) {
+  if ([...select.options].some(option => option.value === action)) return;
+  const option = document.createElement('option');
+  option.value = action;
+  option.textContent = shortcutActionLabel(action);
+  select.append(option);
+}
+document.addEventListener('keydown', event => {
+  if (!shortcutRecording) return;
+  const captured = recordedKey(event);
+  if (!captured) {
+    event.preventDefault();
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const action = 'keyFunc_send(' + captured.value + ')';
+  ensureShortcutOption(shortcutRecording.select, action);
+  shortcutRecording.select.value = action;
+  setDraftValue('Keys', shortcutRecording.key, action);
+  stopShortcutRecording();
+  setStatus('已录制 ' + captured.label + '，请保存');
+}, true);
+window.addEventListener('blur', stopShortcutRecording);
 function shortcutCategory(key, action) {
   if (key === 'press_caps') return 'press';
   const name = shortcutActionName(action);
@@ -398,9 +535,11 @@ function applyShortcutFilter() {
   });
 }
 function renderShortcuts() {
+  stopShortcutRecording();
   const root = $('#shortcutList');
   root.replaceChildren();
   const values = section('Keys');
+  const actionOptions = shortcutActionOptions(values);
   const grouped = new Map(SHORTCUT_GROUPS.map(group => [group.id, []]));
   for (const key of Object.keys(values)) {
     const groupId = shortcutCategory(key, values[key]);
@@ -428,23 +567,43 @@ function renderShortcuts() {
     for (const entry of entries) {
       const row = document.createElement('div');
       row.className = 'shortcut-row';
-      row.dataset.label = (prettyKey(entry.key) + ' ' + entry.action + ' ' + group.label).toLowerCase();
+      row.dataset.label = (prettyKey(entry.key) + ' ' + shortcutActionLabel(entry.action) + ' ' + entry.action + ' ' + group.label).toLowerCase();
       const label = document.createElement('span');
       label.className = 'shortcut-label';
       label.title = prettyKey(entry.key);
       label.textContent = prettyKey(entry.key);
-      const input = document.createElement('input');
-      input.setAttribute('list', 'actionHints');
-      input.value = entry.action || '';
-      input.addEventListener('input', () => setDraftValue('Keys', entry.key, input.value));
-      row.append(label, input);
+      const select = document.createElement('select');
+      for (const action of actionOptions) {
+        const option = document.createElement('option');
+        option.value = action;
+        option.textContent = shortcutActionLabel(action);
+        select.append(option);
+      }
+      select.value = entry.action || 'keyFunc_doNothing';
+      select.addEventListener('change', () => setDraftValue('Keys', entry.key, select.value));
+      const record = document.createElement('button');
+      record.type = 'button';
+      record.className = 'btn mini shortcut-record';
+      record.textContent = '录制';
+      record.title = '录制按键组合';
+      record.addEventListener('click', () => {
+        if (shortcutRecording && shortcutRecording.button === record) {
+          stopShortcutRecording();
+          setStatus('已取消录制');
+          return;
+        }
+        stopShortcutRecording();
+        shortcutRecording = { key: entry.key, select, button: record };
+        record.classList.add('recording');
+        record.textContent = '按键…';
+        setStatus('请按下要绑定的按键组合，再次点击可取消');
+      });
+      row.append(label, select, record);
       list.append(row);
     }
     details.append(summary, list);
     root.append(details);
   }
-  const hints = [...new Set(Object.values(values))].filter(Boolean).slice(0, 160);
-  $('#actionHints').replaceChildren(...hints.map(value => { const option = document.createElement('option'); option.value = value; return option; }));
   applyShortcutFilter();
 }
 function renderPairs(sectionName, rootId, multiline = false) {

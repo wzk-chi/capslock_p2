@@ -18,7 +18,7 @@ Everything 文件搜索、屏幕自适应等。
 | 翻译面板（LLM / 有道 / 火山） | CapsLock+T 或 CapsLock+F3 |
 | 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
 | AI 问答聊天（支持追问） | CapsLock+Q → `ai`/`q` 或任意未命中输入 |
-| 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V、CapsLock+F12 切换 |
+| 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V；切换键可自定义 |
 | 窗口绑定（winbind） | CapsLock+数字、CapsLock+Win+数字 |
 | 窗口半透明 / 置顶 | CapsLock+F4 / CapsLock+F6 |
 | 鼠标速度临时调节 | CapsLock+LAlt+滚轮 |
@@ -68,10 +68,12 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
 | CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
 | CapsLock+Win+1~0 | 绑定当前窗口（短按/双击/三击三种模式） | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
-| CapsLock+F12 | 切换粘贴用剪贴板槽位 |  |  |
+| CapsLock+F12 | 打开设置中心 |  |  |
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
 `keyFunc_moveDown(10)`），完整函数清单见 `lib/keys.ahk`。
+设置中心的快捷键页也支持点「录制」直接录入组合键，例如 Ctrl+Space 会保存为
+`keyFunc_send(^{Space})`。
 
 面板窗口（翻译 / 词典 / AI 问答）尺寸会随屏幕自动缩放，在你当前屏幕上不用手动调。
 
@@ -165,7 +167,7 @@ gh<GitHub>=https://github.com
 | 输入 | 作用 |
 |---|---|
 | `ai 问题` / `q 问题` | 打开 AI 聊天面板提问（使用共用 `[LLM]` 配置） |
-| `cl set` | 打开设置文件（`capslock_p2.ini` 和示例文件） |
+| `cl set` | 打开设置中心 |
 | `cl version` / `cl about` | 显示版本号 |
 | `web 网址` | 强制按网址打开，缺 `http://` 时自动补 |
 | `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目（计划支持） |
@@ -282,7 +284,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 
 - CapsLock+C / X / V：剪贴板 1 的复制 / 剪切 / 粘贴
 - CapsLock+LAlt+C / X / V：剪贴板 2
-- CapsLock+F12：循环切换「粘贴来源」槽位（系统 / 1 / 2），粘贴键跟随来源
+- 可将任意键绑定为 `keyFunc_switchClipboard`，循环切换「粘贴来源」槽位（系统 / 1 / 2）
 - `[Global] allowClipboard=0` 可整体关闭（独立剪贴板失效，回到系统行为）
 
 ## 窗口功能
