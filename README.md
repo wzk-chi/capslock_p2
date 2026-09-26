@@ -1,7 +1,7 @@
 # capslock_p2
 
 按住 **CapsLock**，整个键盘变成一层高效按键：光标移动、文本选择、删改编辑、窗口管理随手可及，
-松开即恢复打字。另带 qbar 启动器、翻译/本地词典、AI 问答、行内计算器、独立剪贴板等工具。
+松开即恢复打字。另带 qbar 启动器、翻译/本地词典、AI 问答、独立剪贴板等工具。
 
 本项目脱胎于 [Capslock+](https://github.com/capslox/capslock-plus)（AHK v1 原版，GPL v2），
 用 **AutoHotkey v2 重写并加以改进**：UI 面板改用 WebView2、新增翻译引擎注册表（LLM / 有道 / 火山）、
@@ -14,7 +14,7 @@ Everything 文件搜索、屏幕自适应等。
 |---|---|
 | CapsLock 键层（移动 / 选择 / 编辑 / 翻页 / 删行） | 按住 CapsLock + 字母区 |
 | qbar 启动器（搜索、启动、文件搜索、路径浏览） | CapsLock+Q |
-| 文本替换（热串）+ 行内计算器 | CapsLock+Tab |
+| 文本替换（热串） | CapsLock+Tab |
 | 翻译面板（LLM / 有道 / 火山） | CapsLock+T 或 CapsLock+F3 |
 | 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
 | AI 问答聊天（支持追问） | CapsLock+Q → `ai`/`q` 或任意未命中输入 |
@@ -64,7 +64,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+U | 选到行首 | CapsLock+空格 | 回车 |
 | CapsLock+- / = | PgUp / PgDn | CapsLock+Enter | 回车 |
 | CapsLock+Q | qbar 启动器 | CapsLock+T / F3 | 翻译 / 词典 |
-| CapsLock+Tab | 热串替换 / 计算器 | CapsLock+F1 | 打开使用介绍 |
+| CapsLock+Tab | 热串替换 | CapsLock+F1 | 打开使用介绍 |
 | CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
 | CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
 | CapsLock+Win+1~0 | 在设置中心捕获当前窗口 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
@@ -77,10 +77,9 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 
 面板窗口（翻译 / 词典 / AI 问答）尺寸会随屏幕自动缩放，在你当前屏幕上不用手动调。
 
-## CapsLock+Tab：文本替换与计算器
+## CapsLock+Tab：文本替换（热串）
 
-光标右侧无选中时作用于当前行，有选中时作用于选中文字。优先做**热串替换**，没命中再尝试**计算**；
-计算和替换都没有变化时**不粘贴**（行保持原样）。
+光标右侧无选中时作用于当前行，有选中时作用于选中文字。只做热串替换，未命中时不改变原文。
 
 ### 热串替换
 
@@ -99,13 +98,6 @@ sig=——张三\n13800000000
 - `[TabHotString]` 的值支持两个转义（C 风格）：`\n` → 真实换行，`\\` → 一个 `\`
   （所以字面的 `\n` 写成 `\\n`）；其余反斜杠组合原样保留，路径如 `D:\docs` 无需转义。
   `[QRun]`/`[QWeb]` 的值原样展开，不做转义。
-
-### 行内计算器
-
-- 选中 `3*4` 按 CapsLock+Tab → `12`。
-- 行尾带 `=` 会保留算式：`1+2=` → `1+2=3`。
-- 内置 AHK 表达式求值，失败时回退到 JavaScript（`EvaluateExpression`），支持常用数学函数。
-- `[Global] loadScript=jsExtensions.js` 可加载 JS 扩展，计算器内置失败时会尝试调用扩展函数。
 
 ## qbar 启动器（CapsLock+Q）
 
@@ -301,7 +293,8 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 ## 配置说明
 
 - 配置文件：**`capslock_p2.ini`**（UTF-8）。保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
-- 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TVolcengine`、`QAI`、`QSearch`、`QRun`、`QWeb`、`QStyle`。
+- 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
+- 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
 - `[Global]` 常用项：
 
   | 键 | 默认 | 说明 |
@@ -309,14 +302,9 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
   | `autostart` | 0 | 开机启动：也可从托盘菜单切换；启用/关闭会同步当前用户启动文件夹的快捷方式 |
   | `debug` | 0 | 1 时写 `capslock_p2-debug.log`（不记录剪贴板内容和 API Key） |
   | `mouseSpeed` | 3 | CapsLock+LAlt+滚轮的基准速度 |
-  | `loadScript` | jsExtensions.js | JS 扩展，逗号分隔，放 `loadScript/` 目录 |
   | `allowClipboard` | 1 | 独立剪贴板开关 |
   | `loadingAnimation` | 1 | 启动动画：也可从托盘菜单切换；默认显示现代简约启动卡片 |
   | `language` | 0 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |
-  | `javascriptOriginalReturn` | 0 | 1 时优先返回 JS 原始计算结果 |
-
-- `[QStyle]`：qbar 面板外观（背景/文字/列表颜色、圆角、字号、列表行数），不配置则用内置主题，
-  自动跟随系统明暗模式。详见示例 ini 内注释。
 
 ## 调试
 

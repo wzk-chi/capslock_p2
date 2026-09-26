@@ -8,9 +8,9 @@
   全局变量和函数在所有文件间共享。
 - **键盘层**：按住 CapsLock 进入键层，`lib/keymap.ahk` 做键位方案与层调度，`lib/keys.ahk` 提供
   `keyFunc_*` 动作函数（配置里的每个键都映射到一个 `keyFunc_`）。
-- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧创建控制器并承载。AHK ⇄ 页面双向通信通过
-  thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用 `window.chrome.webview.postMessage` 发 JSON，
-  AHK 用 `add_WebMessageReceived` 接收、用 `ExecuteScriptAsync("window.fn(...)")` 调用页面函数。
+- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/panelHost.ahk` 创建控制器并承载。
+  AHK ⇄ 页面双向通信通过 thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用
+  `window.chrome.webview.postMessage` 发 JSON，宿主统一接收并调用页面函数。
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
 - **LLM 公共层**：`lib/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
   OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
@@ -20,12 +20,18 @@
 ```
 capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
-  core.ahk                         初始化、配置读写、剪贴板、热串匹配、选区读取
+  config.ahk                       INI 解析、默认值、类型读取与原子写入
+  core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
-  math.ahk / jsEval.ahk            行内计算器 / JavaScript 求值运行时
+  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与焦点生命周期
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
-  qbar.ahk                         qbar 启动器（含 Everything 搜索、路径浏览、内置命令）
+  qbar.ahk                         qbar 状态与稳定入口
+  qbar_panel.ahk                   qbar 面板生命周期、消息和尺寸
+  qbar_index.ahk                   条目索引、过滤和图标行准备
+  qbar_commands.ahk                命令、运行、网址和 AI 调度
+  qbar_everything.ahk              Everything 后端、CSV 与 UTF-8 解析
+  qbar_navigation.ahk              文件夹导航和路径补全
   translate.ahk                    翻译引擎注册表（provider 契约与调度解析）
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
   llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
@@ -37,17 +43,18 @@ lib\
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
-  qbar.html / translate.html / dictionary.html / chat.html   WebView2 面板页面
+  qbar.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
-  settings.js                      翻译与 AI 面板共用的设置窗口组件
-vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
-loadScript\                        JS 扩展目录
-resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
+  vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
+  resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
 userAHK\                           用户自定义入口（main.ahk，自动加载）
 WebView2\                          WebView2Loader.dll（32/64 位）
 tools\                             Inno Setup 打包配置与脱敏 ini（不参与运行）
 capslock-plus\                     原版 AHK v1 源码（只读参考，禁止修改）
 ```
+
+`math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 仍留在工作区是因为项目禁止删除文件；
+它们不在入口 include、设置页活动字段或发布资源中，不属于运行时架构。
 
 ## 翻译引擎注册表
 
@@ -72,7 +79,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 | `save` | 写该引擎自己的 ini 字段（「已保存但字段仍为空」的警告文案在 `saveEmpty`） |
 | `push` | 返回设置表单字段表，合并进面板的设置推送 |
 
-新引擎的热路径由一条规则概括：**只加一个客户端文件 + 一行注册 + `pages/settings.js` 一条**，
+新引擎的热路径由一条规则概括：**只加一个客户端文件 + 一行注册 + 更新中央设置页的字段元数据**，
 面板与协议层的 `LLMTranslate*` 前缀保持不动。
 
 ### 已接入引擎
@@ -98,19 +105,20 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 ## WebView2 面板
 
-四个面板共用一套通信习惯：
+所有 WebView2 面板共用 `lib/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。
+设置页是普通可调整大小的窗口，qbar、翻译、词典和 AI 面板保留各自的失焦隐藏规则。
+页面通信遵循同一套习惯：
 
 - **页面 → AHK**：`postMessage` 一个 JSON 字符串，外层一定有 `type` 字段；AHK 侧统一用
   `LLMMessageParse` / `LLMMsgField(msg, "type")` 解析与取字段（避免直接手撕 JSON）。
-- **AHK → 页面**：`ExecuteScriptAsync("window.fn(" . JSON.stringify(payload, 0) . ")")`。
+- **AHK → 页面**：由 `PanelHostExecute()` 统一调用 `ExecuteScriptAsync("window.fn(" . JSON.stringify(payload, 0) . ")")`。
 - **页面数据**：在 `pages/*.html` 里声明 `window` 级函数（如 `window.setResults`、
   `window.setEntry`），AHK 用字符串调用。
 
-面板实例的骨架（创建控制器 → Fill 到宿主 Gui → `add_WebMessageReceived` →
-导航完成后置 `*PageReady := true`）在 `dictionary.ahk` 里有最小完整示例，qbar/translate/chat
-结构一致但各有职责：
+面板实例的骨架（创建 GUI → `PanelHostEnsure()` → 导航回调置 `pageReady` →
+`PanelHostShow/Hide()`）在 `panelHost.ahk` 集中实现，功能模块只处理各自职责：
 
-- **qbar**：`QbarExec` 封装所有 `ExecuteScriptAsync`；行图标经 `icons.ahk` 从 shell 提取后
+- **qbar**：`qbar_panel.ahk` 负责窗口和通信，`qbar_index.ahk` 负责索引与行图标；`QbarExec` 调用公共宿主，行图标经 `icons.ahk` 从 shell 提取后
   以 data URI 推给页面并按扩展名/路径缓存。`QbarShow` 每次把窗口重置到收拢高度，页面需配合
   `window.resetRows` 让下一次渲染重报行数（否则隐藏期间残留的 `reportedRows` 会让窗口
   保持收拢、列表只剩半行）。
@@ -118,6 +126,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
   请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
 - **dictionary**：查询走 `CSQLite` 的只读连接；搜索联想三段式（前缀→包含→模糊子序列，
   词频排序）。词形、其余音标字段都是可点击的跳转查询。
+- **settings**：`settings.html` 是唯一活动设置界面；F12、托盘菜单、qbar `cl set` 和功能页设置按钮都路由到它。
 
 ## 屏幕自适应与 DPI
 
@@ -149,7 +158,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 - qbar 的文件/文件夹/程序行显示真实 shell 图标（HICON 经 GDI+ 转 PNG、以 data URI 推给页面
   并按扩展名/路径缓存）；面板暂不支持拖动。
 - 热串匹配按**短键**（`gh<GitHub>` 按 `gh` 匹配），比 v1 的键名正则更宽容；未命中时
-  CapsLock+Tab 不改动文本（v1 会原样重新粘贴）。
+  CapsLock+Tab 不改动文本（v1 会原样重新粘贴）。项目当前不再提供行内计算器或 JavaScript 扩展运行时。
 - 翻译引擎由 Lua/内建的有道换成 **provider 注册表**，支持 LLM / 有道 / 火山并可按需扩展。
 - **未移植**：拼音搜索、`>cdo` 等旧命令；`cl` 系列内置命令以实际支持的为准。
 
@@ -171,7 +180,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 - **命名**：`#Warn` 保持开启（仅关闭 `VarUnset`）；AHK v2 类名占用全局命名空间，局部变量不要
   与内置类名（如 `File`）或库类名（`Core`、`JSON` 等）同名。
 - **翻译引擎扩展入口**：新建 `lib/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
-  `pages/settings.js` 的 `PROVIDERS` 数组加一条，done。
+  在中央设置页增加对应字段，完成扩展。
 - **thqby `JSON.stringify` 只序列化 Map/Array/Object**：顶层 String（含 `""`）会抛
   “has no method named OwnProps”。传给页面的标量一律用 `LLMJsonQuote`（内部包一层数组后
   `SubStr(JSON.stringify([v],0),2,-1)`）。

@@ -53,9 +53,8 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`qbar.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.js`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）
+- `pages\`：`qbar.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`
-- `loadScript\`：JavaScript 扩展
 - `resources\dictionary.db`：ECDICT 本地词典
 - `resources\SQLite3.dll`：词典的 SQLite 引擎
 - `resources\es.exe`：Everything 查询命令行工具
@@ -64,6 +63,9 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 - `resources\capslock_p2-icon.ico`：EXE、安装器和快捷方式图标
 - `WebView2\64bit\WebView2Loader.dll`
 - `capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
+
+设置中心由 CapsLock+F12、托盘菜单「设置」和 qbar `cl set` 打开；翻译和 AI 页面中的设置按钮只发送消息，
+不会再加载独立的设置脚本。仓库中的 `pages\settings.js` 因禁止删除文件而保留，但不属于运行时页面和发布资源。
 
 安装器默认创建当前用户的开始菜单和桌面快捷方式。用户可以在安装向导中改选安装目录，但程序需要对该目录具有写入权限，因为配置、日志和窗口绑定记录位于程序目录旁。
 

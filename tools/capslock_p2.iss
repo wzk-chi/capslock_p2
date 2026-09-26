@@ -37,14 +37,12 @@ Uninstallable=yes
 ; Compiled AHK v2 runtime.
 Source: "{#PayloadDir}\capslock_p2.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; WebView2 panel pages and shared settings component.
-Source: "{#ProjectRoot}\pages\*"; DestDir: "{app}\pages"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Live WebView2 panels and the browser-opened usage page. The retired
+; settings.js overlay is intentionally not part of the release payload.
+Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion
 
 ; Markdown renderer used by the AI chat page.
 Source: "{#ProjectRoot}\vendor\*"; DestDir: "{app}\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; Optional JavaScript extensions loaded by the calculator.
-Source: "{#ProjectRoot}\loadScript\*"; DestDir: "{app}\loadScript"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Dictionary, SQLite binding, Everything and tray icon.
 Source: "{#ProjectRoot}\resources\dictionary.db"; DestDir: "{app}\resources"; Flags: ignoreversion
