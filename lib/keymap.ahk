@@ -30,8 +30,7 @@ RegisterCapsHotkeys() {
     ; Waiting for release here prevents the native CapsLock toggle and keeps the
     ; layer active for the complete key-hold interval.
     Hotkey("CapsLock", CapsLockPress)
-    Hotkey("<!CapsLock", CapsLockWithModifierPress)
-    Hotkey("#CapsLock", CapsLockWithModifierPress)
+    Hotkey("<!CapsLock", CapsLockWithAltPress)
 
     Hotkey("$^v", PasteSystemHotkey)
     RegisterCapsLayerHotkeys()
@@ -53,8 +52,6 @@ RegisterCapsLayerHotkeys() {
         Hotkey("<!WheelUp", MakeActionHandler("caps_lalt_wheelUp"))
         Hotkey("<!WheelDown", MakeActionHandler("caps_lalt_wheelDown"))
 
-        for digit in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-            Hotkey("#" . digit, MakeActionHandler("caps_win_" . digit))
         DebugLog("Caps layer static registration complete")
     } finally {
         HotIf()
@@ -97,8 +94,8 @@ CapsLockPress(*) {
     HandleCapsLockPress(true)
 }
 
-CapsLockWithModifierPress(*) {
-    ; Alt+CapsLock and Win+CapsLock enter the layer but do not invoke the
+CapsLockWithAltPress(*) {
+    ; Alt+CapsLock enters the layer but does not invoke the
     ; single-tap action when released, matching the reference behavior.
     HandleCapsLockPress(false)
 }

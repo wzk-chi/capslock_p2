@@ -360,7 +360,6 @@ function prettyKey(key) {
   let prefix = 'CapsLock';
   let suffix = key.slice(5);
   if (key.startsWith('caps_lalt_')) { prefix += ' + Alt'; suffix = key.slice(10); }
-  else if (key.startsWith('caps_win_')) { prefix += ' + Win'; suffix = key.slice(9); }
   else if (key.startsWith('caps_')) suffix = key.slice(5);
   return prefix + ' + ' + (names[suffix] || suffix.toUpperCase());
 }

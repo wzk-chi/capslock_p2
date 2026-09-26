@@ -343,7 +343,7 @@ SettingsAllowedKey(section, key) {
         case "Qbar":
             return SettingsKeyIn(["esPath", "everythingPath", "esInstance", "esMaxResults"], key)
         case "Keys":
-            return RegExMatch(key, "i)^(press_caps|caps(_lalt|_win)?_[A-Za-z0-9_]+)$")
+            return RegExMatch(key, "i)^(press_caps|caps(_lalt)?_[A-Za-z0-9_]+)$")
         default:
             return SettingsIsDynamicSection(section)
     }

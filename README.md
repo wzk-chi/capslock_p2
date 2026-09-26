@@ -19,7 +19,7 @@ Everything 文件搜索、屏幕自适应等。
 | 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
 | AI 问答聊天（支持追问） | CapsLock+Q → `ai`/`q` 或任意未命中输入 |
 | 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V；切换键可自定义 |
-| 窗口绑定（winbind） | CapsLock+数字、CapsLock+Win+数字 |
+| 窗口绑定（winbind） | CapsLock+数字、CapsLock+LAlt+数字 |
 | 窗口半透明 / 置顶 | CapsLock+F4 / CapsLock+F6 |
 | 鼠标速度临时调节 | CapsLock+LAlt+滚轮 |
 | 媒体 / 音量控制 | 绑定 `keyFunc_media*` / `keyFunc_volume*` 使用 |
@@ -67,7 +67,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+Tab | 热串替换 | CapsLock+F1 | 打开使用介绍 |
 | CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
 | CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
-| CapsLock+Win+1~0 | 在设置中心捕获当前窗口 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
+| CapsLock+LAlt+1~0 | 绑定当前窗口 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
 | CapsLock+F12 | 打开设置中心 |  |  |
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
