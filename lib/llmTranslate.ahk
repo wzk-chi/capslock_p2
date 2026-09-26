@@ -2,6 +2,7 @@
 ; The UI is hosted by WebView2; API settings are read only from the active
 ; capslock_p2.ini file, never from the demo/reference INI.
 
+global LLMTranslateHost := 0
 global LLMTranslateGui := 0
 global LLMTranslateController := 0
 global LLMTranslateWebView := 0
@@ -60,7 +61,7 @@ GetTranslateProvider() {
 }
 
 LLMTranslateShow(text, allowEmpty := false) {
-    global LLMTranslateGui, LLMTranslatePendingText, LLMTranslateVisible, LLMTranslatePageReady, LLMTranslateFocusTimer
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslatePendingText, LLMTranslateVisible, LLMTranslatePageReady, LLMTranslateFocusTimer
     text := Trim(text)
     if text = "" && !allowEmpty
         return
@@ -72,11 +73,11 @@ LLMTranslateShow(text, allowEmpty := false) {
         return
     }
     translateSize := ScreenFitSize(720, 500, 520, 360)
-    LLMTranslateGui.Show("w" . translateSize[1] . " h" . translateSize[2] . " Center")
+    PanelHostShow(LLMTranslateHost, translateSize[1], translateSize[2], true)
+    LLMTranslateSyncHost()
     WinActivate("ahk_id " . LLMTranslateGui.Hwnd)
     ShowSystemCursor()
-    SetTimer(LLMTranslateFocusMonitor, 100)
-    LLMTranslateFocusTimer := true
+    LLMTranslateFocusTimer := PanelHostStartFocusMonitor(LLMTranslateHost, LLMTranslateFocusMonitor)
 
     if LLMTranslatePageReady {
         LLMTranslatePushLanguage()
@@ -88,66 +89,74 @@ LLMTranslateShow(text, allowEmpty := false) {
 }
 
 LLMTranslateEnsureWebView() {
-    global LLMTranslateGui, LLMTranslateController, LLMTranslateWebView
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslateController, LLMTranslateWebView
     global LLMTranslatePageReady
-    if IsObject(LLMTranslateGui) && IsObject(LLMTranslateWebView)
-        return true
-
     pagePath := A_ScriptDir . "\pages\translate.html"
-    loaderPath := A_ScriptDir . "\WebView2\" . (A_PtrSize = 8 ? "64bit" : "32bit") . "\WebView2Loader.dll"
-    if !FileExist(pagePath) {
-        ShowMsg("pages\translate.html is missing.", 3500)
-        return false
-    }
-    if !FileExist(loaderPath) {
-        ShowMsg("WebView2Loader.dll is missing: " . loaderPath, 5000)
-        return false
+    if IsObject(LLMTranslateHost) {
+        try {
+            PanelHostEnsure(LLMTranslateHost)
+            LLMTranslateSyncHost()
+            return true
+        } catch as existingError {
+            PanelHostHide(LLMTranslateHost)
+            DebugLog("translate webview failed: " . existingError.Message)
+            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            return false
+        }
     }
 
-    if !IsObject(LLMTranslateGui) {
-        LLMTranslateGui := Gui("+AlwaysOnTop +Resize +MinSize520x360 +ToolWindow", "capslock_p2 Translate")
-        LLMTranslateGui.MarginX := 0
-        LLMTranslateGui.MarginY := 0
-        LLMTranslateGui.OnEvent("Close", LLMTranslateHide)
-        LLMTranslateGui.OnEvent("Escape", LLMTranslateHide)
-        LLMTranslateGui.OnEvent("Size", LLMTranslateResize)
-        translateSize := ScreenFitSize(720, 500, 520, 360)
-    LLMTranslateGui.Show("w" . translateSize[1] . " h" . translateSize[2] . " Center")
-    }
+    translateSize := ScreenFitSize(720, 500, 520, 360)
+    LLMTranslateHost := PanelHostCreate(pagePath, "capslock_p2 Translate", Map(
+        "guiOptions", "+AlwaysOnTop +Resize +MinSize520x360 +ToolWindow",
+        "dataPath", A_Temp . "\CapsLockPlusWebView2",
+        "initialShow", "x-32000 y-32000 w" . translateSize[1] . " h" . translateSize[2] . " NA",
+        "callbacks", Map(
+            "close", LLMTranslateHide,
+            "escape", LLMTranslateHide,
+            "resize", LLMTranslateResize,
+            "navigation", LLMTranslateNavigationCompleted,
+            "message", LLMTranslateWebMessageReceived)))
+    LLMTranslateSyncHost()
 
     try {
-        dataPath := A_Temp . "\CapsLockPlusWebView2"
         startTick := A_TickCount
         DebugLog("translate webview creating")
-        LLMTranslateController := WebView2.CreateControllerAsync(
-            LLMTranslateGui.Hwnd, 0, dataPath, "", loaderPath
-        ).await2(15000)
+        PanelHostEnsure(LLMTranslateHost)
+        LLMTranslateSyncHost()
         DebugLog("translate webview ready in " . (A_TickCount - startTick) . " ms")
-        LLMTranslateController.Fill()
-        LLMTranslateWebView := LLMTranslateController.CoreWebView2
-        LLMTranslateWebView.add_NavigationCompleted(LLMTranslateNavigationCompleted)
-        LLMTranslateWebView.add_WebMessageReceived(LLMTranslateWebMessageReceived)
-        LLMTranslatePageReady := false
-        pageUrl := "file:///" . StrReplace(pagePath, "\", "/")
-        LLMTranslateWebView.Navigate(pageUrl)
         return true
     } catch as webViewError {
         DebugLog("translate webview failed: " . webViewError.Message)
-        LLMTranslatePageReady := false
-        LLMTranslateWebView := 0
-        LLMTranslateController := 0
-        LLMTranslateGui.Hide()
+        PanelHostHide(LLMTranslateHost)
+        LLMTranslateSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
+LLMTranslateSyncHost() {
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslateController, LLMTranslateWebView, LLMTranslatePageReady
+    if !IsObject(LLMTranslateHost) {
+        LLMTranslateGui := 0
+        LLMTranslateController := 0
+        LLMTranslateWebView := 0
+        LLMTranslatePageReady := false
+        return
+    }
+    LLMTranslateGui := LLMTranslateHost["gui"]
+    LLMTranslateController := LLMTranslateHost["controller"]
+    LLMTranslateWebView := LLMTranslateHost["webView"]
+    LLMTranslatePageReady := LLMTranslateHost["pageReady"]
+}
+
 LLMTranslateNavigationCompleted(sender, args) {
-    global LLMTranslatePageReady, LLMTranslatePendingText, LLMTranslateVisible
+    global LLMTranslateHost, LLMTranslatePageReady, LLMTranslatePendingText, LLMTranslateVisible
     try success := args.IsSuccess
     catch
         success := false
     LLMTranslatePageReady := success
+    if IsObject(LLMTranslateHost)
+        LLMTranslateHost["pageReady"] := success
     if !success {
         LLMTranslateSetError("WebView2 could not load the translation panel.")
         return
@@ -196,56 +205,32 @@ LLMTranslateOpenDictionary(text) {
 }
 
 LLMTranslateSetSource(text, startRequest := false) {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
     script := "window.setSource(" . LLMJsonQuote(text) . ");"
     if startRequest
         script .= "window.startTranslate();"
-    try LLMTranslateWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    LLMTranslateExec(script)
 }
 
 LLMTranslateSetLoading() {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync("window.setLoading(true);")
-    catch
-        return
+    LLMTranslateExec("window.setLoading(true);")
 }
 
 LLMTranslateSetResult(text) {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync(
-        "window.setResult(" . LLMJsonQuote(text) . ");window.setLoading(false);"
-    )
-    catch
-        return
+    LLMTranslateExec("window.setResult(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
 LLMTranslateSetError(text) {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync(
-        "window.setError(" . LLMJsonQuote(text) . ");window.setLoading(false);"
-    )
-    catch
-        return
+    LLMTranslateExec("window.setError(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
 LLMTranslatePushLanguage() {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
     payload := Map("uiLanguage", LLMUiLanguage())
-    try LLMTranslateWebView.ExecuteScriptAsync("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
+    LLMTranslateExec("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
+}
+
+LLMTranslateExec(script) {
+    global LLMTranslateHost
+    PanelHostExecute(LLMTranslateHost, script)
 }
 
 ; The WebView2 pages post their payloads as JSON.stringify'd text, so a full
@@ -307,22 +292,13 @@ LLMTranslateStartRequest(*) {
 }
 
 LLMTranslateStartStreaming() {
-    global LLMTranslateWebView, LLMTranslatePageReady
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync("window.startStreaming();")
-    catch
-        return
+    LLMTranslateExec("window.startStreaming();")
 }
 
 LLMTranslateStreamDelta(delta) {
-    global LLMTranslateStreamAnswer, LLMTranslateWebView, LLMTranslatePageReady
+    global LLMTranslateStreamAnswer
     LLMTranslateStreamAnswer .= delta
-    if !LLMTranslatePageReady || !IsObject(LLMTranslateWebView)
-        return
-    try LLMTranslateWebView.ExecuteScriptAsync("window.appendStreaming(" . LLMJsonQuote(delta) . ");")
-    catch
-        return
+    LLMTranslateExec("window.appendStreaming(" . LLMJsonQuote(delta) . ");")
 }
 
 LLMTranslateStreamFinished(answer, success, errorText) {
@@ -398,15 +374,14 @@ TranslateProviderLlmTest(msg, &ok, &text) {
 }
 
 LLMTranslateResize(targetGui, minMax, width, height) {
-    global LLMTranslateController
-    if minMax != -1 && IsObject(LLMTranslateController)
-        try LLMTranslateController.Fill()
+    global LLMTranslateHost
+    PanelHostResize(LLMTranslateHost, minMax)
 }
 
 LLMTranslateFocusMonitor(*) {
-    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer, SettingsVisible
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer, SettingsVisible
     if !LLMTranslateVisible || !IsObject(LLMTranslateGui) {
-        SetTimer(LLMTranslateFocusMonitor, 0)
+        PanelHostStopFocusMonitor(LLMTranslateHost)
         LLMTranslateFocusTimer := false
         return
     }
@@ -418,7 +393,7 @@ LLMTranslateFocusMonitor(*) {
 }
 
 LLMTranslateHide(*) {
-    global LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer
     global LLMTranslateStreamId, LLMTranslateRequestRunning
     if LLMTranslateStreamId {
         LLMAbortChatStream(LLMTranslateStreamId)
@@ -426,15 +401,14 @@ LLMTranslateHide(*) {
     }
     LLMTranslateRequestRunning := false
     LLMTranslateVisible := false
-    if IsObject(LLMTranslateGui)
-        LLMTranslateGui.Hide()
-    SetTimer(LLMTranslateFocusMonitor, 0)
+    PanelHostHide(LLMTranslateHost)
+    PanelHostStopFocusMonitor(LLMTranslateHost)
     LLMTranslateFocusTimer := false
 }
 
 LLMTranslateShutdown(*) {
-    global LLMTranslateGui, LLMTranslateController, LLMTranslateWebView
-    global LLMTranslateVisible, LLMTranslatePageReady
+    global LLMTranslateHost, LLMTranslateGui, LLMTranslateController, LLMTranslateWebView
+    global LLMTranslateVisible, LLMTranslatePageReady, LLMTranslateFocusTimer
     global LLMTranslateStreamId
     if LLMTranslateStreamId {
         LLMAbortChatStream(LLMTranslateStreamId)
@@ -442,13 +416,12 @@ LLMTranslateShutdown(*) {
     }
     LLMTranslateVisible := false
     LLMTranslatePageReady := false
-    SetTimer(LLMTranslateFocusMonitor, 0)
-    try LLMTranslateWebView := 0
-    try LLMTranslateController := 0
-    if IsObject(LLMTranslateGui) {
-        try LLMTranslateGui.Destroy()
-        LLMTranslateGui := 0
-    }
+    PanelHostDestroy(LLMTranslateHost)
+    LLMTranslateHost := 0
+    LLMTranslateWebView := 0
+    LLMTranslateController := 0
+    LLMTranslateGui := 0
+    LLMTranslateFocusTimer := false
 }
 
 LLMTranslateOnSettingsSaved() {

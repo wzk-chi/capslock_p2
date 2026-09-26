@@ -3,6 +3,7 @@
 ; The panel is hosted by WebView2 (qbar.html); AHK owns the item index, the
 ; filtering rules and the execution rules, the page only renders and reports keys.
 
+global QbarHost := 0
 global QbarGui := 0
 global QbarController := 0
 global QbarWebView := 0
@@ -60,7 +61,7 @@ QbarToggle(*) {
 }
 
 QbarShow() {
-    global QbarGui, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarEsHintShown
+    global QbarHost, QbarGui, QbarVisible, QbarOpen, QbarFocusTimer, QbarPendingText, QbarCurrentRows, QbarEsHintShown
     if QbarOpen
         return
 
@@ -86,8 +87,9 @@ QbarShow() {
     ; centred and then snap to the lower right.
     QbarCurrentRows := 0
     QbarPlace(QbarRestingX(), QbarRestingY(), FixDpi(QbarWidth), QbarCollapsedHeight())
+    QbarHost["visible"] := true
     WinActivate("ahk_id " . QbarGui.Hwnd)
-    SetTimer(QbarFocusMonitor, 100)
+    QbarFocusTimer := PanelHostStartFocusMonitor(QbarHost, QbarFocusMonitor)
 
     if QbarPageReady {
         ; The page keeps its state across hide/show while the window starts
@@ -100,7 +102,7 @@ QbarShow() {
 }
 
 QbarHide(*) {
-    global QbarGui, QbarVisible, QbarOpen, QbarFocusTimer, QbarFolderDir, QbarFolderItems, QbarFutureStack
+    global QbarHost, QbarGui, QbarVisible, QbarOpen, QbarFocusTimer, QbarFolderDir, QbarFolderItems, QbarFutureStack
     global QbarEsMode, QbarEsLastResults, QbarEsSeq, QbarIndexLoading, QbarQuerySeq
     QbarVisible := false
     QbarOpen := false
@@ -114,73 +116,76 @@ QbarHide(*) {
     SetTimer(QbarEsFlush, 0)
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
-    if IsObject(QbarGui)
-        QbarGui.Hide()
-    SetTimer(QbarFocusMonitor, 0)
+    PanelHostHide(QbarHost)
+    PanelHostStopFocusMonitor(QbarHost)
     QbarFocusTimer := false
 }
 
 QbarEnsureWebView() {
-    global QbarGui, QbarController, QbarWebView, QbarPageReady
-    if IsObject(QbarGui) && IsObject(QbarWebView)
-        return true
-
+    global QbarHost, QbarGui, QbarController, QbarWebView, QbarPageReady
     pagePath := A_ScriptDir . "\pages\qbar.html"
-    loaderPath := A_ScriptDir . "\WebView2\" . (A_PtrSize = 8 ? "64bit" : "32bit") . "\WebView2Loader.dll"
-    if !FileExist(pagePath) {
-        ShowMsg("pages\qbar.html is missing.", 3500)
-        return false
-    }
-    if !FileExist(loaderPath) {
-        ShowMsg("WebView2Loader.dll is missing: " . loaderPath, 5000)
-        return false
+    if IsObject(QbarHost) {
+        try {
+            PanelHostEnsure(QbarHost)
+            QbarSyncHost()
+            return true
+        } catch as existingError {
+            PanelHostHide(QbarHost)
+            DebugLog("qbar webview failed: " . existingError.Message)
+            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            return false
+        }
     }
 
-    if !IsObject(QbarGui) {
-        QbarGui := Gui("+AlwaysOnTop +ToolWindow -Caption", "qbar")
-        QbarGui.MarginX := 0
-        QbarGui.MarginY := 0
-        QbarGui.OnEvent("Close", QbarHide)
-        QbarGui.OnEvent("Escape", QbarHide)
-    }
-    ; The controller needs a realised, laid-out window before it is created
-    ; (the working LLM panel shows its Gui first too). Keep it off every desktop
-    ; so the one-time setup through WebView2 never flashes on screen.
-    QbarGui.Show("x" . QbarOffscreen . " y" . QbarOffscreen
-        . " w" . FixDpi(QbarWidth) . " h" . QbarCollapsedHeight() . " NA")
+    QbarHost := PanelHostCreate(pagePath, "qbar", Map(
+        "guiOptions", "+AlwaysOnTop +ToolWindow -Caption",
+        "dataPath", A_Temp . "\CapsLockPlusQbarWebView2",
+        "initialShow", "x" . QbarOffscreen . " y" . QbarOffscreen
+            . " w" . FixDpi(QbarWidth) . " h" . QbarCollapsedHeight() . " NA",
+        "callbacks", Map(
+            "close", QbarHide,
+            "escape", QbarHide,
+            "navigation", QbarNavigationCompleted,
+            "message", QbarWebMessageReceived)))
+    QbarSyncHost()
 
     try {
-        dataPath := A_Temp . "\CapsLockPlusQbarWebView2"
-        QbarController := WebView2.CreateControllerAsync(
-            QbarGui.Hwnd, 0, dataPath, "", loaderPath
-        ).await2(15000)
-        QbarController.Fill()
-        QbarWebView := QbarController.CoreWebView2
-        QbarWebView.add_NavigationCompleted(QbarNavigationCompleted)
-        QbarWebView.add_WebMessageReceived(QbarWebMessageReceived)
-        QbarPageReady := false
-        pageUrl := "file:///" . StrReplace(pagePath, "\", "/")
-        DebugLog("Qbar WebView2 ready, navigating to " . pageUrl)
-        QbarWebView.Navigate(pageUrl)
+        PanelHostEnsure(QbarHost)
+        QbarSyncHost()
+        DebugLog("Qbar WebView2 ready")
         return true
     } catch as webViewError {
-        QbarPageReady := false
-        QbarWebView := 0
-        QbarController := 0
-        if IsObject(QbarGui)
-            QbarGui.Hide()
+        PanelHostHide(QbarHost)
+        QbarSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
+QbarSyncHost() {
+    global QbarHost, QbarGui, QbarController, QbarWebView, QbarPageReady
+    if !IsObject(QbarHost) {
+        QbarGui := 0
+        QbarController := 0
+        QbarWebView := 0
+        QbarPageReady := false
+        return
+    }
+    QbarGui := QbarHost["gui"]
+    QbarController := QbarHost["controller"]
+    QbarWebView := QbarHost["webView"]
+    QbarPageReady := QbarHost["pageReady"]
+}
+
 QbarNavigationCompleted(sender, args) {
-    global QbarPageReady, QbarVisible, QbarPendingText
+    global QbarHost, QbarPageReady, QbarVisible, QbarPendingText
     try success := args.IsSuccess
     catch
         success := false
     DebugLog("Qbar navigation completed success=" . success)
     QbarPageReady := success
+    if IsObject(QbarHost)
+        QbarHost["pageReady"] := success
     if !success {
         try ShowMsg("Qbar page failed to load (" . args.WebErrorStatus . ").", 4000)
         return
@@ -192,9 +197,9 @@ QbarNavigationCompleted(sender, args) {
 }
 
 QbarFocusMonitor(*) {
-    global QbarGui, QbarVisible, QbarFocusTimer
+    global QbarHost, QbarGui, QbarVisible, QbarFocusTimer
     if !QbarVisible || !IsObject(QbarGui) {
-        SetTimer(QbarFocusMonitor, 0)
+        PanelHostStopFocusMonitor(QbarHost)
         QbarFocusTimer := false
         return
     }
@@ -203,14 +208,14 @@ QbarFocusMonitor(*) {
 }
 
 QbarShutdown(*) {
-    global QbarGui, QbarController, QbarWebView, QbarVisible, QbarOpen, QbarPageReady
+    global QbarHost, QbarGui, QbarController, QbarWebView, QbarVisible, QbarOpen, QbarPageReady, QbarFocusTimer
     global QbarIndexReady, QbarIndexLoading
     global QbarEsBundledStarted
     QbarVisible := false
     QbarOpen := false
     QbarPageReady := false
     QbarIndexReady := false
-    SetTimer(QbarFocusMonitor, 0)
+    PanelHostStopFocusMonitor(QbarHost)
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
     ; Stop only the bundled instance this script brought up; the user's own
@@ -222,13 +227,13 @@ QbarShutdown(*) {
         if everythingExe != ""
             try Run(Chr(34) . everythingExe . Chr(34) . " -instance " . QbarEsInstanceName() . " -exit")
     }
-    try QbarWebView := 0
-    try QbarController := 0
+    PanelHostDestroy(QbarHost)
+    QbarHost := 0
+    QbarWebView := 0
+    QbarController := 0
+    QbarGui := 0
+    QbarFocusTimer := false
     try IconGdiplusStop()
-    if IsObject(QbarGui) {
-        try QbarGui.Destroy()
-        QbarGui := 0
-    }
 }
 
 ; ---------------------------------------------------------------------------
@@ -330,22 +335,18 @@ QbarFinishIndexLoad() {
 }
 
 QbarExec(script) {
-    global QbarWebView, QbarPageReady
-    if !QbarPageReady || !IsObject(QbarWebView)
-        return
-    try QbarWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    global QbarHost
+    PanelHostExecute(QbarHost, script)
 }
 
 ; Re-assert the controller's size and visibility. The bounds come from the
 ; parent's client rect, which can be stale if the window was resized before the
 ; page finished loading.
 QbarRefit() {
-    global QbarController
-    if !IsObject(QbarController)
+    global QbarHost, QbarController
+    if !IsObject(QbarHost)
         return
-    try QbarController.Fill()
+    PanelHostFill(QbarHost)
     try QbarController.IsVisible := true
 }
 
@@ -354,7 +355,7 @@ QbarRefit() {
 ; ---------------------------------------------------------------------------
 
 QbarResize(rows) {
-    global QbarGui, QbarController, QbarCurrentRows, QbarInputHeight, QbarRowHeight, QbarPadding, QbarGap
+    global QbarHost, QbarGui, QbarController, QbarCurrentRows, QbarInputHeight, QbarRowHeight, QbarPadding, QbarGap
     rows := Max(0, Min(QbarMaxRows, rows + 0))
     if rows = QbarCurrentRows
         return
@@ -367,8 +368,7 @@ QbarResize(rows) {
     ; drifting. Reading the position back instead only invites it.
     QbarPlace(QbarRestingX(), QbarRestingY(), FixDpi(QbarWidth), height)
     DebugLog("Qbar resize rows=" . rows . " height=" . height)
-    if IsObject(QbarController)
-        try QbarController.Fill()
+    PanelHostFill(QbarHost)
 }
 
 ; The single place geometry is ever applied. Show carries the full rectangle
@@ -722,7 +722,7 @@ QbarSendResults(results, folderMode, placeholder := "") {
         rows.Push(row)
     }
     ; Icons go first so the rows that reference them render with them in
-    ; place; ExecuteScriptAsync runs submitted scripts in order.
+    ; place; PanelHostExecute runs submitted scripts in order.
     if icons.Count
         QbarExec("window.addIcons(" . JSON.stringify(icons, 0) . ");")
     QbarExec("window.setResults(" . JSON.stringify(rows, 0) . "," . (folderMode ? "true" : "false")

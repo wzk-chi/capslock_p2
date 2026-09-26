@@ -5,6 +5,7 @@
 ; the conversation history is owned by this side, the page only renders what is
 ; echoed back, and each request sends the system prompt plus recent turns.
 
+global AiChatHost := 0
 global AiChatGui := 0
 global AiChatController := 0
 global AiChatWebView := 0
@@ -117,7 +118,7 @@ LLMAiBuildMessages(history, overrides := 0) {
 ; ---- panel ------------------------------------------------------------------
 
 AiChatShow(question) {
-    global AiChatGui, AiChatVisible, AiChatPageReady, AiChatFocusTimer
+    global AiChatHost, AiChatGui, AiChatVisible, AiChatPageReady, AiChatFocusTimer
     global AiChatPendingQuestion, AiChatSeenActive
     question := Trim(question)
     if question != ""
@@ -129,12 +130,12 @@ AiChatShow(question) {
         return
     }
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
-    AiChatGui.Show("w" . aiChatSize[1] . " h" . aiChatSize[2] . " Center")
+    PanelHostShow(AiChatHost, aiChatSize[1], aiChatSize[2], true)
+    AiChatSyncHost()
     AiChatSeenActive := false
     WinActivate("ahk_id " . AiChatGui.Hwnd)
     ShowSystemCursor()
-    SetTimer(AiChatFocusMonitor, 100)
-    AiChatFocusTimer := true
+    AiChatFocusTimer := PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
 
     if AiChatPageReady
         AiChatAfterReady()
@@ -156,63 +157,70 @@ AiChatAfterReady() {
 }
 
 AiChatEnsureWebView() {
-    global AiChatGui, AiChatController, AiChatWebView, AiChatPageReady
-    if IsObject(AiChatGui) && IsObject(AiChatWebView)
-        return true
-
+    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatPageReady
     pagePath := A_ScriptDir . "\pages\chat.html"
-    loaderPath := A_ScriptDir . "\WebView2\" . (A_PtrSize = 8 ? "64bit" : "32bit") . "\WebView2Loader.dll"
-    if !FileExist(pagePath) {
-        ShowMsg("pages\chat.html is missing.", 3500)
-        return false
-    }
-    if !FileExist(loaderPath) {
-        ShowMsg("WebView2Loader.dll is missing: " . loaderPath, 5000)
-        return false
+    if IsObject(AiChatHost) {
+        try {
+            PanelHostEnsure(AiChatHost)
+            AiChatSyncHost()
+            return true
+        } catch as existingError {
+            PanelHostHide(AiChatHost)
+            DebugLog("AI chat webview failed: " . existingError.Message)
+            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            return false
+        }
     }
 
-    if !IsObject(AiChatGui) {
-        AiChatGui := Gui("+AlwaysOnTop +Resize +MinSize520x400 +ToolWindow", "capslock_p2 AI")
-        AiChatGui.MarginX := 0
-        AiChatGui.MarginY := 0
-        AiChatGui.OnEvent("Close", AiChatHide)
-        AiChatGui.OnEvent("Escape", AiChatHide)
-        AiChatGui.OnEvent("Size", AiChatResize)
-        aiChatSize := ScreenFitSize(720, 560, 520, 400)
-    AiChatGui.Show("w" . aiChatSize[1] . " h" . aiChatSize[2] . " Center")
-    }
+    aiChatSize := ScreenFitSize(720, 560, 520, 400)
+    AiChatHost := PanelHostCreate(pagePath, "capslock_p2 AI", Map(
+        "guiOptions", "+AlwaysOnTop +Resize +MinSize520x400 +ToolWindow",
+        "dataPath", A_Temp . "\CapsLockPlusAiChatWebView2",
+        "initialShow", "x-32000 y-32000 w" . aiChatSize[1] . " h" . aiChatSize[2] . " NA",
+        "callbacks", Map(
+            "close", AiChatHide,
+            "escape", AiChatHide,
+            "resize", AiChatResize,
+            "navigation", AiChatNavigationCompleted,
+            "message", AiChatWebMessageReceived)))
+    AiChatSyncHost()
 
     try {
-        ; A dedicated user data folder keeps this panel's browser process
-        ; separate from the translator's, mirroring qbar's isolation.
-        dataPath := A_Temp . "\CapsLockPlusAiChatWebView2"
-        AiChatController := WebView2.CreateControllerAsync(
-            AiChatGui.Hwnd, 0, dataPath, "", loaderPath
-        ).await2(15000)
-        AiChatController.Fill()
-        AiChatWebView := AiChatController.CoreWebView2
-        AiChatWebView.add_NavigationCompleted(AiChatNavigationCompleted)
-        AiChatWebView.add_WebMessageReceived(AiChatWebMessageReceived)
-        AiChatPageReady := false
-        pageUrl := "file:///" . StrReplace(pagePath, "\", "/")
-        AiChatWebView.Navigate(pageUrl)
+        PanelHostEnsure(AiChatHost)
+        AiChatSyncHost()
         return true
     } catch as webViewError {
-        AiChatPageReady := false
-        AiChatWebView := 0
-        AiChatController := 0
-        AiChatGui.Hide()
+        DebugLog("AI chat webview failed: " . webViewError.Message)
+        PanelHostHide(AiChatHost)
+        AiChatSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
+AiChatSyncHost() {
+    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatPageReady
+    if !IsObject(AiChatHost) {
+        AiChatGui := 0
+        AiChatController := 0
+        AiChatWebView := 0
+        AiChatPageReady := false
+        return
+    }
+    AiChatGui := AiChatHost["gui"]
+    AiChatController := AiChatHost["controller"]
+    AiChatWebView := AiChatHost["webView"]
+    AiChatPageReady := AiChatHost["pageReady"]
+}
+
 AiChatNavigationCompleted(sender, args) {
-    global AiChatPageReady, AiChatVisible
+    global AiChatHost, AiChatPageReady, AiChatVisible
     try success := args.IsSuccess
     catch
         success := false
     AiChatPageReady := success
+    if IsObject(AiChatHost)
+        AiChatHost["pageReady"] := success
     if !success {
         AiChatExec("window.setError(" . LLMJsonQuote(LLMText(
             "WebView2 could not load the AI panel.",
@@ -308,22 +316,13 @@ AiChatStreamFinished(answer, success, errorText) {
 }
 
 AiChatExec(script) {
-    global AiChatWebView, AiChatPageReady
-    if !AiChatPageReady || !IsObject(AiChatWebView)
-        return
-    try AiChatWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    global AiChatHost
+    PanelHostExecute(AiChatHost, script)
 }
 
 AiChatPushLanguage() {
-    global AiChatWebView, AiChatPageReady
-    if !AiChatPageReady || !IsObject(AiChatWebView)
-        return
     payload := Map("uiLanguage", LLMUiLanguage())
-    try AiChatWebView.ExecuteScriptAsync("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
+    AiChatExec("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
 }
 
 AiChatOnSettingsSaved() {
@@ -336,15 +335,14 @@ AiChatOnSettingsSaved() {
 }
 
 AiChatResize(targetGui, minMax, width, height) {
-    global AiChatController
-    if minMax != -1 && IsObject(AiChatController)
-        try AiChatController.Fill()
+    global AiChatHost
+    PanelHostResize(AiChatHost, minMax)
 }
 
 AiChatFocusMonitor(*) {
-    global AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSeenActive, SettingsVisible
+    global AiChatHost, AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSeenActive, SettingsVisible
     if !AiChatVisible || !IsObject(AiChatGui) {
-        SetTimer(AiChatFocusMonitor, 0)
+        PanelHostStopFocusMonitor(AiChatHost)
         AiChatFocusTimer := false
         return
     }
@@ -362,7 +360,7 @@ AiChatFocusMonitor(*) {
 }
 
 AiChatHide(*) {
-    global AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatPageReady
+    global AiChatHost, AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatPageReady
     global AiChatStreamId, AiChatRequestRunning, AiChatHistory
     if AiChatStreamId {
         LLMAbortChatStream(AiChatStreamId)
@@ -372,14 +370,13 @@ AiChatHide(*) {
     }
     AiChatRequestRunning := false
     AiChatVisible := false
-    SetTimer(AiChatFocusMonitor, 0)
+    PanelHostHide(AiChatHost)
+    PanelHostStopFocusMonitor(AiChatHost)
     AiChatFocusTimer := false
-    if IsObject(AiChatGui)
-        try AiChatGui.Hide()
 }
 
 AiChatShutdown(*) {
-    global AiChatGui, AiChatController, AiChatWebView, AiChatVisible, AiChatPageReady
+    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatVisible, AiChatPageReady, AiChatFocusTimer
     global AiChatStreamId
     if AiChatStreamId {
         LLMAbortChatStream(AiChatStreamId)
@@ -387,10 +384,10 @@ AiChatShutdown(*) {
     }
     AiChatVisible := false
     AiChatPageReady := false
-    try AiChatWebView := 0
-    try AiChatController := 0
-    if IsObject(AiChatGui) {
-        try AiChatGui.Destroy()
-        AiChatGui := 0
-    }
+    PanelHostDestroy(AiChatHost)
+    AiChatHost := 0
+    AiChatWebView := 0
+    AiChatController := 0
+    AiChatGui := 0
+    AiChatFocusTimer := false
 }

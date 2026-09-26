@@ -17,6 +17,7 @@ A_HotkeyInterval := 2000
 #Include lib\core.ahk
 #Include lib\windows.ahk
 #Include lib\WebView2.ahk
+#Include lib\panelHost.ahk
 #Include lib\JSON.ahk
 #Include lib\crypto.ahk
 #Include lib\CSQLite.ahk

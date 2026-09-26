@@ -4,6 +4,7 @@
 ; consults it first: a selection that is one known English word opens this
 ; card, anything else keeps going to the translate panel.
 
+global DictionaryHost := 0
 global DictionaryGui := 0
 global DictionaryController := 0
 global DictionaryWebView := 0
@@ -93,7 +94,7 @@ DictionaryTryShow(text) {
 }
 
 DictionaryShow(entry := 0, query := "") {
-    global DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
+    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := true
     DictionaryPendingEntry := entry
@@ -105,12 +106,12 @@ DictionaryShow(entry := 0, query := "") {
         return
     }
     dictionarySize := ScreenFitSize(640, 640, 460, 380)
-    DictionaryGui.Show("w" . dictionarySize[1] . " h" . dictionarySize[2] . " Center")
+    PanelHostShow(DictionaryHost, dictionarySize[1], dictionarySize[2], true)
+    DictionarySyncHost()
     DictionaryRemoveFrameBorder(DictionaryGui.Hwnd)
     WinActivate("ahk_id " . DictionaryGui.Hwnd)
     ShowSystemCursor()
-    SetTimer(DictionaryFocusMonitor, 100)
-    DictionaryFocusTimer := true
+    DictionaryFocusTimer := PanelHostStartFocusMonitor(DictionaryHost, DictionaryFocusMonitor)
 
     if DictionaryPageReady {
         if IsObject(entry)
@@ -127,72 +128,76 @@ DictionaryShowQuery(text) {
 }
 
 DictionaryEnsureWebView() {
-    global DictionaryGui, DictionaryController, DictionaryWebView
+    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView
     global DictionaryPageReady
-    if IsObject(DictionaryGui) && IsObject(DictionaryWebView)
-        return true
-
     pagePath := A_ScriptDir . "\pages\dictionary.html"
-    loaderPath := A_ScriptDir . "\WebView2\" . (A_PtrSize = 8 ? "64bit" : "32bit") . "\WebView2Loader.dll"
-    if !FileExist(pagePath) {
-        ShowMsg("pages\dictionary.html is missing.", 3500)
-        return false
-    }
-    if !FileExist(loaderPath) {
-        ShowMsg("WebView2Loader.dll is missing: " . loaderPath, 5000)
-        return false
+    if IsObject(DictionaryHost) {
+        try {
+            PanelHostEnsure(DictionaryHost)
+            DictionarySyncHost()
+            return true
+        } catch as existingError {
+            PanelHostHide(DictionaryHost)
+            DebugLog("dictionary webview failed: " . existingError.Message)
+            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            return false
+        }
     }
 
-    if !IsObject(DictionaryGui) {
-        ; Captionless window: the page's topbar drags it via the "drag"
-        ; message, the page's own close button (or Esc / focus loss) hides it.
-        DictionaryGui := Gui("+AlwaysOnTop -Caption +Resize +MinSize460x380 +ToolWindow", "capslock_p2 词典")
-        DictionaryGui.MarginX := 0
-        DictionaryGui.MarginY := 0
-        ; Match the page background so the first paint never flashes white.
-        DictionaryGui.BackColor := DictionaryIsDarkTheme() ? "1F2127" : "FBF9F3"
-        DictionaryGui.OnEvent("Close", DictionaryHide)
-        DictionaryGui.OnEvent("Escape", DictionaryHide)
-        DictionaryGui.OnEvent("Size", DictionaryResize)
-        dictionarySize := ScreenFitSize(640, 640, 460, 380)
-    DictionaryGui.Show("w" . dictionarySize[1] . " h" . dictionarySize[2] . " Center")
-    }
+    dictionarySize := ScreenFitSize(640, 640, 460, 380)
+    DictionaryHost := PanelHostCreate(pagePath, "capslock_p2 词典", Map(
+        "guiOptions", "+AlwaysOnTop -Caption +Resize +MinSize460x380 +ToolWindow",
+        "dataPath", A_Temp . "\CapsLockPlusDictionaryWebView2",
+        "initialShow", "x-32000 y-32000 w" . dictionarySize[1] . " h" . dictionarySize[2] . " NA",
+        "callbacks", Map(
+            "close", DictionaryHide,
+            "escape", DictionaryHide,
+            "resize", DictionaryResize,
+            "navigation", DictionaryNavigationCompleted,
+            "message", DictionaryWebMessageReceived,
+            "backColor", DictionaryIsDarkTheme() ? "1F2127" : "FBF9F3"),
+        "controllerBackColor", DictionaryIsDarkTheme() ? 0x27211FFF : 0xF3F9FBFF))
+    DictionarySyncHost()
 
     try {
-        dataPath := A_Temp . "\CapsLockPlusDictionaryWebView2"
         startTick := A_TickCount
         DebugLog("Dictionary webview creating")
-        DictionaryController := WebView2.CreateControllerAsync(
-            DictionaryGui.Hwnd, 0, dataPath, "", loaderPath
-        ).await2(15000)
+        PanelHostEnsure(DictionaryHost)
+        DictionarySyncHost()
         DebugLog("Dictionary webview ready in " . (A_TickCount - startTick) . " ms")
-        DictionaryController.Fill()
-        ; Blend any fractional-pixel gap at the window edges into the page.
-        DictionaryController.DefaultBackgroundColor := DictionaryIsDarkTheme() ? 0x27211FFF : 0xF3F9FBFF
-        DictionaryWebView := DictionaryController.CoreWebView2
-        DictionaryWebView.add_NavigationCompleted(DictionaryNavigationCompleted)
-        DictionaryWebView.add_WebMessageReceived(DictionaryWebMessageReceived)
-        DictionaryPageReady := false
-        pageUrl := "file:///" . StrReplace(pagePath, "\", "/")
-        DictionaryWebView.Navigate(pageUrl)
         return true
     } catch as webViewError {
         DebugLog("Dictionary webview failed: " . webViewError.Message)
-        DictionaryPageReady := false
-        DictionaryWebView := 0
-        DictionaryController := 0
-        DictionaryGui.Hide()
+        PanelHostHide(DictionaryHost)
+        DictionarySyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
+DictionarySyncHost() {
+    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView, DictionaryPageReady
+    if !IsObject(DictionaryHost) {
+        DictionaryGui := 0
+        DictionaryController := 0
+        DictionaryWebView := 0
+        DictionaryPageReady := false
+        return
+    }
+    DictionaryGui := DictionaryHost["gui"]
+    DictionaryController := DictionaryHost["controller"]
+    DictionaryWebView := DictionaryHost["webView"]
+    DictionaryPageReady := DictionaryHost["pageReady"]
+}
+
 DictionaryNavigationCompleted(sender, args) {
-    global DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryVisible
+    global DictionaryHost, DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryVisible
     try success := args.IsSuccess
     catch
         success := false
     DictionaryPageReady := success
+    if IsObject(DictionaryHost)
+        DictionaryHost["pageReady"] := success
     if !success {
         ShowMsg("The dictionary page could not be loaded.", 3500)
         return
@@ -244,40 +249,34 @@ DictionaryWebMessageReceived(sender, args) {
 ; Ship the whole row to the page as JSON; every field is a string so the page
 ; decides how to render numbers and empty values.
 DictionaryPushEntry(entry) {
-    global DictionaryWebView, DictionaryPageReady
-    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+    global DictionaryHost
+    if !IsObject(DictionaryHost)
         return
     payload := Map()
     for key, value in entry
         payload[key] := String(value)
     payload["uiLanguage"] := LLMUiLanguage()
-    try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
+    PanelHostExecute(DictionaryHost, "window.setEntry(" . JSON.stringify(payload, 0) . ");")
 }
 
 DictionaryPushMiss(word) {
-    global DictionaryWebView, DictionaryPageReady
-    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+    global DictionaryHost
+    if !IsObject(DictionaryHost)
         return
     payload := Map("word", word, "miss", JSON.true, "uiLanguage", LLMUiLanguage())
-    try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
+    PanelHostExecute(DictionaryHost, "window.setEntry(" . JSON.stringify(payload, 0) . ");")
 }
 
 DictionaryPushQuery(text) {
-    global DictionaryWebView, DictionaryPageReady
-    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+    global DictionaryHost
+    if !IsObject(DictionaryHost)
         return
     text := Trim(text)
     if text = ""
         return
     autoLookup := DictionaryNormalizeWord(text) != ""
     script := "window.setQuery(" . LLMJsonQuote(text) . "," . (autoLookup ? "true" : "false") . ");"
-    try DictionaryWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    PanelHostExecute(DictionaryHost, script)
 }
 
 DictionaryOpenTranslate(text) {
@@ -287,28 +286,22 @@ DictionaryOpenTranslate(text) {
 
 ; Open the dictionary page without carrying over the previous lookup result.
 DictionaryClearPage() {
-    global DictionaryWebView, DictionaryPageReady
-    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+    global DictionaryHost
+    if !IsObject(DictionaryHost)
         return
-    try {
-        DictionaryWebView.ExecuteScriptAsync("window.clearEntry();")
+    if PanelHostExecute(DictionaryHost, "window.clearEntry();")
         SetTimer(DictionaryFocusSearch, -1)
-    }
-    catch
-        return
 }
 
 ; WinActivate can complete just after the clear script is queued. Move the
 ; controller focus first, then focus the page's search input on the next tick.
 DictionaryFocusSearch(*) {
-    global DictionaryVisible, DictionaryController, DictionaryWebView, DictionaryPageReady
-    if !DictionaryVisible || !DictionaryPageReady
+    global DictionaryHost, DictionaryVisible
+    if !DictionaryVisible || !IsObject(DictionaryHost)
         return
-    if IsObject(DictionaryController)
-        try DictionaryController.MoveFocus(0)
-    if IsObject(DictionaryWebView)
-        try DictionaryWebView.ExecuteScriptAsync(
-            "window.focus();document.getElementById('search').focus({preventScroll:true});")
+    PanelHostMoveFocus(DictionaryHost, 0)
+    PanelHostExecute(DictionaryHost,
+        "window.focus();document.getElementById('search').focus({preventScroll:true});")
 }
 
 ; Word suggestions for the search box, in three tiers: words starting with the
@@ -316,8 +309,8 @@ DictionaryFocusSearch(*) {
 ; the regexp scalar function registered by CSQLite does the matching). Capped
 ; at 12 words, deduplicated across tiers.
 DictionarySendSuggestions(query) {
-    global DictionaryWebView, DictionaryPageReady
-    if !DictionaryPageReady || !IsObject(DictionaryWebView)
+    global DictionaryHost
+    if !IsObject(DictionaryHost)
         return
     words := [], seen := Map()
     db := DictionaryConnect()
@@ -339,9 +332,7 @@ DictionarySendSuggestions(query) {
                 . "%' AND word REGEXP '" . DictionaryFuzzyPattern(word) . "'" . freqOrder,
                 words, seen, 12)
     }
-    try DictionaryWebView.ExecuteScriptAsync("window.setSuggestions(" . JSON.stringify(words, 0) . ");")
-    catch
-        return
+    PanelHostExecute(DictionaryHost, "window.setSuggestions(" . JSON.stringify(words, 0) . ");")
 }
 
 ; Run one suggestion query and merge new words into the capped list.
@@ -386,9 +377,8 @@ DictionarySqlLikeEscape(word) {
 }
 
 DictionaryResize(targetGui, minMax, width, height) {
-    global DictionaryController
-    if minMax != -1 && IsObject(DictionaryController)
-        try DictionaryController.Fill()
+    global DictionaryHost
+    PanelHostResize(DictionaryHost, minMax)
 }
 
 DictionaryIsDarkTheme() {
@@ -406,9 +396,9 @@ DictionaryRemoveFrameBorder(hwnd) {
 }
 
 DictionaryFocusMonitor(*) {
-    global DictionaryGui, DictionaryVisible, DictionaryFocusTimer
+    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryFocusTimer
     if !DictionaryVisible || !IsObject(DictionaryGui) {
-        SetTimer(DictionaryFocusMonitor, 0)
+        PanelHostStopFocusMonitor(DictionaryHost)
         DictionaryFocusTimer := false
         return
     }
@@ -417,30 +407,27 @@ DictionaryFocusMonitor(*) {
 }
 
 DictionaryHide(*) {
-    global DictionaryGui, DictionaryVisible, DictionaryFocusTimer
+    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryFocusTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := false
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""
-    if IsObject(DictionaryGui)
-        DictionaryGui.Hide()
-    SetTimer(DictionaryFocusMonitor, 0)
+    PanelHostHide(DictionaryHost)
+    PanelHostStopFocusMonitor(DictionaryHost)
     DictionaryFocusTimer := false
 }
 
 DictionaryShutdown(*) {
-    global DictionaryGui, DictionaryController, DictionaryWebView
+    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView
     global DictionaryVisible, DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryDB
     DictionaryVisible := false
     DictionaryPageReady := false
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""
-    SetTimer(DictionaryFocusMonitor, 0)
+    PanelHostDestroy(DictionaryHost)
+    DictionaryHost := 0
     try DictionaryDB := 0
-    try DictionaryWebView := 0
-    try DictionaryController := 0
-    if IsObject(DictionaryGui) {
-        try DictionaryGui.Destroy()
-        DictionaryGui := 0
-    }
+    DictionaryWebView := 0
+    DictionaryController := 0
+    DictionaryGui := 0
 }

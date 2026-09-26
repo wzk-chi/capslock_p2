@@ -1,6 +1,7 @@
 ; Standalone settings window shell. The page is intentionally a placeholder for
 ; now; configuration data and save messages will be added in a later pass.
 
+global SettingsHost := 0
 global SettingsGui := 0
 global SettingsController := 0
 global SettingsWebView := 0
@@ -9,7 +10,7 @@ global SettingsVisible := false
 global SettingsPendingPage := "general"
 
 SettingsShow(initialPage := "general", *) {
-    global SettingsGui, SettingsVisible, SettingsPendingPage
+    global SettingsHost, SettingsGui, SettingsVisible, SettingsPendingPage
     allowedPages := Map("general", true, "llm", true, "translate", true, "ai", true,
         "shortcuts", true, "tab", true, "qbar", true, "windows", true)
     initialPage := StrLower(Trim(initialPage))
@@ -20,7 +21,8 @@ SettingsShow(initialPage := "general", *) {
         return
     }
     ; Keep the native window state (including maximize/minimize) between opens.
-    SettingsGui.Show()
+    PanelHostShow(SettingsHost, 0, 0, false)
+    SettingsSyncHost()
     WinActivate("ahk_id " . SettingsGui.Hwnd)
     ShowSystemCursor()
     if SettingsPageReady
@@ -28,65 +30,70 @@ SettingsShow(initialPage := "general", *) {
 }
 
 SettingsEnsureWebView() {
-    global SettingsGui, SettingsController, SettingsWebView, SettingsPageReady
-    if IsObject(SettingsGui) && IsObject(SettingsWebView)
-        return true
-
+    global SettingsHost, SettingsGui, SettingsController, SettingsWebView, SettingsPageReady
     pagePath := A_ScriptDir . "\pages\settings.html"
-    loaderPath := A_ScriptDir . "\WebView2\" . (A_PtrSize = 8 ? "64bit" : "32bit") . "\WebView2Loader.dll"
-    if !FileExist(pagePath) {
-        ShowMsg("pages\settings.html is missing.", 3500)
-        return false
-    }
-    if !FileExist(loaderPath) {
-        ShowMsg("WebView2Loader.dll is missing: " . loaderPath, 5000)
-        return false
+    if IsObject(SettingsHost) {
+        try {
+            PanelHostEnsure(SettingsHost)
+            SettingsSyncHost()
+            return true
+        } catch as existingError {
+            PanelHostHide(SettingsHost)
+            DebugLog("settings webview failed: " . existingError.Message)
+            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            return false
+        }
     }
 
-    if !IsObject(SettingsGui) {
-        SettingsGui := Gui(
-            "+Resize +MinSize720x520 +MinimizeBox +MaximizeBox +SysMenu",
-            "capslock_p2 设置"
-        )
-        SettingsGui.MarginX := 0
-        SettingsGui.MarginY := 0
-        SettingsGui.OnEvent("Close", SettingsHide)
-        SettingsGui.OnEvent("Size", SettingsResize)
-        SettingsGui.BackColor := SettingsIsDarkTheme() ? "20242B" : "F5F7FB"
-        settingsSize := ScreenFitSize(820, 620, 720, 520)
-        SettingsGui.Show("w" . settingsSize[1] . " h" . settingsSize[2] . " Center")
-    }
+    settingsSize := ScreenFitSize(820, 620, 720, 520)
+    SettingsHost := PanelHostCreate(pagePath, "capslock_p2 设置", Map(
+        "guiOptions", "+Resize +MinSize720x520 +MinimizeBox +MaximizeBox +SysMenu",
+        "dataPath", A_Temp . "\CapsLockPlusSettingsWebView2",
+        "initialShow", "w" . settingsSize[1] . " h" . settingsSize[2] . " Center",
+        "callbacks", Map(
+            "close", SettingsHide,
+            "resize", SettingsResize,
+            "navigation", SettingsNavigationCompleted,
+            "message", SettingsWebMessageReceived,
+            "backColor", SettingsIsDarkTheme() ? "20242B" : "F5F7FB")))
+    SettingsSyncHost()
 
     try {
-        dataPath := A_Temp . "\CapsLockPlusSettingsWebView2"
-        SettingsController := WebView2.CreateControllerAsync(
-            SettingsGui.Hwnd, 0, dataPath, "", loaderPath
-        ).await2(15000)
-        SettingsController.Fill()
-        SettingsWebView := SettingsController.CoreWebView2
-        SettingsWebView.add_NavigationCompleted(SettingsNavigationCompleted)
-        SettingsWebView.add_WebMessageReceived(SettingsWebMessageReceived)
-        SettingsPageReady := false
-        pageUrl := "file:///" . StrReplace(pagePath, "\", "/")
-        SettingsWebView.Navigate(pageUrl)
+        PanelHostEnsure(SettingsHost)
+        SettingsSyncHost()
         return true
     } catch as webViewError {
         DebugLog("settings webview failed: " . webViewError.Message)
-        SettingsPageReady := false
-        SettingsWebView := 0
-        SettingsController := 0
-        SettingsGui.Hide()
+        PanelHostHide(SettingsHost)
+        SettingsSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
+SettingsSyncHost() {
+    global SettingsHost, SettingsGui, SettingsController, SettingsWebView, SettingsPageReady
+    if !IsObject(SettingsHost) {
+        SettingsGui := 0
+        SettingsController := 0
+        SettingsWebView := 0
+        SettingsPageReady := false
+        return
+    }
+    SettingsGui := SettingsHost["gui"]
+    SettingsController := SettingsHost["controller"]
+    SettingsWebView := SettingsHost["webView"]
+    SettingsPageReady := SettingsHost["pageReady"]
+}
+
 SettingsNavigationCompleted(sender, args) {
-    global SettingsPageReady, SettingsVisible
+    global SettingsHost, SettingsPageReady, SettingsVisible
     try success := args.IsSuccess
     catch
         success := false
     SettingsPageReady := success
+    if IsObject(SettingsHost)
+        SettingsHost["pageReady"] := success
     if !success
         ShowMsg("The settings page could not be loaded.", 3500)
     else if SettingsVisible
@@ -162,8 +169,8 @@ SettingsBindingSnapshot() {
 }
 
 SettingsPushSnapshot(*) {
-    global SettingsWebView, SettingsPageReady
-    if !SettingsPageReady || !IsObject(SettingsWebView)
+    global SettingsHost
+    if !IsObject(SettingsHost)
         return
     sections := Map()
     for section in SettingsConfigSections()
@@ -174,9 +181,7 @@ SettingsPushSnapshot(*) {
         "sections", sections,
         "keys", SettingsKeySnapshot(),
         "bindings", SettingsBindingSnapshot())
-    try SettingsWebView.ExecuteScriptAsync("window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
-    catch
-        return
+    PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
 }
 
 SettingsAllowedKey(section, key) {
@@ -247,13 +252,9 @@ SettingsApplyDraft(message) {
 }
 
 SettingsSendSaved(ok, text) {
-    global SettingsWebView, SettingsPageReady
-    if !SettingsPageReady || !IsObject(SettingsWebView)
-        return
+    global SettingsHost
     script := "window.settingsSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
-    try SettingsWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    PanelHostExecute(SettingsHost, script)
 }
 
 SettingsRunTest(message) {
@@ -295,13 +296,9 @@ SettingsRunTest(message) {
 }
 
 SettingsSendTestResult(ok, text) {
-    global SettingsWebView, SettingsPageReady
-    if !SettingsPageReady || !IsObject(SettingsWebView)
-        return
+    global SettingsHost
     script := "window.settingsTestResult(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
-    try SettingsWebView.ExecuteScriptAsync(script)
-    catch
-        return
+    PanelHostExecute(SettingsHost, script)
 }
 
 SettingsCaptureWindow(message) {
@@ -325,9 +322,8 @@ SettingsCompleteCapture(bindingNumber, bindType) {
 }
 
 SettingsResize(targetGui, minMax, width, height) {
-    global SettingsController
-    if minMax != -1 && IsObject(SettingsController)
-        try SettingsController.Fill()
+    global SettingsHost
+    PanelHostResize(SettingsHost, minMax)
 }
 
 SettingsIsDarkTheme() {
@@ -341,21 +337,20 @@ SettingsIsDarkTheme() {
 }
 
 SettingsHide(*) {
-    global SettingsGui, SettingsVisible
+    global SettingsHost, SettingsVisible
     SettingsVisible := false
-    if IsObject(SettingsGui)
-        SettingsGui.Hide()
+    PanelHostHide(SettingsHost)
 }
 
 SettingsShutdown(*) {
-    global SettingsGui, SettingsController, SettingsWebView, SettingsPageReady, SettingsVisible, SettingsPendingPage
+    global SettingsHost, SettingsGui, SettingsController, SettingsWebView
+    global SettingsPageReady, SettingsVisible, SettingsPendingPage
     SettingsVisible := false
     SettingsPendingPage := "general"
+    PanelHostDestroy(SettingsHost)
+    SettingsHost := 0
+    SettingsGui := 0
+    SettingsController := 0
+    SettingsWebView := 0
     SettingsPageReady := false
-    try SettingsWebView := 0
-    try SettingsController := 0
-    if IsObject(SettingsGui) {
-        try SettingsGui.Destroy()
-        SettingsGui := 0
-    }
 }
