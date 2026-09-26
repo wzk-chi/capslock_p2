@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 设置</title>
+<style>
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #f8faff;
+  --ink: #20242b;
+  --muted: #7a8496;
+  --line: #e1e6ef;
+  --accent: #356ae6;
+  --accent-soft: #eaf0ff;
+  --danger: #c0392b;
+  --shadow: 0 18px 45px rgba(32, 50, 90, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171a20;
+    --panel: #222730;
+    --panel-2: #292f3a;
+    --ink: #eef1f6;
+    --muted: #aab4c4;
+    --line: #394352;
+    --accent: #8db0f5;
+    --accent-soft: #293b67;
+    --shadow: 0 18px 45px rgba(0, 0, 0, .25);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+.app { height: 100%; display: flex; overflow: hidden; }
+.side {
+  width: 224px; flex: none; padding: 25px 14px 16px;
+  border-right: 1px solid var(--line); background: var(--panel);
+  display: flex; flex-direction: column;
+}
+.brand { padding: 0 12px 24px; }
+.brand strong { color: var(--accent); font-size: 17px; letter-spacing: .2px; }
+.brand span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.nav { display: grid; gap: 4px; }
+.nav button {
+  width: 100%; border: 0; border-radius: 9px; padding: 10px 12px;
+  background: transparent; color: var(--muted); text-align: left; font-size: 13px;
+}
+.nav button:hover { background: var(--panel-2); color: var(--ink); }
+.nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.side-foot { margin-top: auto; padding: 10px 12px 0; color: var(--muted); font-size: 11px; }
+.main { min-width: 0; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.topbar {
+  height: 76px; flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 18px; padding: 0 34px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.title h1 { margin: 0; font-size: 20px; font-weight: 650; }
+.status { margin-top: 5px; min-height: 16px; color: var(--muted); font-size: 12px; }
+.status.error { color: var(--danger); }
+.actions { display: flex; gap: 8px; }
+.btn {
+  border: 0; border-radius: 8px; padding: 8px 15px; background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 650;
+}
+.btn:hover { filter: brightness(1.06); }
+.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.btn.ghost:hover { color: var(--ink); background: var(--panel-2); }
+.content { flex: 1; overflow: auto; padding: 28px 34px 42px; }
+.page { display: none; max-width: 1020px; margin: 0 auto; }
+.page.active { display: block; }
+.page-head { margin-bottom: 18px; }
+.page-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.page-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.cards { display: grid; gap: 14px; }
+.card {
+  padding: 18px 20px; border: 1px solid var(--line); border-radius: 13px;
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.card h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.card-head .btn { padding: 6px 10px; font-size: 11px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.field { min-width: 0; display: grid; gap: 5px; }
+.field.wide { grid-column: 1 / -1; }
+.field label, .field > span { color: var(--muted); font-size: 11px; }
+input, select, textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  outline: none; background: var(--panel); color: var(--ink); font-size: 12px;
+}
+textarea { min-height: 76px; resize: vertical; line-height: 1.45; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.check { display: flex; align-items: center; gap: 8px; min-height: 34px; color: var(--ink); font-size: 12px; }
+.check input { width: 15px; height: 15px; accent-color: var(--accent); }
+.hint { color: var(--muted); font-size: 11px; }
+.pair-list, .shortcut-list, .binding-list { display: grid; gap: 7px; }
+.pair-row, .shortcut-row {
+  display: grid; grid-template-columns: 150px minmax(0, 1fr) 32px; gap: 8px; align-items: center;
+}
+.pair-row textarea { min-height: 38px; }
+.shortcut-row { grid-template-columns: 180px minmax(0, 1fr); }
+.shortcut-label { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shortcut-group { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); overflow: hidden; }
+.shortcut-group summary { display: flex; align-items: center; gap: 8px; padding: 11px 13px; cursor: pointer; list-style: none; user-select: none; color: var(--ink); font-size: 12px; font-weight: 650; }
+.shortcut-group summary::-webkit-details-marker { display: none; }
+.shortcut-group summary::before { content: '›'; color: var(--muted); font-size: 17px; line-height: 1; transition: transform .15s ease; }
+.shortcut-group[open] summary::before { transform: rotate(90deg); }
+.shortcut-group-count { margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 500; }
+.shortcut-group-list { display: grid; gap: 7px; padding: 0 12px 12px; }
+.icon-btn { border: 0; border-radius: 7px; padding: 6px; background: transparent; color: var(--muted); font-size: 16px; }
+.icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.list-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.mini { padding: 6px 10px; font-size: 11px; }
+.filter { margin-bottom: 12px; }
+.binding-card { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.binding-head { display: flex; align-items: center; gap: 8px; }
+.binding-number { min-width: 86px; font-size: 12px; font-weight: 650; }
+.binding-head select { max-width: 160px; padding: 6px 8px; }
+.binding-head .btn { margin-left: auto; padding: 6px 10px; font-size: 11px; }
+.binding-items { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.empty { padding: 24px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; }
+@media (max-width: 820px) {
+  .side { width: 178px; }
+  .topbar { padding: 0 20px; }
+  .content { padding: 22px 20px 32px; }
+  .grid { grid-template-columns: 1fr; }
+  .field.wide { grid-column: auto; }
+  .shortcut-row { grid-template-columns: 135px minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><strong>capslock_p2</strong><span>设置中心</span></div>
+    <nav class="nav" id="nav">
+      <button class="active" data-page="general">通用</button>
+      <button data-page="llm">LLM</button>
+      <button data-page="translate">翻译</button>
+      <button data-page="ai">AI 问答</button>
+      <button data-page="shortcuts">快捷键</button>
+      <button data-page="tab">Tab 替换</button>
+      <button data-page="qbar">qbar</button>
+      <button data-page="windows">窗口绑定</button>
+    </nav>
+    <div class="side-foot">v0.1.1</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="title"><h1 id="pageTitle">通用</h1><div id="status" class="status"></div></div>
+      <div class="actions"><button id="cancelBtn" class="btn ghost">取消</button><button id="saveBtn" class="btn">保存</button></div>
+    </header>
+
+    <div class="content">
+      <section class="page active" data-page-view="general">
+        <div class="page-head"><h2>通用</h2></div>
+        <div class="cards">
+          <div class="card"><div class="grid">
+            <label class="field"><span>界面语言</span><select data-section="Global" data-key="language"><option value="0">跟随系统</option><option value="1">简体中文</option><option value="2">English</option></select></label>
+            <label class="field"><span>鼠标速度</span><input data-section="Global" data-key="mouseSpeed" type="number" min="1" max="20"></label>
+            <label class="field wide"><span>JavaScript 扩展文件</span><input data-section="Global" data-key="loadScript" placeholder="jsExtensions.js"></label>
+            <label class="check"><input data-section="Global" data-key="autostart" type="checkbox"><span>开机启动</span></label>
+            <label class="check"><input data-section="Global" data-key="allowClipboard" type="checkbox"><span>独立剪贴板</span></label>
+            <label class="check"><input data-section="Global" data-key="loadingAnimation" type="checkbox"><span>启动动画</span></label>
+            <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
+            <label class="check"><input data-section="Global" data-key="javascriptOriginalReturn" type="checkbox"><span>优先返回 JS 原始结果</span></label>
+          </div></div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="llm">
+        <div class="page-head"><h2>LLM</h2></div>
+        <div class="cards">
+          <div class="card">
+            <div class="card-head"><h3>共用 LLM</h3><button class="btn" id="testTranslate">测试</button></div>
+            <div class="grid">
+              <label class="field wide"><span>API 地址</span><input data-section="LLM" data-key="endpoint" placeholder="https://.../v1/chat/completions"></label>
+              <label class="field"><span>API Key</span><input data-section="LLM" data-key="apiKey" type="password"></label>
+              <label class="field"><span>模型</span><input data-section="LLM" data-key="model"></label>
+              <label class="field"><span>Header</span><input data-section="LLM" data-key="apiKeyHeader"></label>
+              <label class="field"><span>前缀</span><input data-section="LLM" data-key="apiKeyPrefix"></label>
+              <label class="field"><span>Temperature</span><input data-section="LLM" data-key="temperature"></label>
+              <label class="field"><span>超时（毫秒）</span><input data-section="LLM" data-key="timeout"></label>
+              <label class="field"><span>最大输入 Token</span><input data-section="LLM" data-key="maxInputTokens" type="number" min="1"></label>
+              <label class="check"><input data-section="LLM" data-key="thinking" type="checkbox"><span>使用模型默认思考模式</span></label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="translate">
+        <div class="page-head"><h2>翻译</h2></div>
+        <div class="cards">
+          <div class="card">
+            <div class="card-head"><h3>翻译全局配置</h3></div>
+            <div class="grid">
+              <label class="field"><span>引擎</span><select data-section="LLMTranslate" data-key="engine"><option value="auto">自动</option><option value="llm">LLM</option><option value="youdao">有道</option><option value="volcengine">火山</option></select></label>
+              <label class="field"><span>目标语言</span><input data-section="LLMTranslate" data-key="targetLanguage"></label>
+            </div>
+          </div>
+          <div class="card"><div class="card-head"><h3>LLM 系统提示词</h3></div><div class="grid">
+            <label class="field wide"><span>系统提示词</span><textarea data-section="LLMTranslate" data-key="systemPrompt"></textarea></label>
+          </div></div>
+          <div class="card"><div class="card-head"><h3>有道翻译</h3></div><div class="grid">
+            <label class="field"><span>App ID</span><input data-section="TTranslate" data-key="appPaidID"></label>
+            <label class="field"><span>App Key</span><input data-section="TTranslate" data-key="appPaidKey" type="password"></label>
+            <label class="field"><span>目标语言</span><input data-section="TTranslate" data-key="targetLanguage"></label>
+          </div></div>
+          <div class="card"><div class="card-head"><h3>火山翻译</h3></div><div class="grid">
+            <label class="field"><span>Access Key</span><input data-section="TVolcengine" data-key="accessKey"></label>
+            <label class="field"><span>Secret Key</span><input data-section="TVolcengine" data-key="secretKey" type="password"></label>
+            <label class="field"><span>目标语言</span><input data-section="TVolcengine" data-key="targetLanguage"></label>
+            <label class="field"><span>Region</span><input data-section="TVolcengine" data-key="region"></label>
+          </div></div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="ai">
+        <div class="page-head"><h2>AI 问答</h2></div>
+        <div class="cards">
+          <div class="card">
+            <div class="card-head"><h3>问答设置</h3><button class="btn" id="testAi">测试问答</button></div>
+            <div class="grid">
+              <label class="field wide"><span>系统提示词</span><textarea data-section="QAI" data-key="systemPrompt"></textarea></label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="shortcuts">
+        <div class="page-head"><h2>快捷键</h2></div>
+        <div class="card"><input id="shortcutFilter" class="filter" placeholder="筛选快捷键"><div id="shortcutList" class="shortcut-list"></div></div>
+      </section>
+
+      <section class="page" data-page-view="tab">
+        <div class="page-head"><h2>Tab 替换</h2></div>
+        <div class="card"><div id="tabList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="TabHotString">添加替换</button></div></div>
+      </section>
+
+      <section class="page" data-page-view="qbar">
+        <div class="page-head"><h2>qbar</h2></div>
+        <div class="cards">
+          <div class="card"><div class="card-head"><h3>搜索引擎</h3></div><div id="qsearchList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QSearch">添加搜索</button></div></div>
+          <div class="card"><div class="card-head"><h3>运行项目</h3></div><div id="qrunList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QRun">添加项目</button></div></div>
+          <div class="card"><div class="card-head"><h3>网址</h3></div><div id="qwebList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QWeb">添加网址</button></div></div>
+          <div class="card"><div class="card-head"><h3>外观</h3></div><div class="grid">
+            <label class="field"><span>边框圆角</span><input data-section="QStyle" data-key="borderRadius"></label>
+            <label class="field"><span>列表数量</span><input data-section="QStyle" data-key="listCount"></label>
+            <label class="field"><span>文字字号</span><input data-section="QStyle" data-key="textFontSize"></label>
+            <label class="field"><span>列表字号</span><input data-section="QStyle" data-key="listFontSize"></label>
+            <label class="field"><span>文字颜色</span><input data-section="QStyle" data-key="textColor"></label>
+            <label class="field"><span>边框颜色</span><input data-section="QStyle" data-key="borderBackgroundColor"></label>
+            <label class="field"><span>列表颜色</span><input data-section="QStyle" data-key="listColor"></label>
+            <label class="field"><span>文字背景</span><input data-section="QStyle" data-key="textBackgroundColor"></label>
+            <label class="field"><span>列表背景</span><input data-section="QStyle" data-key="listBackgroundColor"></label>
+          </div></div>
+        </div>
+      </section>
+
+      <section class="page" data-page-view="windows">
+        <div class="page-head"><h2>窗口绑定</h2></div>
+        <div id="bindingList" class="binding-list"></div>
+      </section>
+    </div>
+  </main>
+</div>
+<datalist id="actionHints"></datalist>
+<script>
+const state = { draft: null, page: 'general', dirty: false };
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const post = payload => {
+  if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload));
+};
+const clone = value => JSON.parse(JSON.stringify(value || {}));
+const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+function setStatus(text, error = false) {
+  const node = $('#status');
+  node.textContent = text || '';
+  node.classList.toggle('error', !!error);
+}
+function markDirty(value = true) {
+  state.dirty = value;
+  if (value) setStatus('未保存');
+}
+function setDraftValue(sectionName, key, value) {
+  if (!state.draft.sections[sectionName]) state.draft.sections[sectionName] = {};
+  state.draft.sections[sectionName][key] = value;
+  markDirty();
+}
+function readControl(node) {
+  return node.type === 'checkbox' ? (node.checked ? '1' : '0') : node.value;
+}
+function writeControl(node) {
+  const rawValue = section(node.dataset.section)[node.dataset.key] ?? '';
+  const value = rawValue;
+  if (node.type === 'checkbox') node.checked = value !== '' && value !== '0';
+  else node.value = value;
+}
+function bindStaticControls() {
+  $$('[data-section][data-key]').forEach(node => {
+    node.addEventListener('input', () => setDraftValue(node.dataset.section, node.dataset.key, readControl(node)));
+    node.addEventListener('change', () => setDraftValue(node.dataset.section, node.dataset.key, readControl(node)));
+  });
+}
+function refreshStaticControls() {
+  $$('[data-section][data-key]').forEach(writeControl);
+}
+
+function prettyKey(key) {
+  const names = { backquote: '`', leftSquareBracket: '[', rightSquareBracket: ']', backslash: '\\', semicolon: ';', quote: "'", comma: ',', dot: '.', slash: '/', space: 'Space', ralt: 'RAlt', minus: '-', equal: '=' };
+  if (key === 'press_caps') return 'CapsLock 点按';
+  let prefix = 'CapsLock';
+  let suffix = key.slice(5);
+  if (key.startsWith('caps_lalt_')) { prefix += ' + Alt'; suffix = key.slice(10); }
+  else if (key.startsWith('caps_win_')) { prefix += ' + Win'; suffix = key.slice(9); }
+  else if (key.startsWith('caps_')) suffix = key.slice(5);
+  return prefix + ' + ' + (names[suffix] || suffix.toUpperCase());
+}
+const SHORTCUT_GROUPS = [
+  { id: 'press', label: 'CapsLock 点按' },
+  { id: 'move', label: '移动' },
+  { id: 'select', label: '选中' },
+  { id: 'edit', label: '编辑' },
+  { id: 'clipboard', label: '剪贴板' },
+  { id: 'window', label: '窗口' },
+  { id: 'tools', label: '工具' },
+  { id: 'mouse', label: '鼠标' },
+  { id: 'other', label: '其他' }
+];
+function shortcutActionName(action) {
+  return String(action || '').trim().replace(/\s*\(.*/, '').toLowerCase();
+}
+function shortcutCategory(key, action) {
+  if (key === 'press_caps') return 'press';
+  const name = shortcutActionName(action);
+  if (/(^|_)select/.test(name)) return 'select';
+  if (/(^|_)(move|home|end|pageup|pagedown)/.test(name)) return 'move';
+  if (/(^|_)(copy|cut|paste|switchclipboard)/.test(name)) return 'clipboard';
+  if (/(^|_)(delete|backspace|forwarddelete|enter)/.test(name)) return 'edit';
+  if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
+  if (/(^|_)(qbar|translate|dictionary|opencpasdocs|reload|getjsevalstring|tabscript)/.test(name)) return 'tools';
+  if (/(^|_)mousespeed/.test(name)) return 'mouse';
+  return 'other';
+}
+function applyShortcutFilter() {
+  const query = ($('#shortcutFilter')?.value || '').trim().toLowerCase();
+  $$('.shortcut-group').forEach(group => {
+    let matchCount = 0;
+    $$('.shortcut-row', group).forEach(row => {
+      const matched = !query || row.dataset.label.includes(query);
+      row.hidden = !matched;
+      if (matched) matchCount++;
+    });
+    group.hidden = matchCount === 0;
+    group.open = !!query && matchCount > 0;
+  });
+}
+function renderShortcuts() {
+  const root = $('#shortcutList');
+  root.replaceChildren();
+  const values = section('Keys');
+  const grouped = new Map(SHORTCUT_GROUPS.map(group => [group.id, []]));
+  for (const key of Object.keys(values)) {
+    const groupId = shortcutCategory(key, values[key]);
+    if (!grouped.has(groupId)) grouped.set(groupId, []);
+    grouped.get(groupId).push({ key, action: values[key] });
+  }
+  for (const group of SHORTCUT_GROUPS) {
+    const entries = grouped.get(group.id) || [];
+    if (!entries.length) continue;
+    entries.sort((a, b) => prettyKey(a.key).localeCompare(prettyKey(b.key)));
+
+    const details = document.createElement('details');
+    details.className = 'shortcut-group';
+    details.dataset.group = group.id;
+    const summary = document.createElement('summary');
+    const title = document.createElement('span');
+    title.textContent = group.label;
+    const count = document.createElement('span');
+    count.className = 'shortcut-group-count';
+    count.textContent = String(entries.length) + ' 项';
+    summary.append(title, count);
+    const list = document.createElement('div');
+    list.className = 'shortcut-group-list';
+
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+      row.dataset.label = (prettyKey(entry.key) + ' ' + entry.action + ' ' + group.label).toLowerCase();
+      const label = document.createElement('span');
+      label.className = 'shortcut-label';
+      label.title = prettyKey(entry.key);
+      label.textContent = prettyKey(entry.key);
+      const input = document.createElement('input');
+      input.setAttribute('list', 'actionHints');
+      input.value = entry.action || '';
+      input.addEventListener('input', () => setDraftValue('Keys', entry.key, input.value));
+      row.append(label, input);
+      list.append(row);
+    }
+    details.append(summary, list);
+    root.append(details);
+  }
+  const hints = [...new Set(Object.values(values))].filter(Boolean).slice(0, 160);
+  $('#actionHints').replaceChildren(...hints.map(value => { const option = document.createElement('option'); option.value = value; return option; }));
+  applyShortcutFilter();
+}
+function renderPairs(sectionName, rootId, multiline = false) {
+  const root = $('#' + rootId);
+  root.replaceChildren();
+  const values = section(sectionName);
+  const entries = Object.entries(values);
+  if (!entries.length) entries.push(['', '']);
+  entries.forEach(([key, value]) => addPairRow(sectionName, root, key, value, multiline));
+}
+function addPairRow(sectionName, root, initialKey = '', initialValue = '', multiline = false) {
+  const row = document.createElement('div');
+  row.className = 'pair-row';
+  row.dataset.key = initialKey;
+  const keyInput = document.createElement('input'); keyInput.value = initialKey; keyInput.placeholder = '键';
+  const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.value = initialValue; valueInput.placeholder = '值';
+  const remove = document.createElement('button'); remove.className = 'icon-btn'; remove.type = 'button'; remove.textContent = '×';
+  row.append(keyInput, valueInput, remove); root.append(row);
+  const updateKey = () => {
+    const oldKey = row.dataset.key;
+    const newKey = keyInput.value.trim();
+    if (oldKey && oldKey !== newKey) state.draft.sections[sectionName][oldKey] = '';
+    row.dataset.key = newKey;
+    if (newKey) state.draft.sections[sectionName][newKey] = valueInput.value;
+    markDirty();
+  };
+  keyInput.addEventListener('input', updateKey);
+  valueInput.addEventListener('input', () => {
+    if (row.dataset.key) state.draft.sections[sectionName][row.dataset.key] = valueInput.value;
+    markDirty();
+  });
+  remove.addEventListener('click', () => {
+    if (row.dataset.key) state.draft.sections[sectionName][row.dataset.key] = '';
+    row.remove(); markDirty();
+  });
+}
+function renderBindings() {
+  const root = $('#bindingList'); root.replaceChildren();
+  for (const binding of (state.draft.bindings || [])) {
+    const card = document.createElement('div'); card.className = 'binding-card';
+    const head = document.createElement('div'); head.className = 'binding-head';
+    const title = document.createElement('span'); title.className = 'binding-number'; title.textContent = 'CapsLock + ' + binding.number;
+    const select = document.createElement('select');
+    select.innerHTML = '<option value="1">当前窗口</option><option value="2">追加窗口</option><option value="3">同类窗口</option>';
+    select.value = binding.bindType || 1;
+    const capture = document.createElement('button'); capture.className = 'btn'; capture.textContent = '捕获当前窗口';
+    capture.addEventListener('click', () => post({ type: 'captureWindow', number: binding.number, bindType: Number(select.value) }));
+    head.append(title, select, capture); card.append(head);
+    const items = document.createElement('div'); items.className = 'binding-items';
+    if (binding.items && binding.items.length) binding.items.forEach(item => {
+      const line = document.createElement('div'); line.textContent = `${item.exe || ''} · ${item.windowClass || ''}`;
+      items.append(line);
+    }); else items.textContent = '未绑定';
+    card.append(items); root.append(card);
+  }
+}
+function renderAll() {
+  refreshStaticControls(); renderShortcuts();
+  renderPairs('TabHotString', 'tabList', true);
+  renderPairs('QSearch', 'qsearchList'); renderPairs('QRun', 'qrunList'); renderPairs('QWeb', 'qwebList');
+  renderBindings();
+}
+function setPage(page) {
+  state.page = page;
+  $$('.nav button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
+  $$('.page').forEach(node => node.classList.toggle('active', node.dataset.pageView === page));
+  const active = $(`.nav button[data-page="${page}"]`);
+  $('#pageTitle').textContent = active ? active.textContent : '设置';
+}
+function buildTest(target) {
+  const llm = section('LLM'), translate = section('LLMTranslate'), youdao = section('TTranslate'), volc = section('TVolcengine');
+  const value = (map, key) => map[key] || '';
+  if (target === 'translate') return Object.assign({ type: 'testSettings', target, engine: value(translate, 'engine') || 'auto' }, llm, {
+    targetLanguage: value(translate, 'targetLanguage'), systemPrompt: value(translate, 'systemPrompt'),
+    appId: value(youdao, 'appPaidID'), appKey: value(youdao, 'appPaidKey'),
+    youdaoTargetLanguage: value(youdao, 'targetLanguage'),
+    volcAccessKey: value(volc, 'accessKey'), volcSecretKey: value(volc, 'secretKey'),
+    volcTargetLanguage: value(volc, 'targetLanguage'), volcRegion: value(volc, 'region')
+  });
+  return Object.assign({ type: 'testSettings', target: 'ai' }, llm);
+}
+function receiveSnapshot(snapshot) {
+  state.draft = { sections: clone(snapshot.sections), bindings: clone(snapshot.bindings) };
+  state.draft.sections.Keys = clone(snapshot.keys || state.draft.sections.Keys);
+  document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
+  renderAll(); state.dirty = false; setStatus('');
+}
+function saveDraft() {
+  if (!state.draft) return;
+  setStatus('保存中…');
+  post({ type: 'saveSettings', draft: { sections: state.draft.sections } });
+}
+window.receiveSnapshot = receiveSnapshot;
+window.settingsSaved = function (ok, text) { setStatus(text || (ok ? '已保存' : '保存失败'), !ok); if (ok) state.dirty = false; };
+window.settingsTestResult = function (ok, text) { setStatus(text || (ok ? '测试通过' : '测试失败'), !ok); };
+
+$('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
+$('#saveBtn').addEventListener('click', saveDraft);
+$('#cancelBtn').addEventListener('click', () => post({ type: 'getSettings' }));
+$('#testTranslate').addEventListener('click', () => { setStatus('测试中…'); post(buildTest('translate')); });
+$('#testAi').addEventListener('click', () => { setStatus('测试中…'); post(buildTest('ai')); });
+$('#shortcutFilter').addEventListener('input', applyShortcutFilter);
+$$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
+  const sectionName = button.dataset.addPair;
+  const rootId = sectionName === 'TabHotString' ? 'tabList' : sectionName === 'QSearch' ? 'qsearchList' : sectionName === 'QRun' ? 'qrunList' : 'qwebList';
+  addPairRow(sectionName, $('#' + rootId), '', '', sectionName === 'TabHotString');
+}));
+bindStaticControls();
+post({ type: 'getSettings' });
+</script>
+</body>
+</html>

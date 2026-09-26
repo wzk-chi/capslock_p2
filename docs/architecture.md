@@ -12,6 +12,8 @@
   thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用 `window.chrome.webview.postMessage` 发 JSON，
   AHK 用 `add_WebMessageReceived` 接收、用 `ExecuteScriptAsync("window.fn(...)")` 调用页面函数。
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
+- **LLM 公共层**：`lib/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
+  OpenAI 兼容请求、处理同步响应和 SSE 流；翻译与 AI 只提供各自的消息内容和结果处理。
 
 ## 目录结构与模块职责
 
@@ -21,16 +23,17 @@ lib\
   core.ahk                         初始化、配置读写、剪贴板、热串匹配、选区读取
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
-  math.ahk / jsEval.ahk            行内计算器与数学板 / JavaScript 求值运行时
+  math.ahk / jsEval.ahk            行内计算器 / JavaScript 求值运行时
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
   qbar.ahk                         qbar 启动器（含 Everything 搜索、路径浏览、内置命令）
   translate.ahk                    翻译引擎注册表（provider 契约与调度解析）
-  llmTranslate.ahk                 翻译面板本体 + LLM 流式引擎 + 各引擎的调度编排
+  llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
+  llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
   youdaoTranslate.ahk              有道智云翻译 API（[TTranslate]，WinHttp + SHA-256 签名）
   volcengineTranslate.ahk          火山引擎翻译 API（[TVolcengine]，V4 签名、TextList 分批）
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询）
-  aiChat.ahk                       AI 聊天面板（[QAI] 覆盖、[LLM] 全局配置、多轮对话）
+  aiChat.ahk                       AI 聊天面板（使用 [LLM]、[QAI] 仅存行为设置、多轮对话）
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
@@ -74,8 +77,8 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 ### 已接入引擎
 
-- **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。配置在 `[LLM]`；
-  AI 问答 `[QAI]` 从它继承并按需覆盖。系统提示词要求保留原文的换行与段落结构。
+- **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。翻译和 AI
+  问答共用 `[LLM]`，问答的专用系统提示词保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
 - **youdao**：有道智云 v3，`[TTranslate] appPaidID/appPaidKey`。同步 WinHttp 请求放到
   `SetTimer(fn, -1)` 回调外执行；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
   `input` 按 ≤20 字符规则截取，`salt` 用 `UuidCreate`。多行文本按行提交、结果按行拼回。

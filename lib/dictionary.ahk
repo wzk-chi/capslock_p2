@@ -250,7 +250,7 @@ DictionaryPushEntry(entry) {
     payload := Map()
     for key, value in entry
         payload[key] := String(value)
-    payload["uiLanguage"] := LLMTranslateUiLanguage()
+    payload["uiLanguage"] := LLMUiLanguage()
     try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
     catch
         return
@@ -260,7 +260,7 @@ DictionaryPushMiss(word) {
     global DictionaryWebView, DictionaryPageReady
     if !DictionaryPageReady || !IsObject(DictionaryWebView)
         return
-    payload := Map("word", word, "miss", JSON.true, "uiLanguage", LLMTranslateUiLanguage())
+    payload := Map("word", word, "miss", JSON.true, "uiLanguage", LLMUiLanguage())
     try DictionaryWebView.ExecuteScriptAsync("window.setEntry(" . JSON.stringify(payload, 0) . ");")
     catch
         return

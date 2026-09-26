@@ -48,7 +48,7 @@ VolcengineTranslate(text, &success := false, &errorText := "", overrides := 0) {
         )
         return ""
     }
-    region := Trim(GetVolcengineSetting("region", "cn-north-1"))
+    region := Trim(VolcengineSettingWith("region", "", overrides))
     ; TranslateText requires an explicit target language; the source language
     ; is detected server-side.
     targetCode := VolcengineTargetCode(VolcengineSettingWith("targetLanguage", "", overrides))
@@ -268,8 +268,9 @@ TranslateProviderVolcengineTest(msg, &ok, &text) {
     overrides := Map(
         "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")),
         "secretKey", LLMMsgField(msg, "volcSecretKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage"))
-    )
+        "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
+    if msg.Has("volcRegion")
+        overrides["region"] := Trim(LLMMsgField(msg, "volcRegion"))
     translated := VolcengineTranslate("Hello! This is a capslock_p2 connection test.", &ok, &errorText, overrides)
     if ok
         text := LLMText("Connection OK → ", "连接正常 → ") . SubStr(translated, 1, 120)
@@ -282,6 +283,8 @@ TranslateProviderVolcengineSave(msg) {
     WriteIniValue(SettingsFile, "TVolcengine", "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")))
     WriteIniValue(SettingsFile, "TVolcengine", "secretKey", LLMMsgField(msg, "volcSecretKey"))
     WriteIniValue(SettingsFile, "TVolcengine", "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
+    if msg.Has("volcRegion")
+        WriteIniValue(SettingsFile, "TVolcengine", "region", Trim(LLMMsgField(msg, "volcRegion")))
 }
 
 ; Settings-form fields pushed to the page (names as settings.js uses them).
@@ -289,7 +292,8 @@ TranslateProviderVolcenginePush() {
     return Map(
         "volcAccessKey", GetVolcengineSetting("accessKey", ""),
         "volcSecretKey", GetVolcengineSetting("secretKey", ""),
-        "volcTargetLanguage", GetVolcengineSetting("targetLanguage", ""))
+        "volcTargetLanguage", GetVolcengineSetting("targetLanguage", ""),
+        "volcRegion", GetVolcengineSetting("region", ""))
 }
 
 TranslateRegisterProvider("volcengine", Map(

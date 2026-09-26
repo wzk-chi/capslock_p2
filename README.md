@@ -21,7 +21,6 @@ Everything 文件搜索、屏幕自适应等。
 | 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V、CapsLock+F12 切换 |
 | 窗口绑定（winbind） | CapsLock+数字、CapsLock+Win+数字 |
 | 窗口半透明 / 置顶 | CapsLock+F4 / CapsLock+F6 |
-| 数学板（多行批量计算） | CapsLock+F2 |
 | 鼠标速度临时调节 | CapsLock+LAlt+滚轮 |
 | 媒体 / 音量控制 | 绑定 `keyFunc_media*` / `keyFunc_volume*` 使用 |
 
@@ -65,16 +64,16 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+U | 选到行首 | CapsLock+空格 | 回车 |
 | CapsLock+- / = | PgUp / PgDn | CapsLock+Enter | 回车 |
 | CapsLock+Q | qbar 启动器 | CapsLock+T / F3 | 翻译 / 词典 |
-| CapsLock+Tab | 热串替换 / 计算器 | CapsLock+F2 | 数学板 |
-| CapsLock+F1 | 打开使用介绍 | CapsLock+F4 | 窗口透明切换 |
-| CapsLock+F5 | 重载配置 | CapsLock+F6 | 窗口置顶切换 |
-| CapsLock+1~0 | 激活绑定的窗口 1~10 | CapsLock+Win+1~0 | 绑定当前窗口（短按/双击/三击三种模式） |
-| CapsLock+LAlt+滚轮 | 调节鼠标速度 | CapsLock+F12 | 切换粘贴用剪贴板槽位 |
+| CapsLock+Tab | 热串替换 / 计算器 | CapsLock+F1 | 打开使用介绍 |
+| CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
+| CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
+| CapsLock+Win+1~0 | 绑定当前窗口（短按/双击/三击三种模式） | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
+| CapsLock+F12 | 切换粘贴用剪贴板槽位 |  |  |
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
 `keyFunc_moveDown(10)`），完整函数清单见 `lib/keys.ahk`。
 
-面板窗口（翻译 / 词典 / AI 问答 / 数学板）尺寸会随屏幕自动缩放，在你当前屏幕上不用手动调。
+面板窗口（翻译 / 词典 / AI 问答）尺寸会随屏幕自动缩放，在你当前屏幕上不用手动调。
 
 ## CapsLock+Tab：文本替换与计算器
 
@@ -104,8 +103,7 @@ sig=——张三\n13800000000
 - 选中 `3*4` 按 CapsLock+Tab → `12`。
 - 行尾带 `=` 会保留算式：`1+2=` → `1+2=3`。
 - 内置 AHK 表达式求值，失败时回退到 JavaScript（`EvaluateExpression`），支持常用数学函数。
-- `[Global] loadScript=scriptDemo.js` 可加载 JS 扩展，计算器内置失败时会尝试调用扩展函数。
-- CapsLock+F2 打开**数学板**窗口，可整段粘贴多行表达式批量计算（Ctrl+回车换行、普通回车执行）。
+- `[Global] loadScript=jsExtensions.js` 可加载 JS 扩展，计算器内置失败时会尝试调用扩展函数。
 
 ## qbar 启动器（CapsLock+Q）
 
@@ -166,7 +164,7 @@ gh<GitHub>=https://github.com
 
 | 输入 | 作用 |
 |---|---|
-| `ai 问题` / `q 问题` | 打开 AI 聊天面板提问（`[QAI]` 可选覆盖；未覆盖时使用 `[LLM]` 全局配置） |
+| `ai 问题` / `q 问题` | 打开 AI 聊天面板提问（使用共用 `[LLM]` 配置） |
 | `cl set` | 打开设置文件（`capslock_p2.ini` 和示例文件） |
 | `cl version` / `cl about` | 显示版本号 |
 | `web 网址` | 强制按网址打开，缺 `http://` 时自动补 |
@@ -206,19 +204,21 @@ chat completions 接口，流式显示）；未配置 LLM 时自动改用已配�
 各引擎配置：
 
 ```ini
-[LLM]                      ; LLM 翻译 API（优先）
+[LLM]                      ; 翻译与 AI 问答共用的 LLM API
 endpoint=https://api.openai.com/v1/chat/completions
 apiKey=sk-xxx
-model=gpt-4o-mini
-; thinking=0        0=显式关闭模型思考（默认）；1=不附加关闭参数
-; structured=1      1=请求 JSON 结构化输出（默认）；网关不支持时设 0
-; temperature=0.2 / maxTokens=2048 / timeout=30000
+apiKeyHeader=Authorization
+apiKeyPrefix=Bearer
+model=deepseek-flash
+thinking=0
+temperature=0.2
+timeout=30000
+maxInputTokens=200000  翻译与 AI 共用的输入 token 估算上限
 
 [LLMTranslate]             ; 翻译行为配置
-enabled=1
-targetLanguage=中文
+targetLanguage=Simplified Chinese
 engine=auto                ; 翻译引擎：auto（默认，优先 LLM，未配置 LLM 时用其他引擎）/ llm / youdao / volcengine
-; systemPrompt=…    只写角色设定，任务说明由程序自动追加
+systemPrompt=You are a precise translation engine.
 
 [TTranslate]               ; 有道智云收费版翻译 API
 appPaidID=
@@ -228,14 +228,13 @@ appPaidKey=
 [TVolcengine]              ; 火山引擎机器翻译 API
 accessKey=
 secretKey=
-; targetLanguage=          火山译文目标语言，TranslateText 必填目标，留空 = zh
-; region=cn-north-1        服务区域，一般无需修改
+targetLanguage=zh
+region=cn-north-1
 ```
 
-设置界面（翻译面板右上角「设置」）顶部有「翻译引擎」下拉（自动 / LLM / 有道 / 火山，默认
-自动即 LLM 优先），按引擎分标签填写：LLM 配置写入 `[LLM]`，目标语言与引擎写入
-`[LLMTranslate]`，有道配置（应用 ID/密钥与独立的目标语言）写入 `[TTranslate]`，火山配置
-（AccessKey/SecretAccessKey）写入 `[TVolcengine]`。有道应用在
+设置中心分为「LLM」「翻译」「AI 问答」三个区域。LLM 区域只配置一套共用的 API、模型和采样参数；
+翻译区域配置翻译引擎、目标语言、有道和火山 API；AI 问答区域只配置问答专用系统提示词。
+有道应用在
 <https://ai.youdao.com/console/#/> 申请（新账号有试用额度）；火山翻译在
 <https://console.volcengine.com/translate> 开通。
 
@@ -259,26 +258,18 @@ qbar 里输入「ai 问题」「q 问题」，或输入未命中任何命令的�
 **AI 聊天面板**：气泡式对话，支持**追问**（最多保留最近 50 轮，即 100 条消息；更早内容自动遗忘），
 「新会话」按钮清空重来。回答通过 OpenAI 兼容接口流式返回，模型自行判断输入是要回答的问题还是要解释的文本。
 聊天或翻译面板处于活动窗口时 CapsLock 键层自动挂起（打大写字母不会误触图层动作）。
-未配置 `[LLM]` 全局 API 或 `[QAI]` 独立 API 时自动弹出设置窗口，保存后自动发出等待中的问题。
+未配置 `[LLM]` API 时自动弹出设置窗口，保存后自动发出等待中的问题。
 
-**上下文超限的处理**：发送前按「最近 50 轮 + 字符预算」（`contextChars`，默认 200000）
-双重裁剪——超出预算的最旧轮次自动丢弃，单条超长消息（如粘贴的长日志）只送尾部，保证请求
+**上下文超限的处理**：发送前按「最近 50 轮 + 输入 token 估算上限」（`maxInputTokens`，默认 200000）
+双重裁剪——超出预算的最旧轮次自动丢弃，单条超长消息只送尾部；翻译文本也使用同一上限，保证请求
 不会被模型上下文上限整体拒绝；服务端仍报上下文超限时，错误提示会附带处理建议（缩短内容或新建会话）。
 
-设置窗口由两个面板共用（`pages/settings.js`）。翻译设置写入 `[LLM]` 全局 API 配置；
-AI 问答从 `[LLM]` 继承 endpoint、Key、模型和通用采样参数，只有 `[QAI]` 中填写的字段才会覆盖全局值：
+托盘「设置」打开设置中心，翻译和 AI 面板内也共用同一套 API 配置。翻译和 AI 问答都使用 `[LLM]` 中的同一套 API、模型和采样配置；
+翻译行为保存在 `[LLMTranslate]`，AI 问答只在 `[QAI]` 中保留专用系统提示词。输入 token 估算上限统一配置在 `[LLM]`：
 
 ```ini
 [QAI]
-; endpoint=…       可选：单独指定问答 API；不填则使用 [LLM]
-; apiKey=…         可选：单独指定问答 Key；不填则使用 [LLM]
-; model=…          可选：单独指定问答模型；不填则使用 [LLM]
-; temperature=0.7  可选：单独覆盖采样参数
-; maxTokens=2048
-; timeout=60000
-; thinking=0       0=显式关闭思考；1=模型默认行为
-; contextChars=200000  单次请求的历史字符预算，默认上限 200k
-; systemPrompt=…   问答专用英文提示词；不填则使用程序默认提示词
+; systemPrompt=…   问答专用提示词；不填则使用程序默认提示词
 ```
 
 ## 独立剪贴板
@@ -309,7 +300,7 @@ AI 问答从 `[LLM]` 继承 endpoint、Key、模型和通用采样参数，只�
   | `autostart` | 0 | 开机启动：也可从托盘菜单切换；启用/关闭会同步当前用户启动文件夹的快捷方式 |
   | `debug` | 0 | 1 时写 `capslock_p2-debug.log`（不记录剪贴板内容和 API Key） |
   | `mouseSpeed` | 3 | CapsLock+LAlt+滚轮的基准速度 |
-  | `loadScript` | scriptDemo.js | JS 扩展，逗号分隔，放 `loadScript/` 目录 |
+  | `loadScript` | jsExtensions.js | JS 扩展，逗号分隔，放 `loadScript/` 目录 |
   | `allowClipboard` | 1 | 独立剪贴板开关 |
   | `loadingAnimation` | 1 | 启动动画：也可从托盘菜单切换；默认显示现代简约启动卡片 |
   | `language` | 0 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |

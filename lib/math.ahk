@@ -1,8 +1,4 @@
-; capslock_p2 Tab calculation and Math Board.
-
-global MathBoardGui := 0
-global MathBoardEdit := 0
-global MathBoardOpen := false
+; capslock_p2 Tab calculation.
 
 class ExpressionParser {
     __New(expression) {
@@ -266,7 +262,7 @@ EvaluateExpression(expression, &success := false) {
     if expression = ""
         return ""
 
-    if GetGlobalSetting("javascriptOriginalReturn", "0") = "1" && JavaScriptRuntimeReady {
+    if GetGlobalSetting("javascriptOriginalReturn") = "1" && JavaScriptRuntimeReady {
         javascriptResult := EvaluateJavaScript(expression, &javascriptSuccess)
         if javascriptSuccess {
             success := true
@@ -373,77 +369,4 @@ tabAction() {
     }
     A_Clipboard := oldClipboard
     return replacement
-}
-
-keyFunc_mathBoard() {
-    global MathBoardGui, MathBoardEdit, MathBoardOpen
-    selectedText := GetSelectedText()
-    fitSize := ScreenFitSize(600, 400, 600, 220)
-    if !IsObject(MathBoardGui) {
-        MathBoardGui := Gui("+AlwaysOnTop +Resize +MinSize600x220", "Math Board")
-        MathBoardGui.SetFont("s12", "Consolas")
-        MathBoardEdit := MathBoardGui.AddEdit("x0 y0 w" . fitSize[1] . " h" . fitSize[2] . " -Wrap", selectedText)
-        MathBoardGui.OnEvent("Close", MathBoardClose)
-        MathBoardGui.OnEvent("Escape", MathBoardClose)
-        MathBoardGui.OnEvent("Size", MathBoardSize)
-    } else {
-        MathBoardEdit.Value := selectedText
-    }
-    MathBoardOpen := true
-    MathBoardGui.Show("w" . fitSize[1] . " h" . fitSize[2])
-    MathBoardEdit.Focus()
-    SendInput("{End}")
-}
-
-MathBoardClose(*) {
-    global MathBoardGui, MathBoardOpen
-    MathBoardOpen := false
-    if IsObject(MathBoardGui)
-        MathBoardGui.Hide()
-}
-
-MathBoardSize(targetGui, minMax, width, height) {
-    global MathBoardEdit
-    if IsObject(MathBoardEdit)
-        MathBoardEdit.Move(0, 0, Max(100, width - 4), Max(80, height - 4))
-}
-
-MathBoardEnter(*) {
-    global A_Clipboard, ClipboardWatcherSuspended
-    if GetKeyState("Ctrl", "P") {
-        SendInput("{Enter}")
-        return
-    }
-
-    oldClipboard := ClipboardAll()
-    ClipboardWatcherSuspended := true
-    try {
-        A_Clipboard := ""
-        SendInput("+{Home}")
-        Sleep(10)
-        SendInput("^{Insert}")
-        if ClipWait(0.15) {
-            lineText := A_Clipboard
-            replacement := GetHotStringReplacement(lineText, &matched)
-            if matched = ""
-                replacement := clCalculate(lineText, &calculationResult, true, true)
-            if replacement != lineText && replacement != "?" {
-                A_Clipboard := replacement
-                SendInput("^v")
-                Sleep(60)
-            }
-            SendInput("{End}{Enter}")
-        }
-    } finally {
-        A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := false
-    }
-}
-
-RegisterMathBoardHotkeys() {
-    global MathBoardOpen
-    HotIf((*) => MathBoardOpen)
-    Hotkey("Enter", MathBoardEnter)
-    Hotkey("NumpadEnter", MathBoardEnter)
-    HotIf()
 }

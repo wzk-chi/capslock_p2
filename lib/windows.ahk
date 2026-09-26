@@ -342,7 +342,7 @@ InWinMinimizeStack(atBeginning := false) {
 
 InitializeMouseSpeed() {
     global MouseSpeed
-    value := GetGlobalSetting("mouseSpeed", "3") + 0
+    value := GetGlobalSetting("mouseSpeed") + 0
     MouseSpeed := Max(1, Min(20, value ? value : 3))
     SetTimer(MouseSpeedTick, 50)
 }
@@ -444,5 +444,4 @@ RegisterFeatureHotkeys() {
     Hotkey("WheelUp", WinTransparentAdd)
     Hotkey("WheelDown", WinTransparentReduce)
     HotIf()
-    RegisterMathBoardHotkeys()
 }

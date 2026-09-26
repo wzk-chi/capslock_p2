@@ -25,6 +25,7 @@ global LoadingText := 0
 global LoadingFrames := []
 global LoadingFrameIndex := 1
 global TrayMenuObject := 0
+global TraySettingsLabel := ""
 global TrayAutostartLabel := ""
 global TrayLoadingLabel := ""
 
@@ -46,7 +47,7 @@ Initialize() {
     DebugLog("Initialize settings=" . SettingsFile)
     InitializeJavaScriptRuntime()
 
-    if GetGlobalSetting("loadingAnimation", "1") != "0"
+    if GetGlobalSetting("loadingAnimation") != "0"
         ShowLoading()
 
     InitializeWindowBindings()
@@ -61,7 +62,7 @@ Initialize() {
     SetTimer(MonitorSettings, 500)
     SetTimer(HotStringInit, -1)
 
-    if GetGlobalSetting("loadingAnimation", "1") != "0" {
+    if GetGlobalSetting("loadingAnimation") != "0" {
         Sleep(80)
         HideLoading()
     }
@@ -72,6 +73,7 @@ Shutdown(*) {
     try SetTimer(MouseSpeedTick, 0)
     try RestoreMouseSpeed()
     try LLMTranslateShutdown()
+    try SettingsShutdown()
     try DictionaryShutdown()
     try AiChatShutdown()
     try QbarShutdown()
@@ -83,26 +85,35 @@ LoadSettings() {
     global Config, SettingsFile, SettingsModifyTime
 
     Config := ParseIniFile(SettingsFile)
+    ApplySettingsDefaults()
     for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "QStyle", "TTranslate", "TVolcengine"] {
         if !Config.Has(section)
             Config[section] := Map()
     }
-
-    globalDefaults := Map(
-        "autostart", "0",
-        "loadScript", "scriptDemo.js",
-        "mouseSpeed", "3",
-        "allowClipboard", "1",
-        "debug", "0",
-        "loadingAnimation", "1",
-        "language", "0",
-        "javascriptOriginalReturn", "0"
-    )
-    for key, value in globalDefaults {
-        if !Config["Global"].Has(key) || (key != "loadScript" && Config["Global"][key] = "")
-            Config["Global"][key] := value
-    }
     SettingsModifyTime := GetSettingsModifyTime()
+}
+
+ApplySettingsDefaults() {
+    global Config, SettingsFile
+    defaultsPath := A_ScriptDir . "\capslock_p2-defaults.ini"
+    if !FileExist(defaultsPath)
+        defaultsPath := A_ScriptDir . "\tools\capslock_p2-default.ini"
+    if !FileExist(defaultsPath)
+        return
+
+    defaults := ParseIniFile(defaultsPath)
+    for section, values in defaults {
+        if !Config.Has(section)
+            Config[section] := Map()
+        for key, value in values {
+            if Config[section].Has(key)
+                continue
+            Config[section][key] := value
+            try WriteIniValue(SettingsFile, section, key, value)
+            catch
+                continue
+        }
+    }
 }
 
 ReloadSettings(*) {
@@ -117,10 +128,10 @@ ReloadSettings(*) {
 
 ApplyGlobalSettings() {
     global AllowClipboardWatcher, DebugLogging
-    AllowClipboardWatcher := GetGlobalSetting("allowClipboard", "1") != "0"
-    DebugLogging := GetGlobalSetting("debug", "0") = "1"
+    AllowClipboardWatcher := GetGlobalSetting("allowClipboard") != "0"
+    DebugLogging := GetGlobalSetting("debug") = "1"
     DebugLog("Global settings applied clipboard=" . AllowClipboardWatcher . " debug=" . DebugLogging)
-    EnsureAutostartShortcut(GetGlobalSetting("autostart", "0") = "1")
+    EnsureAutostartShortcut(GetGlobalSetting("autostart") = "1")
     TrayMenuRefresh()
 }
 
@@ -310,23 +321,32 @@ AutostartRemoveOwnedShortcut(linkPath) {
 }
 
 TrayMenuInitialize() {
-    global TrayMenuObject, TrayAutostartLabel, TrayLoadingLabel
+    global TrayMenuObject, TraySettingsLabel, TrayAutostartLabel, TrayLoadingLabel
     if IsObject(TrayMenuObject)
         return
     TrayMenuObject := A_TrayMenu
+    TraySettingsLabel := TraySettingsText()
     TrayAutostartLabel := TrayAutostartText()
     TrayLoadingLabel := TrayLoadingText()
-    ; "1&"/"2&" 按位置插入到菜单最前，排在标准项（Open/Exit 等）之前
-    TrayMenuObject.Insert("1&", TrayAutostartLabel, TrayToggleAutostart)
-    TrayMenuObject.Insert("2&", TrayLoadingLabel, TrayToggleLoadingAnimation)
+    ; Insert custom entries before the standard tray items (Open/Exit, ...).
+    TrayMenuObject.Insert("1&", TraySettingsLabel, TrayOpenSettings)
+    TrayMenuObject.Insert("2&", TrayAutostartLabel, TrayToggleAutostart)
+    TrayMenuObject.Insert("3&", TrayLoadingLabel, TrayToggleLoadingAnimation)
     TrayMenuRefresh()
 }
 
 TrayMenuRefresh() {
-    global TrayMenuObject, TrayAutostartLabel, TrayLoadingLabel
+    global TrayMenuObject, TraySettingsLabel, TrayAutostartLabel, TrayLoadingLabel
     if !IsObject(TrayMenuObject)
         return
 
+    newSettingsLabel := TraySettingsText()
+    if TraySettingsLabel != "" && newSettingsLabel != TraySettingsLabel {
+        try TrayMenuObject.Rename(TraySettingsLabel, newSettingsLabel)
+        catch
+            return
+        TraySettingsLabel := newSettingsLabel
+    }
     newAutostartLabel := TrayAutostartText()
     if TrayAutostartLabel != "" && newAutostartLabel != TrayAutostartLabel {
         try TrayMenuObject.Rename(TrayAutostartLabel, newAutostartLabel)
@@ -344,17 +364,25 @@ TrayMenuRefresh() {
     }
 
     try {
-        if GetGlobalSetting("autostart", "0") = "1"
+        if GetGlobalSetting("autostart") = "1"
             TrayMenuObject.Check(TrayAutostartLabel)
         else
             TrayMenuObject.Uncheck(TrayAutostartLabel)
-        if GetGlobalSetting("loadingAnimation", "1") != "0"
+        if GetGlobalSetting("loadingAnimation") != "0"
             TrayMenuObject.Check(TrayLoadingLabel)
         else
             TrayMenuObject.Uncheck(TrayLoadingLabel)
     } catch {
         return
     }
+}
+
+TrayOpenSettings(*) {
+    SettingsShow()
+}
+
+TraySettingsText() {
+    return IsChineseLanguage() ? "设置" : "Settings"
 }
 
 TrayAutostartText() {
@@ -366,12 +394,12 @@ TrayLoadingText() {
 }
 
 TrayToggleAutostart(*) {
-    enabled := GetGlobalSetting("autostart", "0") = "1"
+    enabled := GetGlobalSetting("autostart") = "1"
     SetSettings("Global", "autostart", enabled ? "0" : "1")
 }
 
 TrayToggleLoadingAnimation(*) {
-    enabled := GetGlobalSetting("loadingAnimation", "1") != "0"
+    enabled := GetGlobalSetting("loadingAnimation") != "0"
     SetSettings("Global", "loadingAnimation", enabled ? "0" : "1")
 }
 
@@ -632,7 +660,7 @@ RestoreClipboard(data) {
 }
 
 ClipboardEnabled() {
-    return GetGlobalSetting("allowClipboard", "1") != "0"
+    return GetGlobalSetting("allowClipboard") != "0"
 }
 
 CopyToClipboardSlot(slot, isCut := false) {
@@ -770,7 +798,7 @@ SetClipboardText(text) {
 }
 
 IsChineseLanguage() {
-    languageSetting := GetGlobalSetting("language", "0")
+    languageSetting := GetGlobalSetting("language")
     if languageSetting = "1"
         return true
     if languageSetting = "2"

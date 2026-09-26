@@ -80,6 +80,7 @@ WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsof
 开发机根目录的 `capslock_p2.ini` 是个人配置，可能包含真实 API 地址和 API Key，**禁止作为安装包输入文件**。安装器只使用不含凭据的 `tools/capslock_p2-default.ini`：
 
 - 首次安装时生成 `capslock_p2.ini`；
+- 同时安装 `capslock_p2-defaults.ini`，用于启动时把新增默认项补入旧配置；
 - 升级时使用 `onlyifdoesntexist`，保留用户已有的 API 配置；
 - 不打包 `capslock_p2-debug.log`；
 - 不打包 `capslock_p2-winsInfosRecorder.ini`；

@@ -64,6 +64,8 @@ Source: "{#ProjectRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Never overwrite the user's API settings during an upgrade.
 Source: "{#ProjectRoot}\tools\capslock_p2-default.ini"; DestDir: "{app}"; DestName: "capslock_p2.ini"; Flags: onlyifdoesntexist ignoreversion
+; Keep the same safe defaults available for one-time migration of older configs.
+Source: "{#ProjectRoot}\tools\capslock_p2-default.ini"; DestDir: "{app}"; DestName: "capslock_p2-defaults.ini"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\capslock_p2.exe"; WorkingDir: "{app}"; IconFilename: "{app}\resources\capslock_p2-icon.ico"

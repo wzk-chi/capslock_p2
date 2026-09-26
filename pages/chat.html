@@ -298,8 +298,7 @@ messages.addEventListener('click', event => {
 
 newChatBtn.addEventListener('click', () => postType('newSession'));
 settingsBtn.addEventListener('click', () => {
-  postType('getSettings');
-  LLMSettings.open(false);
+  postType('openSettings');
 });
 
 // Pushed settings carry the ui language the page should use.

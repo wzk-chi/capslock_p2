@@ -22,7 +22,9 @@ A_HotkeyInterval := 2000
 #Include lib\crypto.ahk
 #Include lib\CSQLite.ahk
 #Include lib\translate.ahk
+#Include lib\llm.ahk
 #Include lib\llmTranslate.ahk
+#Include lib\settings.ahk
 #Include lib\youdaoTranslate.ahk
 #Include lib\volcengineTranslate.ahk
 #Include lib\dictionary.ahk
