@@ -19,6 +19,7 @@ global AiChatStreamAnswer := ""
 global AiChatSeenActive := false  ; the focus monitor grants a grace period
                                   ; until the first activation, so a slow
                                   ; WinActivate cannot flash-hide the panel
+global AiChatWindowInitialized := false
 global AiChatHistory := []        ; {role, content} maps, without the system prompt
 
 ; ---- [QAI] behavior ----------------------------------------------------------
@@ -34,6 +35,10 @@ GetQAISetting(key, defaultValue := "") {
 LLMAiSystemPrompt() {
     prompt := Trim(GetQAISetting("systemPrompt", ""))
     return prompt
+}
+
+LLMAiHideOnBlur() {
+    return GetQAISetting("hideOnBlur", "1") != "0"
 }
 
 LLMAiPromptVariables() {
@@ -118,7 +123,7 @@ LLMAiBuildMessages(history, overrides := 0) {
 ; ---- panel ------------------------------------------------------------------
 
 AiChatShow(question) {
-    global AiChatHost, AiChatGui, AiChatVisible, AiChatPageReady, AiChatFocusTimer
+    global AiChatHost, AiChatGui, AiChatVisible, AiChatPageReady, AiChatFocusTimer, AiChatWindowInitialized
     global AiChatPendingQuestion, AiChatSeenActive
     question := Trim(question)
     if question != ""
@@ -130,12 +135,17 @@ AiChatShow(question) {
         return
     }
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
-    PanelHostShow(AiChatHost, aiChatSize[1], aiChatSize[2], true)
+    if AiChatWindowInitialized
+        PanelHostShow(AiChatHost, 0, 0, false)
+    else {
+        PanelHostShow(AiChatHost, aiChatSize[1], aiChatSize[2], true)
+        AiChatWindowInitialized := true
+    }
     AiChatSyncHost()
     AiChatSeenActive := false
     WinActivate("ahk_id " . AiChatGui.Hwnd)
     ShowSystemCursor()
-    AiChatFocusTimer := PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
+    AiChatUpdateFocusBehavior()
 
     if AiChatPageReady
         AiChatAfterReady()
@@ -174,7 +184,7 @@ AiChatEnsureWebView() {
 
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
     AiChatHost := PanelHostCreate(pagePath, "capslock_p2 AI", Map(
-        "guiOptions", "+AlwaysOnTop +Resize +MinSize520x400 +ToolWindow",
+        "guiOptions", "+Resize +MinSize520x400 +MinimizeBox +MaximizeBox +SysMenu",
         "dataPath", A_Temp . "\CapsLockPlusAiChatWebView2",
         "initialShow", "x-32000 y-32000 w" . aiChatSize[1] . " h" . aiChatSize[2] . " NA",
         "callbacks", Map(
@@ -327,11 +337,24 @@ AiChatPushLanguage() {
 
 AiChatOnSettingsSaved() {
     global AiChatPendingQuestion, AiChatVisible
+    AiChatUpdateFocusBehavior()
     if !AiChatVisible || !LLMSettingsConfigured() || AiChatPendingQuestion = ""
         return
     question := AiChatPendingQuestion
     AiChatPendingQuestion := ""
     SetTimer(() => AiChatAsk(question), -1)
+}
+
+AiChatUpdateFocusBehavior() {
+    global AiChatHost, AiChatVisible, AiChatFocusTimer
+    if !AiChatVisible || !IsObject(AiChatHost)
+        return
+    if !LLMAiHideOnBlur() {
+        PanelHostStopFocusMonitor(AiChatHost)
+        AiChatFocusTimer := false
+        return
+    }
+    AiChatFocusTimer := PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
 }
 
 AiChatResize(targetGui, minMax, width, height) {
@@ -342,6 +365,11 @@ AiChatResize(targetGui, minMax, width, height) {
 AiChatFocusMonitor(*) {
     global AiChatHost, AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSeenActive, SettingsVisible
     if !AiChatVisible || !IsObject(AiChatGui) {
+        PanelHostStopFocusMonitor(AiChatHost)
+        AiChatFocusTimer := false
+        return
+    }
+    if !LLMAiHideOnBlur() {
         PanelHostStopFocusMonitor(AiChatHost)
         AiChatFocusTimer := false
         return
@@ -376,7 +404,7 @@ AiChatHide(*) {
 }
 
 AiChatShutdown(*) {
-    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatVisible, AiChatPageReady, AiChatFocusTimer
+    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatVisible, AiChatPageReady, AiChatFocusTimer, AiChatWindowInitialized
     global AiChatStreamId
     if AiChatStreamId {
         LLMAbortChatStream(AiChatStreamId)
@@ -390,4 +418,5 @@ AiChatShutdown(*) {
     AiChatController := 0
     AiChatGui := 0
     AiChatFocusTimer := false
+    AiChatWindowInitialized := false
 }

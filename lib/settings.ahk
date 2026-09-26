@@ -201,7 +201,7 @@ SettingsAllowedKey(section, key) {
         case "TVolcengine":
             return SettingsKeyIn(["accessKey", "secretKey", "targetLanguage", "region"], key)
         case "QAI":
-            return SettingsKeyIn(["systemPrompt"], key)
+            return SettingsKeyIn(["systemPrompt", "hideOnBlur"], key)
         case "Qbar":
             return SettingsKeyIn(["esPath", "everythingPath", "esInstance", "esMaxResults"], key)
         case "Keys":
