@@ -142,13 +142,16 @@ SettingsBindingSnapshot() {
         row := Map("number", bindingNumber, "bindType", 0, "items", [])
         if WinBindings.Has(bindingNumber) {
             binding := WinBindings[bindingNumber]
-            row["bindType"] := binding.bindType
+            row["bindType"] := WindowBindingType(binding.bindType, 0)
             items := []
             for item in binding.items
                 items.Push(Map("id", String(item.id), "windowClass", item.windowClass,
                     "exe", item.exe, "path", item.path))
             row["items"] := items
         }
+        mode := WindowBindingDisplay(row["bindType"])
+        row["modeLabel"] := mode["label"]
+        row["modeDescription"] := mode["description"]
         result.Push(row)
     }
     return result
@@ -298,17 +301,19 @@ SettingsSendTestResult(ok, text) {
 
 SettingsCaptureWindow(message) {
     msg := LLMMessageParse(message)
-    bindingNumber := LLMMsgField(msg, "number") + 0
-    bindType := LLMMsgField(msg, "bindType") + 0
+    numberText := LLMMsgField(msg, "number")
+    if !RegExMatch(numberText, "^\d+$")
+        return
+    bindingNumber := Integer(numberText)
     if bindingNumber < 1 || bindingNumber > 10
         return
+    bindType := WindowBindingType(LLMMsgField(msg, "bindType"))
     SettingsHide()
     SetTimer(() => SettingsCompleteCapture(bindingNumber, bindType), -180)
 }
 
 SettingsCompleteCapture(bindingNumber, bindType) {
-    if bindType < 1 || bindType > 3
-        bindType := 1
+    bindType := WindowBindingType(bindType)
     BindWindowFromActive(bindingNumber, bindType)
     SettingsShow()
     SetTimer(SettingsPushSnapshot, -1)

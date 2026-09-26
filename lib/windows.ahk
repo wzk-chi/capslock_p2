@@ -33,7 +33,7 @@ LoadWindowBindings() {
         if bindingNumber < 1 || bindingNumber > 10
             continue
 
-        bindType := values.Has("bindType") ? values["bindType"] + 0 : 0
+        bindType := values.Has("bindType") ? WindowBindingType(values["bindType"], 0) : 0
         items := []
         count := values.Has("count") ? values["count"] + 0 : 0
         if count > 0 {
@@ -55,6 +55,28 @@ LoadWindowBindings() {
         }
         if bindType && items.Length
             WinBindings[bindingNumber] := {bindType: bindType, items: items}
+    }
+}
+
+WindowBindingType(value, fallback := 1) {
+    try number := Integer(value)
+    catch
+        return fallback
+    if number < 1 || number > 3
+        return fallback
+    return number
+}
+
+WindowBindingDisplay(bindType) {
+    switch WindowBindingType(bindType, 0) {
+        case 1:
+            return Map("label", "单个窗口", "description", "只绑定当前激活的窗口")
+        case 2:
+            return Map("label", "窗口组", "description", "把当前窗口追加到已有窗口组")
+        case 3:
+            return Map("label", "同应用窗口", "description", "自动匹配同一程序的窗口")
+        default:
+            return Map("label", "未绑定", "description", "尚未捕获窗口")
     }
 }
 
@@ -146,6 +168,7 @@ CompletePendingBinding(*) {
 
 BindWindowFromActive(bindingNumber, bindType) {
     global WinBindings
+    bindType := WindowBindingType(bindType)
     active := GetActiveWindowInfo()
     if !active
         return
@@ -197,28 +220,42 @@ FindReplacementWindow(item) {
 }
 
 PruneBindingItems(binding) {
+    changed := false
     kept := []
     for item in binding.items {
         if WindowIsAlive(item.id)
             kept.Push(item)
+        else
+            changed := true
     }
     binding.items := kept
+    return changed
 }
 
 RefreshProgramBinding(binding) {
     if !binding.items.Length
-        return
-    first := binding.items[1]
-    if first.windowClass = "" || first.exe = ""
-        return
-    windowList := WinGetList("ahk_class " . first.windowClass . " ahk_exe " . first.exe)
+        return false
+    anchor := binding.items[1]
+    for item in binding.items {
+        if item.windowClass != "" && item.exe != "" {
+            anchor := item
+            break
+        }
+    }
+    changed := PruneBindingItems(binding)
+    if anchor.windowClass = "" || anchor.exe = ""
+        return changed
+    windowList := WinGetList("ahk_class " . anchor.windowClass . " ahk_exe " . anchor.exe)
     for hwnd in windowList {
         if !ContainsWindow(binding.items, hwnd) {
             item := GetActiveWindowInfo(hwnd)
-            if item
+            if item {
                 binding.items.Push(item)
+                changed := true
+            }
         }
     }
+    return changed
 }
 
 ActivateWinId(hwnd) {
@@ -231,26 +268,23 @@ activateWinAction(bindingNumber) {
     if !WinBindings.Has(bindingNumber)
         return
     binding := WinBindings[bindingNumber]
-    if binding.bindType = 3
-        RefreshProgramBinding(binding)
-    else
-        PruneBindingItems(binding)
-
-    if !binding.items.Length {
-        if binding.bindType = 3
-            return
-        return
-    }
-
     if binding.bindType = 1 {
+        if !binding.items.Length
+            return
         item := binding.items[1]
         replacement := FindReplacementWindow(item)
         if !replacement {
-            if item.path != "" && FileExist(item.path)
-                Run(item.path)
+            if item.path != "" && FileExist(item.path) {
+                try Run(item.path)
+                catch as launchError
+                    DebugLog("Window binding launch failed: " . launchError.Message)
+            }
             return
         }
+        bindingChanged := item.id != replacement
         item.id := replacement
+        if bindingChanged
+            SaveWindowBinding(bindingNumber, binding)
         if WinActive("ahk_id " . replacement) {
             WinMinimize("ahk_id " . replacement)
             if LastActiveWinId
@@ -261,6 +295,14 @@ activateWinAction(bindingNumber) {
         }
         return
     }
+
+    bindingChanged := binding.bindType = 3
+        ? RefreshProgramBinding(binding)
+        : PruneBindingItems(binding)
+    if bindingChanged
+        SaveWindowBinding(bindingNumber, binding)
+    if !binding.items.Length
+        return
 
     WinTapedX := bindingNumber
     activeId := WinExist("A")

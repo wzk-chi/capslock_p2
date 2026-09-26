@@ -123,6 +123,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .binding-number { min-width: 86px; font-size: 12px; font-weight: 650; }
 .binding-head select { max-width: 160px; padding: 6px 8px; }
 .binding-head .btn { margin-left: auto; padding: 6px 10px; font-size: 11px; }
+.binding-mode-hint { color: var(--muted); font-size: 11px; }
 .binding-items { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
 .empty { padding: 24px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; }
 @media (max-width: 820px) {
@@ -642,16 +643,26 @@ function addPairRow(sectionName, root, initialKey = '', initialValue = '', multi
 }
 function renderBindings() {
   const root = $('#bindingList'); root.replaceChildren();
+  const modes = {
+    1: { label: '单个窗口', description: '只绑定当前激活的窗口' },
+    2: { label: '窗口组', description: '把当前窗口追加到已有窗口组' },
+    3: { label: '同应用窗口', description: '自动匹配同一程序的窗口' }
+  };
   for (const binding of (state.draft.bindings || [])) {
     const card = document.createElement('div'); card.className = 'binding-card';
     const head = document.createElement('div'); head.className = 'binding-head';
     const title = document.createElement('span'); title.className = 'binding-number'; title.textContent = 'CapsLock + ' + binding.number;
     const select = document.createElement('select');
-    select.innerHTML = '<option value="1">当前窗口</option><option value="2">追加窗口</option><option value="3">同类窗口</option>';
+    select.innerHTML = Object.entries(modes).map(([value, mode]) =>
+      `<option value="${value}">${mode.label}</option>`).join('');
     select.value = binding.bindType || 1;
     const capture = document.createElement('button'); capture.className = 'btn'; capture.textContent = '捕获当前窗口';
     capture.addEventListener('click', () => post({ type: 'captureWindow', number: binding.number, bindType: Number(select.value) }));
     head.append(title, select, capture); card.append(head);
+    const modeHint = document.createElement('div'); modeHint.className = 'binding-mode-hint'; card.append(modeHint);
+    const updateModeHint = () => { modeHint.textContent = (modes[select.value] || modes[1]).description; };
+    select.addEventListener('change', updateModeHint);
+    updateModeHint();
     const items = document.createElement('div'); items.className = 'binding-items';
     if (binding.items && binding.items.length) binding.items.forEach(item => {
       const line = document.createElement('div'); line.textContent = `${item.exe || ''} · ${item.windowClass || ''}`;
