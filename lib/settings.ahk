@@ -220,14 +220,15 @@ SettingsKeyIn(values, target) {
     return false
 }
 
-SettingsWriteSection(section, values) {
-    global SettingsFile
+SettingsCollectSectionChanges(changes, section, values) {
     if !IsObject(values)
         return
+    if !changes.Has(section)
+        changes[section] := Map()
     for key, value in values {
         if IsObject(value) || !SettingsAllowedKey(section, String(key))
             continue
-        ConfigWriteValue(SettingsFile, section, String(key), String(value))
+        changes[section][String(key)] := String(value)
     }
 }
 
@@ -239,9 +240,13 @@ SettingsApplyDraft(message) {
     if !draft.Has("sections") || !IsObject(draft["sections"])
         return
     try {
+        changes := Map()
         for section in SettingsConfigSections() {
             if draft["sections"].Has(section)
-                SettingsWriteSection(section, draft["sections"][section])
+                SettingsCollectSectionChanges(changes, section, draft["sections"][section])
+        }
+        if changes.Count {
+            ConfigWriteUserOverrides(changes)
         }
         ReloadSettings()
         AiChatOnSettingsSaved()

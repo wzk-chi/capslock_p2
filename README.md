@@ -33,8 +33,8 @@ Everything 为可选（`resources/` 已内置一份，首次运行会自动建�
 1. 双击 `capslock_p2.ahk`，托盘出现图标即已运行。
 2. 开机自启：右键托盘菜单「开机自启动」切换；或编辑 `capslock_p2.ini` 的 `[Global] autostart=1`
    （保存后程序自动重读）。
-3. **全部配置在 `capslock_p2.ini`，保存后程序自动重读，无需重启。** 完整可抄的示例见
-   `capslock_p2-settingsDemo.ini`（只读参考，程序不加载它）。
+3. 默认值在 `capslock_p2-default.ini`，用户修改写入 `capslock_p2.ini`，保存后程序自动重读，无需重启。
+   完整说明和示例见 `capslock_p2-settingsDemo.ini`（只读参考，程序不加载它）。
 
 发布版是**单文件安装包** `capslock_p2-setup.exe`（也常按版本命名如 `capslock_p2-setup-0.1.1.exe`）。
 运行后自动释放主程序、WebView2 页面、词典、SQLite、Everything 和配置模板，默认安装到
@@ -294,7 +294,8 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 
 ## 配置说明
 
-- 配置文件：**`capslock_p2.ini`**（UTF-8）。保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
+- 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
+- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
 - 段：`Global`、`TabHotString`、`Keys`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
 - `[Global]` 常用项：
@@ -306,7 +307,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
   | `mouseSpeed` | 3 | CapsLock+LAlt+滚轮的基准速度 |
   | `allowClipboard` | 1 | 独立剪贴板开关 |
   | `loadingAnimation` | 1 | 启动动画：也可从托盘菜单切换；默认显示现代简约启动卡片 |
-  | `language` | 0 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |
+  | `language` | 1 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |
 
 ## 调试
 

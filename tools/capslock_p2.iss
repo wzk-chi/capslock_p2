@@ -2,7 +2,7 @@
 ; Build the AHK payload first:
 ;   Ahk2Exe.exe /in capslock_p2.ahk /out build\payload\capslock_p2.exe /base AutoHotkey64.exe
 ; Then compile this file with ISCC.exe. The installer intentionally uses the
-; distribution-safe tools\capslock_p2-default.ini instead of the developer's
+; distribution-safe capslock_p2-default.ini instead of the developer's
 ; root capslock_p2.ini, which may contain personal API credentials.
 
 #define MyAppName "capslock_p2"
@@ -56,14 +56,11 @@ Source: "{#ProjectRoot}\resources\Everything-1.4.1.1032.x64\*"; DestDir: "{app}\
 Source: "{#ProjectRoot}\WebView2\64bit\WebView2Loader.dll"; DestDir: "{app}\WebView2\64bit"; Flags: ignoreversion
 
 ; Keep the example, README and the GPL v2 license text available after installation.
+Source: "{#ProjectRoot}\capslock_p2-default.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\capslock_p2-settingsDemo.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
-; Never overwrite the user's API settings during an upgrade.
-Source: "{#ProjectRoot}\tools\capslock_p2-default.ini"; DestDir: "{app}"; DestName: "capslock_p2.ini"; Flags: onlyifdoesntexist ignoreversion
-; Keep the same safe defaults available for one-time migration of older configs.
-Source: "{#ProjectRoot}\tools\capslock_p2-default.ini"; DestDir: "{app}"; DestName: "capslock_p2-defaults.ini"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\capslock_p2.exe"; WorkingDir: "{app}"; IconFilename: "{app}\resources\capslock_p2-icon.ico"

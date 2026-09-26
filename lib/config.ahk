@@ -1,20 +1,39 @@
 ; Configuration storage and typed access for capslock_p2.
-; This file owns the UTF-8 INI document and typed access.
+; The root capslock_p2-default.ini is loaded first; capslock_p2.ini overlays it.
+; This file owns the UTF-8 user INI document and typed access.
 
 global SettingsFile := A_ScriptDir . "\capslock_p2.ini"
 global Config := Map()
+global ConfigDefaults := Map()
 global SettingsModifyTime := ""
 
 ConfigLoad() {
-    global Config, SettingsFile, SettingsModifyTime
+    global Config, ConfigDefaults, SettingsFile, SettingsModifyTime
 
-    Config := ConfigParseIni(SettingsFile)
-    ConfigApplyDefaults()
+    defaultsPath := ConfigDefaultPath()
+    ConfigDefaults := ConfigParseIni(defaultsPath)
+    Config := ConfigParseIni(defaultsPath)
+    ConfigOverlay(Config, ConfigParseIni(SettingsFile))
     for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "TTranslate", "TYoudao", "TVolcengine"] {
         if !Config.Has(section)
             Config[section] := Map()
     }
     SettingsModifyTime := ConfigFileModifyTime()
+}
+
+ConfigDefaultPath() {
+    return A_ScriptDir . "\capslock_p2-default.ini"
+}
+
+ConfigOverlay(target, overlay) {
+    if !IsObject(overlay)
+        return
+    for section, values in overlay {
+        if !target.Has(section)
+            target[section] := Map()
+        for key, value in values
+            target[section][key] := value
+    }
 }
 
 ConfigRead(section, key, defaultValue := "") {
@@ -64,27 +83,16 @@ ConfigWriteBatch(changes) {
     ConfigWriteFile(SettingsFile, changes)
 }
 
-ConfigApplyDefaults() {
-    global Config, SettingsFile
-    defaultsPath := A_ScriptDir . "\capslock_p2-defaults.ini"
-    if !FileExist(defaultsPath)
-        defaultsPath := A_ScriptDir . "\tools\capslock_p2-default.ini"
-    if !FileExist(defaultsPath)
-        return
+ConfigDefaultHas(section, key) {
+    global ConfigDefaults
+    return ConfigDefaults.Has(section) && ConfigDefaults[section].Has(key)
+}
 
-    defaults := ConfigParseIni(defaultsPath)
-    for section, values in defaults {
-        if !Config.Has(section)
-            Config[section] := Map()
-        for key, value in values {
-            if Config[section].Has(key)
-                continue
-            Config[section][key] := value
-            try ConfigWriteValue(SettingsFile, section, key, value)
-            catch
-                continue
-        }
-    }
+ConfigDefaultRead(section, key, defaultValue := "") {
+    global ConfigDefaults
+    if ConfigDefaults.Has(section) && ConfigDefaults[section].Has(key)
+        return ConfigDefaults[section][key]
+    return defaultValue
 }
 
 ConfigParseIni(filePath) {
@@ -146,6 +154,33 @@ ConfigWriteFile(filePath, changes) {
     ConfigAtomicWrite(filePath, content)
 }
 
+; Save only explicit user overrides. Values equal to the canonical default are
+; removed from the user file so a later default update can take effect.
+ConfigWriteUserOverrides(changes) {
+    global SettingsFile
+    if !IsObject(changes)
+        return
+    original := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
+    original := StrReplace(original, "`r`n", "`n")
+    content := original
+    for section, values in changes {
+        if !IsObject(values)
+            continue
+        for key, value in values {
+            sectionName := String(section)
+            keyName := String(key)
+            valueText := String(value)
+            if ConfigDefaultHas(sectionName, keyName)
+                && valueText = String(ConfigDefaultRead(sectionName, keyName))
+                content := ConfigDeleteIniValue(content, sectionName, keyName)
+            else
+                content := ConfigSetIniValue(content, sectionName, keyName, valueText)
+        }
+    }
+    if content != original
+        ConfigAtomicWrite(SettingsFile, content)
+}
+
 ConfigSetIniValue(content, section, key, value) {
     lines := StrSplit(content, "`n")
     out := []
@@ -187,6 +222,38 @@ ConfigSetIniValue(content, section, key, value) {
         out.Push(key . "=" . value)
     }
 
+    newContent := ""
+    for line in out
+        newContent .= line . "`n"
+    return newContent
+}
+
+ConfigDeleteIniValue(content, section, key) {
+    if content = ""
+        return content
+    lines := StrSplit(content, "`n")
+    out := []
+    currentSection := ""
+    removed := false
+    for line in lines {
+        trimmed := Trim(line)
+        if SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]" {
+            currentSection := SubStr(trimmed, 2, StrLen(trimmed) - 2)
+            out.Push(line)
+            continue
+        }
+        if currentSection = section {
+            equalPosition := InStr(trimmed, "=")
+            if equalPosition && SubStr(trimmed, 1, 1) != ";"
+                && Trim(SubStr(trimmed, 1, equalPosition - 1)) = key {
+                removed := true
+                continue
+            }
+        }
+        out.Push(line)
+    }
+    if !removed
+        return content
     newContent := ""
     for line in out
         newContent .= line . "`n"

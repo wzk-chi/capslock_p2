@@ -16,9 +16,9 @@ capslock_p2.exe + 动态资源
 - Ahk2Exe：用于把 `capslock_p2.ahk` 编译成 64 位主程序
 - Inno Setup 6：用于把主程序和动态资源压缩成一个安装 EXE
 - Inno Setup 配置：`tools/capslock_p2.iss`
-- 发布用脱敏配置：`tools/capslock_p2-default.ini`
+- 发布用脱敏配置：`capslock_p2-default.ini`
 
-`tools/capslock_p2.iss` 不参与程序运行，`tools/capslock_p2-default.ini` 只作为安装包的首次配置模板。
+`tools/capslock_p2.iss` 不参与程序运行，`capslock_p2-default.ini` 是程序和安装包共用的完整默认配置。
 
 ## 构建顺序
 
@@ -62,7 +62,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 - `resources\capslock_p2-icon.png`：运行时托盘图标
 - `resources\capslock_p2-icon.ico`：EXE、安装器和快捷方式图标
 - `WebView2\64bit\WebView2Loader.dll`
-- `capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
+- `capslock_p2-default.ini`、`capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
 
 设置中心由 CapsLock+F12、托盘菜单「设置」和 qbar `cl set` 打开；翻译和 AI 页面中的设置按钮只发送消息，
 不会再加载独立的设置脚本。仓库中的 `pages\settings.js` 因禁止删除文件而保留，但不属于运行时页面和发布资源。
@@ -79,11 +79,10 @@ WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsof
 
 ## 配置和安全规则
 
-开发机根目录的 `capslock_p2.ini` 是个人配置，可能包含真实 API 地址和 API Key，**禁止作为安装包输入文件**。安装器只使用不含凭据的 `tools/capslock_p2-default.ini`：
+开发机根目录的 `capslock_p2.ini` 是个人配置，可能包含真实 API 地址和 API Key，**禁止作为安装包输入文件**。安装器只使用不含凭据的 `capslock_p2-default.ini`：
 
-- 首次安装时生成 `capslock_p2.ini`；
-- 同时安装 `capslock_p2-defaults.ini`，用于启动时把新增默认项补入旧配置；
-- 升级时使用 `onlyifdoesntexist`，保留用户已有的 API 配置；
+- 安装包提供 `capslock_p2-default.ini`；首次运行直接使用它，用户首次保存设置时才创建 `capslock_p2.ini`；
+- 用户文件只保存覆盖项，升级时不会覆盖已有的用户配置；
 - 不打包 `capslock_p2-debug.log`；
 - 不打包 `capslock_p2-winsInfosRecorder.ini`；
 - 不打包 `capslock-plus\`、`.claude\`、诊断脚本和 AHK 源码；
@@ -97,7 +96,7 @@ WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsof
 
 1. Ahk2Exe 和 ISCC 退出码均为 0。
 2. `pages\`、`vendor\`、`resources\dictionary.db`、`resources\SQLite3.dll`、Everything、64 位 WebView2 loader 和图标均存在。
-3. 安装包配置引用的是 `tools/capslock_p2-default.ini`，没有引用根目录个人 `capslock_p2.ini`。
+3. 安装包配置引用的是 `capslock_p2-default.ini`，没有引用根目录个人 `capslock_p2.ini`。
 4. 发布物中没有 API Key、调试日志和机器专属窗口绑定记录。
 5. 使用 PowerShell 或文件工具核对文件和哈希，不启动项目程序，不执行安装器验证其运行效果。
 

@@ -14,13 +14,15 @@
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
 - **LLM 公共层**：`lib/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
   OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
+- **配置分层**：`capslock_p2-default.ini` 保存完整默认值，`capslock_p2-settingsDemo.ini` 只作详细参考，
+  `capslock_p2.ini` 只保存用户覆盖项。`lib/config.ahk` 先加载默认配置，再叠加用户配置；设置页保存时会删除恢复为默认值的覆盖项。
 
 ## 目录结构与模块职责
 
 ```
 capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
-  config.ahk                       INI 解析、默认值、类型读取与原子写入
+  config.ahk                       INI 解析、默认覆盖层、类型读取与原子写入
   core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
