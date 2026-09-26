@@ -46,9 +46,9 @@ QbarConfigItems() {
     return items
 }
 
-; [QSearch] entries, plus the built-in engines for every trigger the settings do
-; not define -- so adding one entry replaces only the trigger it names rather
-; than dropping the whole set. The special key "default" is never listed.
+; [QSearch] entries, plus the language-aware built-in `s` trigger when it is
+; not defined. Adding an entry replaces only the trigger it names rather than
+; dropping the whole set. The special key "default" is never listed.
 
 QbarSearchEntries() {
     entries := []
@@ -61,20 +61,13 @@ QbarSearchEntries() {
             entries.Push(Map("short", short, "label", key, "type", "search", "value", value))
         }
 
-    defaults := [
-        Map("key", "bd",   "label", "bd <百度>",      "value", "https://www.baidu.com/s?wd={q}"),
-        Map("key", "g",    "label", "g <谷歌 gg>",    "value", "https://www.google.com/search?q={q}"),
-        Map("key", "bing", "label", "bing <必应>",    "value", "https://www.bing.com/search?q={q}"),
-        Map("key", "wk",   "label", "wk <维基百科>",  "value", "https://zh.wikipedia.org/w/index.php?search={q}"),
-        Map("key", "m",    "label", "m <MDN mdn>",    "value", "https://developer.mozilla.org/zh-CN/search?q={q}")
-    ]
-    ; "s" is the plain one-word trigger. Its engine follows the interface
-    ; language, since Bing and Google are each the better default where they are
-    ; the one the system already leans on.
+    ; "s" is the only dynamic default. Its engine follows the interface
+    ; language, while fixed engines live in capslock_p2-default.ini.
+    defaults := []
     if IsChineseLanguage()
-        defaults.InsertAt(1, Map("key", "s", "label", "s <搜索>", "value", "https://www.bing.com/search?q={q}"))
+        defaults.Push(Map("key", "s", "label", "s <搜索>", "value", "https://www.bing.com/search?q={q}"))
     else
-        defaults.InsertAt(1, Map("key", "s", "label", "s <search>", "value", "https://www.google.com/search?q={q}"))
+        defaults.Push(Map("key", "s", "label", "s <search>", "value", "https://www.google.com/search?q={q}"))
     for entry in defaults {
         if configured.Has(StrLower(entry["key"]))
             continue

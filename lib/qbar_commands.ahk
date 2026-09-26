@@ -292,8 +292,8 @@ QbarRunCommand(value, params := "") {
     resolved := ExtractSetString(value, &runString, &runAsAdmin, &parameters)
     if resolved != ""
         command := runString . (parameters = "" ? "" : " " . parameters)
-    else if FileExist(Trim(value))
-        command := Chr(34) . Trim(value) . Chr(34)
+    else if runString != ""
+        command := runString . (parameters = "" ? "" : " " . parameters)
     else
         command := Trim(value)
     if runAsAdmin
