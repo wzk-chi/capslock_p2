@@ -166,12 +166,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
           <div class="card"><div class="grid">
             <label class="field"><span>界面语言</span><select data-section="Global" data-key="language"><option value="0">跟随系统</option><option value="1">简体中文</option><option value="2">English</option></select></label>
             <label class="field"><span>鼠标速度</span><input data-section="Global" data-key="mouseSpeed" type="number" min="1" max="20"></label>
-            <label class="field wide"><span>JavaScript 扩展文件</span><input data-section="Global" data-key="loadScript" placeholder="jsExtensions.js"></label>
             <label class="check"><input data-section="Global" data-key="autostart" type="checkbox"><span>开机启动</span></label>
             <label class="check"><input data-section="Global" data-key="allowClipboard" type="checkbox"><span>独立剪贴板</span></label>
             <label class="check"><input data-section="Global" data-key="loadingAnimation" type="checkbox"><span>启动动画</span></label>
             <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
-            <label class="check"><input data-section="Global" data-key="javascriptOriginalReturn" type="checkbox"><span>优先返回 JS 原始结果</span></label>
           </div></div>
         </div>
       </section>
@@ -265,16 +263,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
           <div class="card"><div class="card-head"><h3>搜索引擎</h3></div><div id="qsearchList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QSearch">添加搜索</button></div></div>
           <div class="card"><div class="card-head"><h3>运行项目</h3></div><div id="qrunList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QRun">添加项目</button></div></div>
           <div class="card"><div class="card-head"><h3>网址</h3></div><div id="qwebList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QWeb">添加网址</button></div></div>
-          <div class="card"><div class="card-head"><h3>外观</h3></div><div class="grid">
-            <label class="field"><span>边框圆角</span><input data-section="QStyle" data-key="borderRadius"></label>
-            <label class="field"><span>列表数量</span><input data-section="QStyle" data-key="listCount"></label>
-            <label class="field"><span>文字字号</span><input data-section="QStyle" data-key="textFontSize"></label>
-            <label class="field"><span>列表字号</span><input data-section="QStyle" data-key="listFontSize"></label>
-            <label class="field"><span>文字颜色</span><input data-section="QStyle" data-key="textColor"></label>
-            <label class="field"><span>边框颜色</span><input data-section="QStyle" data-key="borderBackgroundColor"></label>
-            <label class="field"><span>列表颜色</span><input data-section="QStyle" data-key="listColor"></label>
-            <label class="field"><span>文字背景</span><input data-section="QStyle" data-key="textBackgroundColor"></label>
-            <label class="field"><span>列表背景</span><input data-section="QStyle" data-key="listBackgroundColor"></label>
+          <div class="card"><div class="card-head"><h3>文件搜索</h3></div><div class="grid">
+            <label class="field wide"><span>es.exe 路径</span><input data-section="Qbar" data-key="esPath" placeholder="留空使用 resources\\es.exe"></label>
+            <label class="field wide"><span>Everything 路径</span><input data-section="Qbar" data-key="everythingPath" placeholder="留空自动查找 resources"></label>
+            <label class="field"><span>实例名</span><input data-section="Qbar" data-key="esInstance"></label>
+            <label class="field"><span>最多结果数</span><input data-section="Qbar" data-key="esMaxResults" type="number" min="1" max="500"></label>
           </div></div>
         </div>
       </section>
@@ -393,7 +386,7 @@ const ACTION_LABELS = {
   keyFunc_copy_2: '复制到剪贴板 2', keyFunc_paste_2: '粘贴剪贴板 2', keyFunc_undoRedo: '撤销 / 重做',
   keyFunc_tabPrve: '切换到上一个标签页', keyFunc_tabNext: '切换到下一个标签页', keyFunc_jumpPageTop: '跳到页面顶部',
   keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_translate: '打开翻译',
-  keyFunc_getJSEvalString: '获取 JavaScript 表达式', keyFunc_tabScript: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
+  keyFunc_getJSEvalString: '获取表达式文本', keyFunc_tabHotString: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
   keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
   keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
   keyFunc_volumeDown: '减小音量', keyFunc_volumeMute: '静音', keyFunc_winbind_activate: '激活绑定窗口',

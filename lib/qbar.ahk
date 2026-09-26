@@ -43,7 +43,7 @@ global QbarRowHeight := 30
 global QbarPadding := 10
 global QbarGap := 6
 global QbarMaxRows := 12
-global QbarCardRadius := 12        ; window corner radius; [QStyle] borderRadius wins
+global QbarCardRadius := 12        ; fixed window corner radius
 global QbarOffscreen := 30000      ; setup position, kept off every desktop
 
 ; ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ QbarShow() {
         ; The page keeps its state across hide/show while the window starts
         ; collapsed; make its next render re-report the row count.
         QbarExec("window.resetRows();")
-        QbarPushStyle()
+        QbarPushLanguage()
         QbarStartIndexLoad()
     }
     DebugLog("Qbar shown")
@@ -186,7 +186,7 @@ QbarNavigationCompleted(sender, args) {
         return
     }
     if QbarVisible {
-        QbarPushStyle()
+        QbarPushLanguage()
         QbarStartIndexLoad()
     }
 }
@@ -355,7 +355,7 @@ QbarRefit() {
 
 QbarResize(rows) {
     global QbarGui, QbarController, QbarCurrentRows, QbarInputHeight, QbarRowHeight, QbarPadding, QbarGap
-    rows := Max(0, Min(QbarListCount(), rows + 0))
+    rows := Max(0, Min(QbarMaxRows, rows + 0))
     if rows = QbarCurrentRows
         return
     QbarCurrentRows := rows
@@ -408,8 +408,7 @@ QbarApplyRegion() {
 
 QbarCornerRadius() {
     global QbarCardRadius
-    radius := QbarStyleNumber("borderRadius", String(QbarCardRadius)) + 0
-    return radius >= 0 ? radius : QbarCardRadius
+    return QbarCardRadius
 }
 
 ; Centre the collapsed bar, so the input sits in the middle of the screen and the
@@ -1489,71 +1488,11 @@ QbarParentFolder(dir) {
 }
 
 ; ---------------------------------------------------------------------------
-; Style
+; Page language
 ; ---------------------------------------------------------------------------
 
-; Only values actually present in [QStyle] are sent, so an unconfigured panel
-; keeps the shared theme it has in common with the translation panel.
-QbarPushStyle() {
-    style := Map("uiLanguage", IsChineseLanguage() ? "zh" : "en", "maxRows", String(QbarListCount()))
-    for key in ["borderBackgroundColor", "textBackgroundColor", "textColor", "listBackgroundColor", "listColor"] {
-        value := QbarConfiguredColor(key)
-        if value != ""
-            style[key] := value
-    }
-    for key in ["borderRadius", "textFontSize", "listFontSize"] {
-        value := QbarConfiguredNumber(key)
-        if value != ""
-            style[key] := value
-    }
-    QbarExec("window.setStyle(" . JSON.stringify(style, 0) . ");")
-}
-
-QbarConfiguredColor(key) {
-    global Config
-    if !Config.Has("QStyle") || !Config["QStyle"].Has(key)
-        return ""
-    return QbarStyleColor(key, "")
-}
-
-QbarConfiguredNumber(key) {
-    global Config
-    if !Config.Has("QStyle") || !Config["QStyle"].Has(key)
-        return ""
-    return QbarStyleNumber(key, "")
-}
-
-QbarListCount() {
-    global QbarMaxRows
-    count := QbarStyleNumber("listCount", String(QbarMaxRows)) + 0
-    return count > 0 ? count : QbarMaxRows
-}
-
-; [QStyle] colours are either #RRGGBB or the reference project's 0xBBGGRR.
-QbarStyleColor(key, fallback) {
-    global Config
-    if !Config.Has("QStyle") || !Config["QStyle"].Has(key)
-        return fallback
-    value := Trim(Config["QStyle"][key])
-    if value = ""
-        return fallback
-    if RegExMatch(value, "i)^#?([0-9a-f]{6})$", &match)
-        return "#" . match[1]
-    if RegExMatch(value, "i)^0x([0-9a-f]{6})$", &match) {
-        bgr := match[1]
-        return "#" . SubStr(bgr, 5, 2) . SubStr(bgr, 3, 2) . SubStr(bgr, 1, 2)
-    }
-    return fallback
-}
-
-QbarStyleNumber(key, fallback) {
-    global Config
-    if !Config.Has("QStyle") || !Config["QStyle"].Has(key)
-        return fallback
-    value := Trim(Config["QStyle"][key])
-    if RegExMatch(value, "^\d+$")
-        return value
-    return fallback
+QbarPushLanguage() {
+    QbarExec("window.setLanguage(" . LLMJsonQuote(IsChineseLanguage() ? "zh" : "en") . ");")
 }
 
 ; ---------------------------------------------------------------------------

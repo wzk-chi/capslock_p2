@@ -1,5 +1,5 @@
 ; Configuration storage and typed access for capslock_p2.
-; This file owns the UTF-8 INI document, typed access, and migration path.
+; This file owns the UTF-8 INI document and typed access.
 
 global SettingsFile := A_ScriptDir . "\capslock_p2.ini"
 global Config := Map()
@@ -10,7 +10,7 @@ ConfigLoad() {
 
     Config := ConfigParseIni(SettingsFile)
     ConfigApplyDefaults()
-    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "QStyle", "TTranslate", "TVolcengine"] {
+    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "Qbar", "TTranslate", "TVolcengine"] {
         if !Config.Has(section)
             Config[section] := Map()
     }
@@ -85,65 +85,6 @@ ConfigApplyDefaults() {
                 continue
         }
     }
-    ConfigMigratePromptTemplates(defaults)
-    ConfigMigrateAiPromptTemplate(defaults)
-    ConfigMigrateKeyDefaults()
-}
-
-ConfigMigratePromptTemplates(defaults) {
-    global Config, SettingsFile
-    oldTranslationPrompt := "You are a precise translation engine."
-    if !Config.Has("LLMTranslate") || !Config["LLMTranslate"].Has("systemPrompt")
-        return
-    if Trim(Config["LLMTranslate"]["systemPrompt"]) != oldTranslationPrompt
-        return
-    if !IsObject(defaults) || !defaults.Has("LLMTranslate")
-        return
-    if !defaults["LLMTranslate"].Has("systemPrompt")
-        return
-    newPrompt := defaults["LLMTranslate"]["systemPrompt"]
-    if Trim(newPrompt) = ""
-        return
-    Config["LLMTranslate"]["systemPrompt"] := newPrompt
-    try ConfigWriteValue(SettingsFile, "LLMTranslate", "systemPrompt", newPrompt)
-    if Config["LLMTranslate"].Has("targetLanguage") {
-        legacyTarget := StrLower(Trim(Config["LLMTranslate"]["targetLanguage"]))
-        defaultTarget := ""
-        if defaults["LLMTranslate"].Has("targetLanguage")
-            defaultTarget := StrLower(Trim(defaults["LLMTranslate"]["targetLanguage"]))
-        if legacyTarget = "simplified chinese" && defaultTarget = "system" {
-            Config["LLMTranslate"]["targetLanguage"] := "system"
-            try ConfigWriteValue(SettingsFile, "LLMTranslate", "targetLanguage", "system")
-        }
-    }
-}
-
-ConfigMigrateAiPromptTemplate(defaults) {
-    global Config, SettingsFile
-    if !Config.Has("QAI") || !Config["QAI"].Has("systemPrompt")
-        return
-    if !IsObject(defaults) || !defaults.Has("QAI") || !defaults["QAI"].Has("systemPrompt")
-        return
-
-    currentPrompt := Trim(Config["QAI"]["systemPrompt"])
-    isLegacyPrompt := InStr(currentPrompt, "CapsLock+ launcher") && InStr(currentPrompt, "Simplified Chinese") && !InStr(currentPrompt, "{{uiLanguage}}")
-    if !isLegacyPrompt
-        return
-    newPrompt := defaults["QAI"]["systemPrompt"]
-    if Trim(newPrompt) = ""
-        return
-    Config["QAI"]["systemPrompt"] := newPrompt
-    try ConfigWriteValue(SettingsFile, "QAI", "systemPrompt", newPrompt)
-}
-
-ConfigMigrateKeyDefaults() {
-    global Config, SettingsFile
-    if !Config.Has("Keys") || !Config["Keys"].Has("caps_f12")
-        return
-    if Trim(Config["Keys"]["caps_f12"]) != "keyFunc_switchClipboard"
-        return
-    Config["Keys"]["caps_f12"] := "keyFunc_openSettings"
-    try ConfigWriteValue(SettingsFile, "Keys", "caps_f12", "keyFunc_openSettings")
 }
 
 ConfigParseIni(filePath) {

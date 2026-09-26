@@ -339,8 +339,8 @@ keyFunc_getJSEvalString(*) {
         SetClipboardText(inputResult.Value)
 }
 
-keyFunc_tabScript(*) {
-    tabAction()
+keyFunc_tabHotString(*) {
+    TabHotStringAction()
 }
 
 keyFunc_openCpasDocs(*) {

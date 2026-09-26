@@ -106,7 +106,7 @@ SettingsWebMessageReceived(sender, args) {
 
 SettingsConfigSections() {
     return ["Global", "LLM", "LLMTranslate", "TTranslate", "TVolcengine", "QAI",
-        "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "QStyle"]
+        "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "Qbar"]
 }
 
 SettingsSectionSnapshot(section) {
@@ -176,8 +176,8 @@ SettingsAllowedKey(section, key) {
         return false
     switch section {
         case "Global":
-            return SettingsKeyIn(["autostart", "loadScript", "mouseSpeed", "allowClipboard", "debug",
-                "loadingAnimation", "language", "javascriptOriginalReturn"], key)
+            return SettingsKeyIn(["autostart", "mouseSpeed", "allowClipboard", "debug",
+                "loadingAnimation", "language"], key)
         case "LLM":
             return SettingsKeyIn(["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model", "thinking",
                 "temperature", "timeout", "maxInputTokens"], key)
@@ -189,10 +189,8 @@ SettingsAllowedKey(section, key) {
             return SettingsKeyIn(["accessKey", "secretKey", "targetLanguage", "region"], key)
         case "QAI":
             return SettingsKeyIn(["systemPrompt"], key)
-        case "QStyle":
-            return SettingsKeyIn(["borderBackgroundColor", "textBackgroundColor", "textColor",
-                "listBackgroundColor", "listColor", "borderRadius", "textFontSize",
-                "listFontSize", "listCount"], key)
+        case "Qbar":
+            return SettingsKeyIn(["esPath", "everythingPath", "esInstance", "esMaxResults"], key)
         case "Keys":
             return RegExMatch(key, "i)^(press_caps|caps(_lalt|_win)?_[A-Za-z0-9_]+)$")
         default:

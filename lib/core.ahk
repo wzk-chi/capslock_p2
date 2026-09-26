@@ -42,8 +42,6 @@ Initialize() {
     ApplyGlobalSettings()
     TrayMenuInitialize()
     DebugLog("Initialize settings=" . SettingsFile)
-    InitializeJavaScriptRuntime()
-
     if ConfigGlobalRead("loadingAnimation") != "0"
         ShowLoading()
 
@@ -82,7 +80,6 @@ ReloadSettings(*) {
     ConfigLoad()
     BuildKeySet()
     ApplyGlobalSettings()
-    InitializeJavaScriptRuntime()
     InitializeMouseSpeed()
     RebuildHotStringPattern()
     DebugLog("Settings reloaded")
@@ -177,8 +174,6 @@ ApplySettingChange(section, key, value) {
                 TrayMenuRefresh()
             case "loadingAnimation", "language":
                 TrayMenuRefresh()
-            case "loadScript", "javascriptOriginalReturn":
-                InitializeJavaScriptRuntime()
         }
         return
     }

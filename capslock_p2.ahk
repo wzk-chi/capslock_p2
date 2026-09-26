@@ -16,8 +16,6 @@ A_HotkeyInterval := 2000
 #Include lib\config.ahk
 #Include lib\core.ahk
 #Include lib\windows.ahk
-#Include lib\math.ahk
-#Include lib\jsEval.ahk
 #Include lib\WebView2.ahk
 #Include lib\JSON.ahk
 #Include lib\crypto.ahk
@@ -31,6 +29,7 @@ A_HotkeyInterval := 2000
 #Include lib\dictionary.ahk
 #Include lib\aiChat.ahk
 #Include lib\qbar.ahk
+#Include lib\tabHotString.ahk
 #Include lib\icons.ahk
 #Include lib\keys.ahk
 #Include lib\keymap.ahk

@@ -24,11 +24,11 @@
   --accent-soft: #e8eefb;
   --ring: #4b7bec22;
 
-  /* Overridable from [QStyle]; transparent keeps the shared flat look. */
+  /* The launcher uses a fixed theme so it matches the other panels. */
   --list-bg: transparent;
   --list-color: var(--text);
 
-  --card-radius: 12px;                            /* [QStyle] borderRadius */
+  --card-radius: 12px;
   --radius: max(0px, calc(var(--card-radius) - 3px));   /* input + rows */
   --input-height: 34px;
   --row-height: 30px;
@@ -162,7 +162,7 @@ const loading = document.getElementById('loading');
 const loadingText = document.getElementById('loadingText');
 const list = document.getElementById('list');
 
-let MAX_VISIBLE_ROWS = 12;     // mirrors QbarMaxRows; overridden by [QStyle] listCount
+const MAX_VISIBLE_ROWS = 12;
 const MAX_RENDERED = 60;       // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
@@ -172,21 +172,6 @@ const TYPE_GLYPH = { search: '🔍', folder: '📁', file: '📄', web: '🌐', 
 const STRINGS = {
   en: { placeholder: 'Type to search…', loading: 'Loading…' },
   zh: { placeholder: '输入以搜索…', loading: '加载中…' }
-};
-
-// [QStyle] ini keys -> CSS custom properties. Only values present in the ini are
-// applied, so an unconfigured panel keeps the shared theme above.
-const STYLE_VARS = {
-  borderBackgroundColor: '--bg',
-  textBackgroundColor: '--surface',
-  textColor: '--text',
-  listBackgroundColor: '--list-bg',
-  listColor: '--list-color'
-};
-const STYLE_SIZES = {
-  borderRadius: '--card-radius',
-  textFontSize: '--input-font-size',
-  listFontSize: '--list-font-size'
 };
 
 let lang = 'en';
@@ -329,7 +314,7 @@ function select(index) {
     nodes[selectedIndex].scrollIntoView({ block: 'nearest' });
 }
 
-/* Completion, following the reference's tabAction: the highlighted row's short
+/* Completion: the highlighted row's short
    key replaces the leaf of a path while a directory is being browsed, and
    replaces the whole line everywhere else. Returns the row that was used. */
 function completeSelected() {
@@ -363,16 +348,8 @@ function execute(ctrlHeld) {
 
 /* ---- AHK -> page ---- */
 
-window.setStyle = function (style) {
-  lang = style.uiLanguage === 'zh' ? 'zh' : 'en';
-  const root = document.documentElement.style;
-  for (const [key, cssVar] of Object.entries(STYLE_VARS)) {
-    if (style[key]) root.setProperty(cssVar, style[key]);
-  }
-  for (const [key, cssVar] of Object.entries(STYLE_SIZES)) {
-    if (style[key]) root.setProperty(cssVar, style[key] + 'px');
-  }
-  if (style.maxRows) MAX_VISIBLE_ROWS = Math.max(1, parseInt(style.maxRows, 10) || MAX_VISIBLE_ROWS);
+window.setLanguage = function (language) {
+  lang = language === 'zh' ? 'zh' : 'en';
   input.placeholder = t('placeholder');
   if (loadingVisible)
     loadingText.textContent = t('loading');

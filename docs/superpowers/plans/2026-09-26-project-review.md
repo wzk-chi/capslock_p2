@@ -166,7 +166,7 @@ git commit -m "refactor: apply small settings changes incrementally"
 - `ConfigApplyDefaults() -> void`
 - `ConfigSectionExists(section) -> Boolean`
 
-- [ ] **Step 1: Move INI parsing/default migration.** Move the INI parser, writer, load/default flow, and the three existing migrations into `lib/config.ahk`; expose them as `ConfigParseIni`, `ConfigWriteValue`, `ConfigLoad`, and `ConfigApplyDefaults`; make `Config`, `SettingsFile`, and `SettingsModifyTime` owned by that module.
+- [ ] **Step 1: Move INI parsing/default loading.** Move the INI parser, writer, and load/default flow into `lib/config.ahk`; expose them as `ConfigParseIni`, `ConfigWriteValue`, `ConfigLoad`, and `ConfigApplyDefaults`; make `Config`, `SettingsFile`, and `SettingsModifyTime` owned by that module, with no legacy-key migration.
 - [ ] **Step 2: Implement atomic batch writes.** Write a complete new UTF-8-RAW document to a uniquely named sibling temp file, close it, then replace the original with the native file move operation; preserve comments and section ordering from the existing writer.
 - [ ] **Step 3: Rename configuration calls directly.** Update feature modules to call `ConfigLoad`, `ConfigRead`, `ConfigWrite`, and `ConfigWriteBatch`; remove parser/writer aliases from `core.ahk` after all call sites move.
 - [ ] **Step 4: Route feature getters through the boundary.** Replace direct `Config.Has(section)` reads in LLM, translation providers, qbar path options, and settings snapshots with `ConfigRead/ConfigHas` while leaving dynamic sections (`QRun`, `QWeb`, `QSearch`, `TabHotString`) iterable through `ConfigSection`.
