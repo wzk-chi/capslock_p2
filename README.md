@@ -321,7 +321,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 ## 调试
 
 `[Global] debug=1` 后，根目录生成 `capslock_p2-debug.log`，记录设置加载、热键注册、qbar 请求、
-翻译请求等关键链路（**不含剪贴板内容与 API Key**）。遇到行为不符时先看日志。
+翻译请求等关键链路的事件、计数、状态码和耗时（**不含用户输入、选区、剪贴板内容、API Key 或 endpoint 查询串**）。遇到行为不符时先看日志。
 
 ## 开发者
 

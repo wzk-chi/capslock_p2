@@ -22,6 +22,16 @@ LLMText(english, chinese) {
     return LLMUiLanguage() = "zh" ? chinese : english
 }
 
+LLMLogEndpoint(url) {
+    url := Trim(String(url))
+    if url = ""
+        return "<empty>"
+    url := RegExReplace(url, "[#?].*$")
+    if RegExMatch(url, "i)^(https?://[^/]+)(/.*)?$", &match)
+        return match[1] . match[2]
+    return "<configured>"
+}
+
 LLMSettingWith(key, defaultValue, overrides) {
     if IsObject(overrides) && overrides.Has(key)
         return overrides[key]
@@ -400,11 +410,11 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
 
         stage := "sending request"
         request.Send(LLMUtf8Bytes(body))
-        DebugLog("LLM stream started id=" . id . " endpoint=" . endpoint)
+        DebugLog("LLM stream started id=" . id . " endpoint=" . LLMLogEndpoint(endpoint))
         return id
     } catch as streamError {
         errorText := "LLM stream " . stage . " failed: " . streamError.Message
-        DebugLog("LLM stream failed id=" . id . " stage=" . stage . " error=" . streamError.Message)
+        DebugLog("LLM stream failed id=" . id . " stage=" . stage)
         LLMStreamComplete(state, false, errorText)
         return 0
     }
@@ -492,7 +502,7 @@ class LLMWinHttpEventSink extends Buffer {
                 errorText := "WinHTTP stream error"
             if errorNumber
                 errorText := "WinHTTP " . (errorNumber + 0) . ": " . errorText
-            DebugLog("LLM stream event error id=" . sink.State["id"] . " error=" . errorText)
+            DebugLog("LLM stream event error id=" . sink.State["id"])
             LLMStreamComplete(sink.State, false, errorText)
         }
     }

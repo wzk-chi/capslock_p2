@@ -277,7 +277,7 @@ activateWinAction(bindingNumber) {
             if item.path != "" && FileExist(item.path) {
                 try Run(item.path)
                 catch as launchError
-                    DebugLog("Window binding launch failed: " . launchError.Message)
+                    DebugLog("Window binding launch failed")
             }
             return
         }

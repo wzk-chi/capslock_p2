@@ -205,6 +205,12 @@ DebugLog(message) {
     )
 }
 
+; Private payloads are represented by their length only. Never pass user text,
+; clipboard content, API credentials, or local paths directly to DebugLog.
+DebugLogPrivate(label, value) {
+    DebugLog(label . " length=" . StrLen(String(value)))
+}
+
 GetGlobalSetting(key, defaultValue := "") {
     global Config
     if Config.Has("Global") && Config["Global"].Has(key)
@@ -577,7 +583,7 @@ RunConfiguredAction(actionText) {
     if !RegExMatch(functionName, "i)^keyFunc_")
         return
 
-    DebugLog("Action=" . actionText . " function=" . functionName . " args=" . argumentText)
+    DebugLog("Action function=" . functionName)
 
     try functionObject := %functionName%
     catch as functionError {

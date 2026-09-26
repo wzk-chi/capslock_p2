@@ -179,5 +179,5 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
   （15 秒超时）；需要时用 `SetTimer(fn, -1)` 延迟到回调外。启动期的长任务（如 qbar 的
   Everything 热索引）可能让页面回调 reentrant 地压在计时器回调之上，消息处理器要容忍
   非预期的字段类型（先判 `IsNumber` 再 `+ 0`）。
-- **日志红线**：`DebugLog` 绝不写剪贴板内容与 API Key（`capslock_p2.ini` 也可能含真实凭据，
-  禁止进入安装包或文档）。
+- **日志红线**：`DebugLog` 只记录事件、计数、状态码和耗时，绝不写用户输入、选区、剪贴板内容、
+  API Key 或 endpoint 查询串（`capslock_p2.ini` 也可能含真实凭据，禁止进入安装包或文档）。

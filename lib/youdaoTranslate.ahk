@@ -71,7 +71,7 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
     if StrLen(text) > 20
         input := SubStr(text, 1, 10) . StrLen(text) . SubStr(text, -10)
     sign := BCryptSha256Hex(appID . input . salt . curtime . appKey)
-    DebugLog("youdao request q=" . StrLen(text) . " chars appId=" . appID . " to=" . toLang)
+    DebugLog("youdao request q=" . StrLen(text) . " chars to=" . toLang)
 
     ; Send the parameters as a urlencoded form body (the reference flow and
     ; the official docs prefer POST; it also keeps long text out of the URL).

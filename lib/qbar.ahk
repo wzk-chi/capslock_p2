@@ -248,7 +248,8 @@ QbarWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         QbarQuerySeq += 1
         querySeq := QbarQuerySeq
-        DebugLog("Qbar query received seq=" . querySeq . " text=" . text)
+        DebugLog("Qbar query received seq=" . querySeq)
+        DebugLogPrivate("Qbar query", text)
         SetTimer(() => QbarQuery(text, querySeq), -1)
     } else if messageType = "execute" {
         text := LLMMsgField(msg, "text")
@@ -264,17 +265,17 @@ QbarWebMessageReceived(sender, args) {
         ; the unassigned local on the next line. Log and ignore instead.
         raw := LLMMsgField(msg, "text")
         if !IsNumber(raw) {
-            DebugLog("Qbar resize ignored: non-numeric payload raw=" . raw)
+            DebugLog("Qbar resize ignored: non-numeric payload type=" . Type(raw))
             return
         }
         QbarResize(raw + 0)
     } else if messageType = "ready" {
         ; The page's script is alive; the payload is its viewport size, which
         ; tells a blank panel apart from a zero-sized one.
-        DebugLog("Qbar page script ready viewport=" . LLMMsgField(msg, "text"))
+        DebugLog("Qbar page script ready")
         QbarRefit()
     } else if messageType = "debug" {
-        DebugLog("Qbar page " . LLMMsgField(msg, "text"))
+        DebugLog("Qbar page debug message received")
     } else if messageType = "hide" {
         QbarHide()
     }
@@ -562,7 +563,7 @@ QbarStartMenuItems() {
                 ))
             }
         } catch as scanError {
-            DebugLog("Start menu scan failed for " . base . ": " . scanError.Message)
+            DebugLog("Start menu scan failed")
         }
     }
     DebugLog("Start menu items=" . items.Length)
@@ -579,11 +580,13 @@ QbarQuery(text, querySeq := 0) {
     if !QbarVisible || !QbarIndexReady
         return
     if querySeq && querySeq != QbarQuerySeq {
-        DebugLog("Qbar query stale seq=" . querySeq . " latest=" . QbarQuerySeq . " text=" . text)
+        DebugLog("Qbar query stale seq=" . querySeq . " latest=" . QbarQuerySeq)
+        DebugLogPrivate("Qbar stale query", text)
         return
     }
     text := Trim(text, " `t")
-    DebugLog("Qbar query apply seq=" . querySeq . " text=" . text)
+    DebugLog("Qbar query apply seq=" . querySeq)
+    DebugLogPrivate("Qbar applied query", text)
     if text = "" {
         QbarEsMode := false
         QbarSendResults([], false)
@@ -696,7 +699,8 @@ QbarFolderItemsFor(dir) {
             ))
         }
     } catch as folderError {
-        DebugLog("Folder listing failed for " . dir . ": " . folderError.Message)
+        DebugLog("Folder listing failed")
+        DebugLogPrivate("Folder listing path", dir)
     }
     QbarFolderDir := dir
     QbarFolderItems := items
@@ -770,7 +774,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     }
     if text = ""
         return
-    DebugLog("QbarExecute text=" . text . " ctrl=" . ctrlHeld)
+    DebugLog("QbarExecute ctrl=" . ctrlHeld . " selectedType=" . selectedType)
+    DebugLogPrivate("Qbar execute", text)
 
     if ctrlHeld {
         ; A highlighted file or folder row is revealed in Explorer instead of
@@ -848,7 +853,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     ; Searching stays deliberate: only a [QSearch] trigger searches. A line
     ; that matched nothing at all becomes a question for the configured LLM --
     ; the launcher's catch-all instead of doing nothing.
-    DebugLog("QbarExecute no match, asking AI text=" . text)
+    DebugLog("QbarExecute no match, asking AI")
+    DebugLogPrivate("Qbar AI question", text)
     QbarAiAsk(text)
 }
 
@@ -1003,7 +1009,7 @@ QbarRunBy(shortKey, params := "") {
         Run(command)
         QbarHide()
     } catch as runError {
-        DebugLog("Qbar run failed: " . runError.Message)
+        DebugLog("Qbar run failed")
         ShowMsg(QbarText("Cannot run: ", "无法运行：") . entry["value"], 2500)
     }
     return true
@@ -1042,7 +1048,7 @@ QbarRunShortcut(item) {
         Run(QbarFilesystemTarget(item["exe"]))
         QbarHide()
     } catch as runError {
-        DebugLog("Qbar start menu run failed: " . runError.Message)
+        DebugLog("Qbar start menu run failed")
         ShowMsg(QbarText("Cannot run: ", "无法运行：") . item["label"], 2500)
     }
 }
@@ -1076,7 +1082,7 @@ QbarOpenPath(path) {
         Run(target)
         QbarHide()
     } catch as runError {
-        DebugLog("Qbar open failed: " . runError.Message)
+        DebugLog("Qbar open failed")
         ShowMsg(QbarText("Cannot open: ", "无法打开：") . path, 2500)
     }
 }
@@ -1101,7 +1107,7 @@ QbarLocateInExplorer(path) {
         Run("explorer.exe /select," . Chr(34) . path . Chr(34))
         QbarHide()
     } catch as runError {
-        DebugLog("Qbar locate failed: " . runError.Message)
+        DebugLog("Qbar locate failed")
         ShowMsg(QbarText("Cannot open: ", "无法打开：") . path, 2500)
     }
 }
@@ -1192,7 +1198,8 @@ QbarEsSearch(arg) {
                 break
         }
     }
-    DebugLog("Es search arg=" . arg . " results=" . results.Length)
+    DebugLog("Es search results=" . results.Length)
+    DebugLogPrivate("Es search argument", arg)
     return results
 }
 
@@ -1348,12 +1355,36 @@ QbarIsValidUtf8(buf, size) {
     while index < size {
         byte := NumGet(buf, index, "UChar")
         index += 1
-        if byte >= 0xF8      ; reserved lead byte
+        if byte <= 0x7F
+            continue
+
+        minSecond := 0x80
+        maxSecond := 0xBF
+        if byte >= 0xC2 && byte <= 0xDF {
+            expected := 1
+        } else if byte = 0xE0 {
+            expected := 2
+            minSecond := 0xA0
+        } else if byte >= 0xE1 && byte <= 0xEC || byte >= 0xEE && byte <= 0xEF {
+            expected := 2
+        } else if byte = 0xED {
+            expected := 2
+            maxSecond := 0x9F
+        } else if byte = 0xF0 {
+            expected := 3
+            minSecond := 0x90
+        } else if byte >= 0xF1 && byte <= 0xF3 {
+            expected := 3
+        } else if byte = 0xF4 {
+            expected := 3
+            maxSecond := 0x8F
+        } else {
             return false
-        if byte < 0xC0       ; a continuation byte with no lead byte before it
-            return false
-        expected := byte < 0xE0 ? 1 : (byte < 0xF0 ? 2 : 3)
+        }
         if index + expected > size
+            return false
+        second := NumGet(buf, index, "UChar")
+        if second < minSecond || second > maxSecond
             return false
         Loop expected {
             if (NumGet(buf, index + A_Index - 1, "UChar") & 0xC0) != 0x80
