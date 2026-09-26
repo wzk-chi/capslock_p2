@@ -334,9 +334,9 @@ TranslateProviderYoudaoTest(msg, &ok, &text) {
         "appPaidID", Trim(LLMMsgField(msg, "appId")),
         "appPaidKey", LLMMsgField(msg, "appKey"),
         "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage")))
-    translated := YoudaoTranslate("Hello", &ok, &errorText, overrides)
+    YoudaoTranslate("Hello", &ok, &errorText, overrides)
     if ok
-        text := LLMText("Connection OK → ", "连接正常 → ") . translated
+        text := LLMText("Connection OK", "连接正常")
     else
         text := errorText
 }

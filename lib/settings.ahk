@@ -273,10 +273,7 @@ SettingsRunTest(message) {
                 [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
                 &ok, &resultText, overrides)
             if ok {
-                answer := LLMExtractChatText(responseText)
                 resultText := LLMText("Connection OK", "连接正常")
-                if answer != ""
-                    resultText .= " → " . SubStr(answer, 1, 120)
             }
         } else {
             provider := TranslateGetProvider(target)
@@ -286,6 +283,8 @@ SettingsRunTest(message) {
                 provider["test"].Call(msg, &ok, &resultText)
             }
         }
+        if ok
+            resultText := LLMText("Connection OK", "连接正常")
     } catch as testError {
         ok := false
         resultText := testError.Message

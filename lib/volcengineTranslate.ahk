@@ -268,9 +268,9 @@ TranslateProviderVolcengineTest(msg, &ok, &text) {
         "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
     if msg.Has("volcRegion")
         overrides["region"] := Trim(LLMMsgField(msg, "volcRegion"))
-    translated := VolcengineTranslate("Hello", &ok, &errorText, overrides)
+    VolcengineTranslate("Hello", &ok, &errorText, overrides)
     if ok
-        text := LLMText("Connection OK → ", "连接正常 → ") . translated[1]
+        text := LLMText("Connection OK", "连接正常")
     else
         text := errorText
 }
