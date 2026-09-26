@@ -38,13 +38,11 @@ QbarConfigItems() {
                 "icon", isFolder ? "folder" : IconKeyForPath(resolved)
             ))
         }
-    }
     for key, value in ConfigSection("QWeb") {
             if Trim(value) = ""
                 continue
             items.Push(Map("short", QbarShortKey(key), "label", key, "type", "web", "value", value))
         }
-    }
     return items
 }
 
@@ -62,7 +60,6 @@ QbarSearchEntries() {
             configured[StrLower(short)] := true
             entries.Push(Map("short", short, "label", key, "type", "search", "value", value))
         }
-    }
 
     defaults := [
         Map("key", "bd",   "label", "bd <百度>",      "value", "https://www.baidu.com/s?wd={q}"),
