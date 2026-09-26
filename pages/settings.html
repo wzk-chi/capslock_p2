@@ -218,15 +218,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
               </select></label>
             </div>
           </div>
-          <div class="card"><div class="card-head"><h3>LLM 系统提示词</h3></div><div class="grid">
+          <div class="card"><div class="card-head"><h3>LLM翻译</h3><button class="btn ghost" id="openLlmSettingsFromTranslate">LLM 设置</button></div><div class="grid">
             <label class="field wide"><span>系统提示词</span><textarea data-section="LLMTranslate" data-key="systemPrompt"></textarea></label>
           </div></div>
-          <div class="card"><div class="card-head"><h3>有道翻译</h3></div><div class="grid">
+          <div class="card"><div class="card-head"><h3>有道翻译</h3><button class="btn" id="testYoudao">测试</button></div><div class="grid">
             <label class="field"><span>App ID</span><input data-section="TTranslate" data-key="appPaidID"></label>
             <label class="field"><span>App Key</span><input data-section="TTranslate" data-key="appPaidKey" type="password"></label>
             <label class="field"><span>目标语言</span><input data-section="TTranslate" data-key="targetLanguage"></label>
           </div></div>
-          <div class="card"><div class="card-head"><h3>火山翻译</h3></div><div class="grid">
+          <div class="card"><div class="card-head"><h3>火山翻译</h3><button class="btn" id="testVolcengine">测试</button></div><div class="grid">
             <label class="field"><span>Access Key</span><input data-section="TVolcengine" data-key="accessKey"></label>
             <label class="field"><span>Secret Key</span><input data-section="TVolcengine" data-key="secretKey" type="password"></label>
             <label class="field"><span>目标语言</span><input data-section="TVolcengine" data-key="targetLanguage"></label>
@@ -681,6 +681,19 @@ function setPage(page) {
 function buildLlmTest() {
   return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
 }
+function buildTranslationTest(target) {
+  const youdao = section('TTranslate'), volcengine = section('TVolcengine');
+  if (target === 'youdao') return {
+    type: 'testSettings', target,
+    appId: youdao.appPaidID || '', appKey: youdao.appPaidKey || '',
+    youdaoTargetLanguage: youdao.targetLanguage || ''
+  };
+  return {
+    type: 'testSettings', target,
+    volcAccessKey: volcengine.accessKey || '', volcSecretKey: volcengine.secretKey || '',
+    volcTargetLanguage: volcengine.targetLanguage || '', volcRegion: volcengine.region || ''
+  };
+}
 function receiveSnapshot(snapshot) {
   state.draft = { sections: clone(snapshot.sections), bindings: clone(snapshot.bindings) };
   state.draft.sections.Keys = clone(snapshot.keys || state.draft.sections.Keys);
@@ -707,6 +720,9 @@ $('#saveBtn').addEventListener('click', saveDraft);
 $('#cancelBtn').addEventListener('click', () => post({ type: 'getSettings' }));
 $('#testLlm').addEventListener('click', () => { setStatus('测试中…'); post(buildLlmTest()); });
 $('#openLlmSettings').addEventListener('click', () => setPage('llm'));
+$('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
+$('#testYoudao').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('youdao')); });
+$('#testVolcengine').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('volcengine')); });
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);
 $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const sectionName = button.dataset.addPair;

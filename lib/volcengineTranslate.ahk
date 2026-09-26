@@ -259,9 +259,26 @@ TranslateProviderVolcengineTranslate(text, onDelta, onFinished, overrides := 0) 
     return 0
 }
 
+TranslateProviderVolcengineTest(msg, &ok, &text) {
+    ok := false
+    text := ""
+    overrides := Map(
+        "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")),
+        "secretKey", LLMMsgField(msg, "volcSecretKey"),
+        "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
+    if msg.Has("volcRegion")
+        overrides["region"] := Trim(LLMMsgField(msg, "volcRegion"))
+    translated := VolcengineTranslate("Hello", &ok, &errorText, overrides)
+    if ok
+        text := LLMText("Connection OK → ", "连接正常 → ") . translated[1]
+    else
+        text := errorText
+}
+
 TranslateRegisterProvider("volcengine", Map(
     "streaming", 0,
     "configured", VolcengineConfigured,
     "translate", TranslateProviderVolcengineTranslate,
+    "test", TranslateProviderVolcengineTest,
     "notConfigured", ["Volcengine translation is not configured. Open Settings.",
         "未配置火山翻译，请点右上角「设置」填写。"]))

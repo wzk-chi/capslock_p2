@@ -65,7 +65,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - `TranslateResolve(engine)`：`[LLMTranslate] engine` 指定 ID 则按指定取（未配置也返回，
   用于显示该引擎的 `notConfigured` 提示）；`auto` 优先第一个已配置的 `llm`，否则按注册顺序
   找第一个 `configured()` 为真的引擎。
-- 调度、设置保存和 `LLMTranslatePushSettings` 全部按 engine 查表；`TranslateProviders()`
+- 调度、设置保存、API 测试和 `LLMTranslatePushSettings` 全部按 engine 查表；`TranslateProviders()`
   返回全部已注册引擎供页面逻辑遍历。
 
 provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核心是：
@@ -75,6 +75,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 | `streaming` | 1 = 流式引擎（面板走逐片段 UI）；0 = 一次性返回 |
 | `configured` | `() -> bool`，引擎是否已配置可用 |
 | `translate` | `(text, onDelta, onFinished, overrides)`，必须调用 `onFinished(answer, success, errorText)` |
+| `test` | 可选的固定 `Hello` API 测试 |
 | `save` | 写该引擎自己的 ini 字段（「已保存但字段仍为空」的警告文案在 `saveEmpty`） |
 | `push` | 返回设置表单字段表，合并进面板的设置推送 |
 

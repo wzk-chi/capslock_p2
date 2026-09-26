@@ -16,6 +16,7 @@
 ;                  complete text shown in the panel. One-shot engines call it
 ;                  once and return 0; streaming engines return the id the
 ;                  panel can abort on hide/shutdown.
+;   test           optional function (msg, &ok, &text) -> fixed "Hello" API test
 ;   notConfigured  [english, chinese] panel error when pinned but unconfigured
 
 global TranslateRegistry := 0

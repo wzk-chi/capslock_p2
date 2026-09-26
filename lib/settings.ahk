@@ -260,22 +260,31 @@ SettingsSendSaved(ok, text) {
 SettingsRunTest(message) {
     msg := LLMMessageParse(message)
     target := StrLower(LLMMsgField(msg, "target"))
-    if target != "llm"
+    if target != "llm" && target != "youdao" && target != "volcengine"
         return
     ok := false
     resultText := ""
     try {
-        overrides := LLMMessageOverrides(msg, [
-            "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-            "temperature", "timeout", "thinking", "maxInputTokens"])
-        responseText := LLMChatComplete(
-            [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
-            &ok, &resultText, overrides)
-        if ok {
-            answer := LLMExtractChatText(responseText)
-            resultText := LLMText("Connection OK", "连接正常")
-            if answer != ""
-                resultText .= " → " . SubStr(answer, 1, 120)
+        if target = "llm" {
+            overrides := LLMMessageOverrides(msg, [
+                "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
+                "temperature", "timeout", "thinking", "maxInputTokens"])
+            responseText := LLMChatComplete(
+                [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
+                &ok, &resultText, overrides)
+            if ok {
+                answer := LLMExtractChatText(responseText)
+                resultText := LLMText("Connection OK", "连接正常")
+                if answer != ""
+                    resultText .= " → " . SubStr(answer, 1, 120)
+            }
+        } else {
+            provider := TranslateGetProvider(target)
+            if !IsObject(provider) || !provider.Has("test") {
+                resultText := LLMText("Translation test is unavailable.", "翻译测试不可用。")
+            } else {
+                provider["test"].Call(msg, &ok, &resultText)
+            }
         }
     } catch as testError {
         ok := false
