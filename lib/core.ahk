@@ -118,8 +118,8 @@ SettingInteger(section, key, fallback, minimum, maximum) {
         value := Config[section][key]
     if !RegExMatch(Trim(String(value)), "^-?\d+$")
         return fallback
-    number := Integer(value)
-    return Max(minimum, Min(maximum, number))
+    parsedValue := Integer(value)
+    return Max(minimum, Min(maximum, parsedValue))
 }
 
 SettingNumber(section, key, fallback, minimum, maximum) {
@@ -129,8 +129,8 @@ SettingNumber(section, key, fallback, minimum, maximum) {
         value := Config[section][key]
     if !RegExMatch(Trim(String(value)), "^-?(?:\d+\.?\d*|\.\d+)$")
         return fallback
-    number := value + 0
-    return Max(minimum, Min(maximum, number))
+    parsedValue := value + 0
+    return Max(minimum, Min(maximum, parsedValue))
 }
 
 MonitorSettings() {

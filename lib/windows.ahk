@@ -59,12 +59,12 @@ LoadWindowBindings() {
 }
 
 WindowBindingType(value, fallback := 1) {
-    try number := Integer(value)
+    try bindingTypeValue := Integer(value)
     catch
         return fallback
-    if number < 1 || number > 3
+    if bindingTypeValue < 1 || bindingTypeValue > 3
         return fallback
-    return number
+    return bindingTypeValue
 }
 
 WindowBindingDisplay(bindType) {
