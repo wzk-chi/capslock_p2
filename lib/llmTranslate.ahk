@@ -358,21 +358,6 @@ TranslateProviderLlmTranslate(text, onDelta, onFinished, overrides := 0) {
     return TranslateLlmStartStream(text, onDelta, onFinished, overrides)
 }
 
-TranslateProviderLlmTest(msg, &ok, &text) {
-    ok := false
-    text := ""
-    overrides := LLMMessageOverrides(msg, [
-        "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-        "temperature", "timeout", "thinking", "maxInputTokens",
-        "targetLanguage", "systemPrompt"])
-    translated := TranslateLlmComplete("Hello! This is a capslock_p2 connection test.",
-        &ok, &errorText, overrides)
-    if ok
-        text := LLMText("Connection OK → ", "连接正常 → ") . SubStr(translated, 1, 120)
-    else
-        text := errorText
-}
-
 LLMTranslateResize(targetGui, minMax, width, height) {
     global LLMTranslateHost
     PanelHostResize(LLMTranslateHost, minMax)
@@ -439,6 +424,5 @@ TranslateRegisterProvider("llm", Map(
     "streaming", 1,
     "configured", LLMSettingsConfigured,
     "translate", TranslateProviderLlmTranslate,
-    "test", TranslateProviderLlmTest,
     "notConfigured", ["No LLM API configured. Open Settings.",
         "未配置 LLM API，请点右上角「设置」填写。"]))

@@ -260,33 +260,22 @@ SettingsSendSaved(ok, text) {
 SettingsRunTest(message) {
     msg := LLMMessageParse(message)
     target := StrLower(LLMMsgField(msg, "target"))
+    if target != "llm"
+        return
     ok := false
     resultText := ""
     try {
-        if target = "translate" {
-            engine := StrLower(Trim(LLMMsgField(msg, "engine")))
-            if engine = "auto" {
-                if Trim(LLMMsgField(msg, "endpoint")) != "" && LLMMsgField(msg, "apiKey") != ""
-                    engine := "llm"
-                else if LLMMsgField(msg, "appId") != "" && LLMMsgField(msg, "appKey") != ""
-                    engine := "youdao"
-                else
-                    engine := "volcengine"
-            }
-            provider := TranslateGetProvider(engine)
-            if !IsObject(provider)
-                resultText := LLMText("Unknown translation engine.", "未知翻译引擎。")
-            else if provider.Has("test")
-                provider["test"].Call(msg, &ok, &resultText)
-        } else if target = "ai" {
-            overrides := LLMMessageOverrides(msg, [
-                "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
-                "temperature", "timeout", "thinking", "maxInputTokens"])
-            answer := LLMAiChatComplete(
-                [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
-                &ok, &resultText, overrides)
-            if ok
-                resultText := LLMText("Connection OK → ", "连接正常 → ") . SubStr(answer, 1, 120)
+        overrides := LLMMessageOverrides(msg, [
+            "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
+            "temperature", "timeout", "thinking", "maxInputTokens"])
+        responseText := LLMChatComplete(
+            [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
+            &ok, &resultText, overrides)
+        if ok {
+            answer := LLMExtractChatText(responseText)
+            resultText := LLMText("Connection OK", "连接正常")
+            if answer != ""
+                resultText .= " → " . SubStr(answer, 1, 120)
         }
     } catch as testError {
         ok := false

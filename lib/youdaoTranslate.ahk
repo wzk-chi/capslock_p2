@@ -327,25 +327,9 @@ TranslateProviderYoudaoTranslate(text, onDelta, onFinished, overrides := 0) {
     return 0
 }
 
-TranslateProviderYoudaoTest(msg, &ok, &text) {
-    ok := false
-    text := ""
-    overrides := Map(
-        "appPaidID", Trim(LLMMsgField(msg, "appId")),
-        "appPaidKey", LLMMsgField(msg, "appKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage"))
-    )
-    translated := YoudaoTranslate("Hello! This is a capslock_p2 connection test.", &ok, &errorText, overrides)
-    if ok
-        text := LLMText("Connection OK → ", "连接正常 → ") . SubStr(translated, 1, 120)
-    else
-        text := errorText
-}
-
 TranslateRegisterProvider("youdao", Map(
     "streaming", 0,
     "configured", YoudaoConfigured,
     "translate", TranslateProviderYoudaoTranslate,
-    "test", TranslateProviderYoudaoTest,
     "notConfigured", ["Youdao translation is not configured. Open Settings.",
         "未配置有道翻译，请点右上角「设置」填写。"]))

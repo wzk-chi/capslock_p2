@@ -2,7 +2,7 @@
 ; (lib\*Translate.ahk) plus a registration entry at the bottom of that file;
 ; the translate panel (lib\llmTranslate.ahk) talks to engines only through
 ; this registry, so adding an engine means adding one file and one
-; registration — dispatch and connection tests route by engine name automatically;
+; registration — translation dispatch routes by engine name;
 ; the central settings page writes configuration sections directly.
 ;
 ; A provider is a Map with:
@@ -16,9 +16,6 @@
 ;                  complete text shown in the panel. One-shot engines call it
 ;                  once and return 0; streaming engines return the id the
 ;                  panel can abort on hide/shutdown.
-;   test           function (msg, &ok, &text) -> sample run for the settings
-;                  dialog; the request overrides come from the message's own
-;                  fields, `text` is the result line shown under the form.
 ;   notConfigured  [english, chinese] panel error when pinned but unconfigured
 
 global TranslateRegistry := 0

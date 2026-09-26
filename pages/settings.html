@@ -178,7 +178,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
         <div class="page-head"><h2>LLM</h2></div>
         <div class="cards">
           <div class="card">
-            <div class="card-head"><h3>共用 LLM</h3><button class="btn" id="testTranslate">测试</button></div>
+            <div class="card-head"><h3>共用 LLM</h3><button class="btn" id="testLlm">测试</button></div>
             <div class="grid">
               <label class="field wide"><span>API 地址</span><input data-section="LLM" data-key="endpoint" placeholder="https://.../v1/chat/completions"></label>
               <label class="field"><span>API Key</span><input data-section="LLM" data-key="apiKey" type="password"></label>
@@ -239,7 +239,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
         <div class="page-head"><h2>AI 问答</h2></div>
         <div class="cards">
           <div class="card">
-            <div class="card-head"><h3>问答设置</h3><button class="btn" id="testAi">测试问答</button></div>
+            <div class="card-head"><h3>问答设置</h3><button class="btn ghost" id="openLlmSettings">LLM 设置</button></div>
             <div class="grid">
               <label class="check"><input data-section="QAI" data-key="hideOnBlur" type="checkbox"><span>失焦后隐藏</span></label>
               <label class="field wide"><span>系统提示词</span><textarea data-section="QAI" data-key="systemPrompt"></textarea></label>
@@ -678,17 +678,8 @@ function setPage(page) {
   const active = $(`.nav button[data-page="${page}"]`);
   $('#pageTitle').textContent = active ? active.textContent : '设置';
 }
-function buildTest(target) {
-  const llm = section('LLM'), translate = section('LLMTranslate'), youdao = section('TTranslate'), volc = section('TVolcengine');
-  const value = (map, key) => map[key] || '';
-  if (target === 'translate') return Object.assign({ type: 'testSettings', target, engine: value(translate, 'engine') || 'auto' }, llm, {
-    targetLanguage: value(translate, 'targetLanguage'), systemPrompt: value(translate, 'systemPrompt'),
-    appId: value(youdao, 'appPaidID'), appKey: value(youdao, 'appPaidKey'),
-    youdaoTargetLanguage: value(youdao, 'targetLanguage'),
-    volcAccessKey: value(volc, 'accessKey'), volcSecretKey: value(volc, 'secretKey'),
-    volcTargetLanguage: value(volc, 'targetLanguage'), volcRegion: value(volc, 'region')
-  });
-  return Object.assign({ type: 'testSettings', target: 'ai' }, llm);
+function buildLlmTest() {
+  return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
 }
 function receiveSnapshot(snapshot) {
   state.draft = { sections: clone(snapshot.sections), bindings: clone(snapshot.bindings) };
@@ -714,8 +705,8 @@ window.settingsTestResult = function (ok, text) { setStatus(text || (ok ? '测�
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
 $('#cancelBtn').addEventListener('click', () => post({ type: 'getSettings' }));
-$('#testTranslate').addEventListener('click', () => { setStatus('测试中…'); post(buildTest('translate')); });
-$('#testAi').addEventListener('click', () => { setStatus('测试中…'); post(buildTest('ai')); });
+$('#testLlm').addEventListener('click', () => { setStatus('测试中…'); post(buildLlmTest()); });
+$('#openLlmSettings').addEventListener('click', () => setPage('llm'));
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);
 $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const sectionName = button.dataset.addPair;
