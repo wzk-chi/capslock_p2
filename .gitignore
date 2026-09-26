@@ -2,6 +2,7 @@
 build/
 dist/
 out.txt
+err.txt
 
 # Personal / runtime files (capslock_p2.ini 含个人 API 凭据，禁止入库)
 capslock_p2.ini
