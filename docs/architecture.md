@@ -110,6 +110,22 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 所有 WebView2 面板共用 `lib/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。
 设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 是否失焦隐藏由 `[QAI] hideOnBlur` 控制。
+
+**键盘焦点归还是 panelHost 的职责**：激活一个窗口（`WinActivate`、鼠标点击、或把前面的窗口隐藏掉）时，
+Windows 只把键盘焦点设到该窗口的顶层 HWND，把焦点重新落到原本有焦点的那个控件上是应用自己的事
+（在它的 `WM_SETFOCUS` 里做），而且不是每个应用都会及时做。在此之前窗口"是前台但没有窗口持焦点"，
+所有按键都发给顶层窗口然后被丢弃——看起来像窗口吞键。
+
+判断"坏掉"的依据是**前台的 GUI 线程完全没有任何窗口持焦点**（`GetGUIThreadInfo().hwndFocus == 0`），
+不是"焦点不在子控件上"：Chromium 系窗口的健康状态本来就是焦点停在顶层框架
+（日志里 `guiFocus == guiActive`），若要求焦点必须落在子控件上，就会把这个健康状态误判成故障而跳过修复。
+同样也不能用 `WinActive()`——它在"有焦点"和"没焦点"两种状态下都为真。
+
+因此面板在取得前台**之前**用 `PanelHostCaptureReturnFocus()` 记下当时的焦点 HWND，隐藏时由
+`PanelHostRestoreFocus()` 记下这笔账，`PanelHostSettleFocus()` 等前台真正交接完成后再把焦点放回去
+（隐藏前台窗口触发的交接是异步的，读一次 `WinExist("A")` 可能还是面板自己）。隐藏动作不要写在
+`WM_ACTIVATE` 处理器里（会打断系统自己的激活流程），统一交给 `PanelHostHide()`，所有隐藏路径都从这里走。
+
 页面通信遵循同一套习惯：
 
 - **页面 → AHK**：`postMessage` 一个 JSON 字符串，外层一定有 `type` 字段；AHK 侧统一用

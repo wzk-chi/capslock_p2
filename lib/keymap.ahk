@@ -37,10 +37,11 @@ RegisterCapsHotkeys() {
 }
 
 ; Register the complete layer once and use a condition to activate it only
-; while CapsLock is held. This follows the reference project's #If CapsLock
-; layout and leaves ordinary shortcuts, including Alt+V, available at idle.
+; while the physical CapsLock key is held. This follows the reference
+; project's #If CapsLock layout and leaves ordinary shortcuts, including
+; Backspace and Alt+V, available at idle.
 RegisterCapsLayerHotkeys() {
-    global CapsLockHeld, LayerKeyNames
+    global LayerKeyNames
     HotIf(CapsLockLayerActive)
     try {
         for physicalKey, suffix in LayerKeyNames
@@ -77,17 +78,11 @@ PasteSystemHotkey(*) {
 }
 
 CapsLockLayerActive(*) {
-    global CapsLockHeld
-    ; The layer follows the physical key and nothing else. The reference project
-    ; clears its CapsLock flag only for the duration of opening qbar and restores
-    ; it immediately after, so CapsLock+ shortcuts stay usable while the panel is
-    ; up. Typing into the panel is unaffected either way, because typing never
-    ; holds CapsLock.
-    ;
-    ; The one exception is handled where it belongs: keyFunc_qbar itself stands
-    ; down while the chat or translate panel is the active window, so an
-    ; uppercase Q cannot drop qbar onto the typing panel.
-    return CapsLockHeld
+    ; Do not depend on the CapsLock hotkey thread reaching its cleanup code.
+    ; Long-running panel/clipboard actions can keep that thread alive after the
+    ; physical key has already been released. The physical state is the only
+    ; reliable boundary for deciding whether a normal key should be blocked.
+    return GetKeyState("CapsLock", "P")
 }
 
 CapsLockPress(*) {

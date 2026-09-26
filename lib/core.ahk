@@ -134,6 +134,55 @@ DebugLogPrivate(label, value) {
     DebugLog(label . " length=" . StrLen(String(value)))
 }
 
+DebugInputState() {
+    global CapsLockHeld
+    try focusControl := ControlGetFocus("A")
+    catch
+        focusControl := "<error>"
+    modifiers := ""
+    for key in ["LControl", "RControl", "LShift", "RShift", "LAlt", "RAlt"]
+        modifiers .= " " . key . "=" . GetKeyState(key, "P") . "/" . GetKeyState(key)
+    return "activeHwnd=" . WinExist("A")
+        . " focusControl=" . focusControl
+        . " lButton=" . GetKeyState("LButton", "P")
+        . " rButton=" . GetKeyState("RButton", "P")
+        . " ctrl=" . GetKeyState("Ctrl", "P")
+        . " shift=" . GetKeyState("Shift", "P")
+        . " capsHeld=" . CapsLockHeld
+        . " capsPhysical=" . GetKeyState("CapsLock", "P")
+        . " modifiersPhysical/Logical:" . modifiers
+        . " " . DebugGuiFocusState()
+}
+
+; WinExist("A") only reports the active top-level window. During a WebView2
+; hide/activation handoff the foreground thread can still have focus on a
+; child window (or no focus at all), so capture the actual GUI thread focus.
+DebugGuiFocusState() {
+    state := "guiInfo=unavailable"
+    try {
+        info := Buffer(A_PtrSize = 8 ? 72 : 48, 0)
+        NumPut("UInt", info.Size, info, 0)
+        if DllCall("GetGUIThreadInfo", "UInt", 0, "Ptr", info.Ptr, "Int") {
+            active := NumGet(info, 8, "Ptr")
+            focus := NumGet(info, 8 + A_PtrSize, "Ptr")
+            capture := NumGet(info, 8 + A_PtrSize * 2, "Ptr")
+            caret := NumGet(info, 8 + A_PtrSize * 5, "Ptr")
+            state := "guiActive=" . active
+                . " guiFocus=" . focus
+                . " guiCapture=" . capture
+                . " guiCaret=" . caret
+            if focus {
+                try state .= " focusClass=" . WinGetClass("ahk_id " . focus)
+            }
+        } else {
+            state := "guiInfo=0"
+        }
+    } catch as focusError {
+        state := "guiInfoError=" . focusError.Message
+    }
+    return state
+}
+
 SettingInteger(section, key, fallback, minimum, maximum) {
     global Config
     value := fallback
@@ -516,26 +565,67 @@ SplitActionArguments(argumentText) {
 ;               a real multi-line selection, a bare line-copy is discarded.
 ;   "any"       keep everything and just drop the trailing newline; used
 ;               where a wrong guess is visible and editable (qbar prefill).
-GetSelectedText(mode := "strict") {
-    global A_Clipboard, ClipboardWatcherSuspended
+GetSelectedText(mode := "strict", waitSeconds := 0.15, traceLabel := "", allowCtrlCFallback := false) {
+    global A_Clipboard, ClipboardWatcherSuspended, CapsLockHeld
+    startedAt := A_TickCount
     oldClipboard := ClipboardAll()
     result := ""
+    rawLength := 0
+    discarded := false
+    success := false
+    if traceLabel != ""
+        DebugLog("selection begin label=" . traceLabel . " mode=" . mode
+            . " sendMode=Input"
+            . " waitMs=" . Round(waitSeconds * 1000)
+            . " " . DebugInputState())
     ClipboardWatcherSuspended := true
     try {
         A_Clipboard := ""
         SendInput("^{Insert}")
-        if ClipWait(0.15) {
+        if traceLabel != ""
+            DebugLog("selection sent label=" . traceLabel . " " . DebugInputState())
+        success := ClipWait(waitSeconds)
+        if !success && allowCtrlCFallback {
+            ; Chrome accepts Ctrl+C more consistently in this state. The
+            ; CapsLock layer is briefly stood down so this synthetic C cannot
+            ; be routed to caps_c; the caller restores the original clipboard
+            ; below regardless of which copy path succeeds.
+            previousCapsLockHeld := CapsLockHeld
+            CapsLockHeld := false
+            try {
+                DebugLog("selection copy fallback label=" . traceLabel
+                    . " method=CtrlC " . DebugInputState())
+                SendInput("^c")
+                success := ClipWait(waitSeconds)
+            } finally {
+                CapsLockHeld := previousCapsLockHeld && GetKeyState("CapsLock", "P")
+            }
+        }
+        if traceLabel != ""
+            DebugLog("selection clipboard label=" . traceLabel . " success=" . success
+                . " elapsedMs=" . (A_TickCount - startedAt)
+                . " " . DebugInputState())
+        if success {
             result := A_Clipboard
+            rawLength := StrLen(result)
             if SubStr(result, -1) = "`n" {
                 if mode = "any"
                     result := RTrim(result, "`r`n")
-                else if !(mode = "multiline" && InStr(result, "`n", , 1, 2))
+                else if !(mode = "multiline" && InStr(result, "`n", , 1, 2)) {
                     result := ""
+                    discarded := true
+                }
             }
         }
     } finally {
         A_Clipboard := oldClipboard
         ClipboardWatcherSuspended := false
+        if traceLabel != ""
+            DebugLog("selection end label=" . traceLabel . " success=" . success
+                . " rawLength=" . rawLength . " resultLength=" . StrLen(result)
+                . " discarded=" . discarded
+                . " elapsedMs=" . (A_TickCount - startedAt)
+                . " " . DebugInputState())
     }
     return result
 }

@@ -1,5 +1,7 @@
 ; Key functions used by the AHK v2 key maps.
 
+global TranslateHotkeySequence := 0
+
 keyFunc_doNothing(*) {
 }
 
@@ -231,33 +233,48 @@ keyFunc_qbar(*) {
 
 keyFunc_translate(*) {
     DebugLog("keyFunc_translate")
-    global A_Clipboard, ClipboardWatcherSuspended
+    global A_Clipboard, ClipboardWatcherSuspended, CapsLockHeld, TranslateHotkeySequence
+    TranslateHotkeySequence += 1
+    traceId := TranslateHotkeySequence
+    DebugLog("translate hotkey begin id=" . traceId
+        . " capsHeld=" . CapsLockHeld
+        . " activeHwnd=" . WinExist("A"))
     ; "multiline": a real multi-paragraph selection ends with a newline, which
-    ; strict mode would discard and turn into the one-word fallback below; an
-    ; editor's no-selection line-copy has no interior newline, so the fallback
-    ; still fires for it.
-    selectedText := GetSelectedText("multiline")
-    if selectedText = "" {
-        oldClipboard := ClipboardAll()
-        ClipboardWatcherSuspended := true
-        try {
-            A_Clipboard := ""
-            SendInput("^{Left}+^{Right}^{Insert}")
-            if ClipWait(0.15)
-                selectedText := A_Clipboard
-        } finally {
-            A_Clipboard := oldClipboard
-            ClipboardWatcherSuspended := false
-        }
-    }
+    ; strict mode would discard. The no-selection word fallback below is
+    ; temporarily disabled because it can extend an existing selection.
+    ; Keep the clipboard wait unchanged; GetSelectedText retries with Ctrl+C
+    ; only when Ctrl+Insert produced no clipboard event.
+    selectedText := GetSelectedText("multiline", 0.15, "translate#" . traceId, true)
+    DebugLog("translate hotkey selection id=" . traceId
+        . " length=" . StrLen(selectedText)
+        . " activeHwnd=" . WinExist("A"))
+    ; Temporarily disabled; keep the original block for a later re-enable.
+    ; if selectedText = "" {
+    ;     oldClipboard := ClipboardAll()
+    ;     ClipboardWatcherSuspended := true
+    ;     try {
+    ;         A_Clipboard := ""
+    ;         SendInput("^{Left}+^{Right}^{Insert}")
+    ;         if ClipWait(0.15)
+    ;             selectedText := A_Clipboard
+    ;     } finally {
+    ;         A_Clipboard := oldClipboard
+    ;         ClipboardWatcherSuspended := false
+    ;     }
+    ; }
     if selectedText != "" {
         ; A single English word the local dictionary knows opens the
         ; dictionary card; everything else goes to the translate panel.
-        if DictionaryTryShow(selectedText)
+        if DictionaryTryShow(selectedText) {
+            DebugLog("translate hotkey route=dictionary id=" . traceId)
             return
+        }
+        DebugLog("translate hotkey route=llm id=" . traceId)
         LLMTranslateShow(selectedText)
-    } else
+    } else {
+        DebugLog("translate hotkey route=emptyDictionary id=" . traceId)
         DictionaryShow()
+    }
 }
 
 keyFunc_tabPrve(*) {

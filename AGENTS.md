@@ -39,3 +39,9 @@ Inno Setup、Ahk2Exe、发布资源清单、脱敏配置和安装目录的完整
   不要把 ComValue 存进数组再消费。WebView2 面板回调内不要同步 `await2` 创建另一个
   WebView2（会 15 秒超时），用 `SetTimer(fn, -1)` 延迟到回调外。
 
+- **AHK v2 闭包不捕获 `for` 循环变量**：嵌套函数只捕获外层函数以 `local` 声明、参数、或赋值
+  形式出现过的变量。`for host in hosts` 的循环变量这三者都不是，于是闭包里的 `host` 变成
+  未赋值的局部变量，`SetTimer(() => Fn(host), -1)` 触发时抛
+  "This variable has not been assigned a value"。这类延迟调用改用 `Fn.Bind(host, arg)`：
+  传值，不依赖名字捕获。在函数体顶层赋值的普通局部变量（`text := ...`）不受影响。
+
