@@ -162,7 +162,7 @@ gh<GitHub>=https://github.com
 | `cl set` | 打开设置中心 |
 | `cl version` / `cl about` | 显示版本号 |
 | `web 网址` | 强制按网址打开，缺 `http://` 时自动补 |
-| `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目（计划支持） |
+| `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目 |
 
 **AI 问答默认在第一行**：只要输入不是显式命令（没有精确命中触发词），qbar 列表第一行就是
 「🤖 AI 问答」——回车即打开 AI 聊天，部分匹配的条目排在其后（↓ 选择）。
@@ -308,6 +308,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
   | `allowClipboard` | 1 | 独立剪贴板开关 |
   | `loadingAnimation` | 1 | 启动动画：也可从托盘菜单切换；默认显示现代简约启动卡片 |
   | `language` | 1 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |
+  | `runAsAdmin` | 1 | 以管理员身份运行：1 开启，0 关闭；修改后重启程序生效，启动时会弹出 UAC |
 
 ## 调试
 

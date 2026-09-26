@@ -38,6 +38,7 @@ Initialize() {
     SetCapsLockState("Off")
 
     ConfigLoad()
+    EnsureConfiguredElevation()
     BuildKeySet()
     ApplyGlobalSettings()
     TrayMenuInitialize()
@@ -62,6 +63,26 @@ Initialize() {
         HideLoading()
     }
     DebugLog("Initialize complete")
+}
+
+; Elevate only when the user explicitly enabled the setting. The child process
+; inherits the same script/executable and A_IsAdmin prevents a relaunch loop.
+EnsureConfiguredElevation() {
+    if ConfigGlobalRead("runAsAdmin", "0") != "1" || A_IsAdmin
+        return true
+
+    quote := Chr(34)
+    command := A_IsCompiled
+        ? quote . A_ScriptFullPath . quote
+        : quote . A_AhkPath . quote . " " . quote . A_ScriptFullPath . quote
+    try {
+        Run("*RunAs " . command)
+        ExitApp()
+    } catch as elevationError {
+        DebugLog("Admin elevation failed: " . elevationError.Message)
+        ShowMsg("无法以管理员身份启动，将继续以普通权限运行。", 5000)
+        return true
+    }
 }
 
 Shutdown(*) {
