@@ -12,12 +12,10 @@ LayerKeyNames["SC029"] := "backquote"
 global PasteSystemHotkeyRunning := false
 
 BuildKeySet() {
-    global Config, KeySet
+    global KeySet
     KeySet := Map()
-    if Config.Has("Keys") {
-        for key, value in Config["Keys"]
-            KeySet[key] := value
-    }
+    for key, value in ConfigSection("Keys")
+        KeySet[key] := value
 
     defaults := CapsloxKeyDefaults()
 

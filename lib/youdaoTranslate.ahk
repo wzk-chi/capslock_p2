@@ -6,10 +6,7 @@
 ; prefers [LLM] and falls back to Youdao when only [TTranslate] is configured.
 
 GetYoudaoSetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("TTranslate") && Config["TTranslate"].Has(key)
-        return Config["TTranslate"][key]
-    return defaultValue
+    return ConfigRead("TTranslate", key, defaultValue)
 }
 
 YoudaoSettingWith(key, defaultValue, overrides) {
@@ -347,9 +344,9 @@ TranslateProviderYoudaoTest(msg, &ok, &text) {
 
 TranslateProviderYoudaoSave(msg) {
     global SettingsFile
-    WriteIniValue(SettingsFile, "TTranslate", "appPaidID", Trim(LLMMsgField(msg, "appId")))
-    WriteIniValue(SettingsFile, "TTranslate", "appPaidKey", LLMMsgField(msg, "appKey"))
-    WriteIniValue(SettingsFile, "TTranslate", "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage")))
+    ConfigWriteValue(SettingsFile, "TTranslate", "appPaidID", Trim(LLMMsgField(msg, "appId")))
+    ConfigWriteValue(SettingsFile, "TTranslate", "appPaidKey", LLMMsgField(msg, "appKey"))
+    ConfigWriteValue(SettingsFile, "TTranslate", "targetLanguage", Trim(LLMMsgField(msg, "youdaoTargetLanguage")))
 }
 
 TranslateProviderYoudaoPush() {

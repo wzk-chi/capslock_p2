@@ -18,10 +18,7 @@ global LLMTranslateSettingsOpen := false
 ; Connection settings live in [LLM]. Translation behavior remains in
 ; [LLMTranslate], including targetLanguage and systemPrompt.
 GetTranslateSetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("LLMTranslate") && Config["LLMTranslate"].Has(key)
-        return Config["LLMTranslate"][key]
-    return defaultValue
+    return ConfigRead("LLMTranslate", key, defaultValue)
 }
 
 TranslateSettingWith(key, defaultValue, overrides) {
@@ -319,7 +316,7 @@ LLMTranslateSaveSettings(message) {
     if !IsObject(provider)
         provider := TranslateGetProvider("llm")
     try {
-        WriteIniValue(SettingsFile, "LLMTranslate", "engine", engine)
+        ConfigWriteValue(SettingsFile, "LLMTranslate", "engine", engine)
         provider["save"].Call(msg)
     } catch as saveError {
         LLMTranslateSetSaved(false, LLMText("Save failed: ", "保存失败：") . saveError.Message)
@@ -515,7 +512,7 @@ TranslateProviderLlmTest(msg, &ok, &text) {
 TranslateProviderLlmSave(msg) {
     global SettingsFile
     LLMSaveSettings(msg)
-    WriteIniValue(SettingsFile, "LLMTranslate", "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
+    ConfigWriteValue(SettingsFile, "LLMTranslate", "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
 }
 
 TranslateProviderLlmPush() {

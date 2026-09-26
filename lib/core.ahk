@@ -4,10 +4,8 @@
 
 global AppName := "capslock_p2"
 global AppVersion := "0.1.1"
-global SettingsFile := A_ScriptDir . "\capslock_p2.ini"
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
 global DebugLogging := false
-global Config := Map()
 global KeySet := Map()
 global CapsLockHeld := false
 global CapsLockUsed := false
@@ -18,7 +16,6 @@ global WhichClipboardNow := 0
 global SystemClipboard := 0
 global CapsClipboard := 0
 global CapsAltClipboard := 0
-global SettingsModifyTime := ""
 global HotStringKeys := []
 global LoadingGui := 0
 global LoadingText := 0
@@ -40,14 +37,14 @@ Initialize() {
     try SetStoreCapslockMode("Off")
     SetCapsLockState("Off")
 
-    LoadSettings()
+    ConfigLoad()
     BuildKeySet()
     ApplyGlobalSettings()
     TrayMenuInitialize()
     DebugLog("Initialize settings=" . SettingsFile)
     InitializeJavaScriptRuntime()
 
-    if GetGlobalSetting("loadingAnimation") != "0"
+    if ConfigGlobalRead("loadingAnimation") != "0"
         ShowLoading()
 
     InitializeWindowBindings()
@@ -58,11 +55,11 @@ Initialize() {
     OnClipboardChange(HandleClipboardChange)
     DebugLog("Hotkeys and clipboard watcher registered")
 
-    SettingsModifyTime := GetSettingsModifyTime()
+    SettingsModifyTime := ConfigFileModifyTime()
     SetTimer(MonitorSettings, 500)
     SetTimer(HotStringInit, -1)
 
-    if GetGlobalSetting("loadingAnimation") != "0" {
+    if ConfigGlobalRead("loadingAnimation") != "0" {
         Sleep(80)
         HideLoading()
     }
@@ -81,102 +78,8 @@ Shutdown(*) {
     try HideLoading()
 }
 
-LoadSettings() {
-    global Config, SettingsFile, SettingsModifyTime
-
-    Config := ParseIniFile(SettingsFile)
-    ApplySettingsDefaults()
-    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "QStyle", "TTranslate", "TVolcengine"] {
-        if !Config.Has(section)
-            Config[section] := Map()
-    }
-    SettingsModifyTime := GetSettingsModifyTime()
-}
-
-ApplySettingsDefaults() {
-    global Config, SettingsFile
-    defaultsPath := A_ScriptDir . "\capslock_p2-defaults.ini"
-    if !FileExist(defaultsPath)
-        defaultsPath := A_ScriptDir . "\tools\capslock_p2-default.ini"
-    if !FileExist(defaultsPath)
-        return
-
-    defaults := ParseIniFile(defaultsPath)
-    for section, values in defaults {
-        if !Config.Has(section)
-            Config[section] := Map()
-        for key, value in values {
-            if Config[section].Has(key)
-                continue
-            Config[section][key] := value
-            try WriteIniValue(SettingsFile, section, key, value)
-            catch
-                continue
-        }
-    }
-    MigratePromptTemplates(defaults)
-    MigrateAiPromptTemplate(defaults)
-    MigrateKeyDefaults()
-}
-
-MigratePromptTemplates(defaults) {
-    global Config, SettingsFile
-    oldTranslationPrompt := "You are a precise translation engine."
-    if !Config.Has("LLMTranslate") || !Config["LLMTranslate"].Has("systemPrompt")
-        return
-    if Trim(Config["LLMTranslate"]["systemPrompt"]) != oldTranslationPrompt
-        return
-    if !IsObject(defaults) || !defaults.Has("LLMTranslate")
-        return
-    if !defaults["LLMTranslate"].Has("systemPrompt")
-        return
-    newPrompt := defaults["LLMTranslate"]["systemPrompt"]
-    if Trim(newPrompt) = ""
-        return
-    Config["LLMTranslate"]["systemPrompt"] := newPrompt
-    try WriteIniValue(SettingsFile, "LLMTranslate", "systemPrompt", newPrompt)
-    if Config["LLMTranslate"].Has("targetLanguage") {
-        legacyTarget := StrLower(Trim(Config["LLMTranslate"]["targetLanguage"]))
-        defaultTarget := ""
-        if defaults["LLMTranslate"].Has("targetLanguage")
-            defaultTarget := StrLower(Trim(defaults["LLMTranslate"]["targetLanguage"]))
-        if legacyTarget = "simplified chinese" && defaultTarget = "system" {
-            Config["LLMTranslate"]["targetLanguage"] := "system"
-            try WriteIniValue(SettingsFile, "LLMTranslate", "targetLanguage", "system")
-        }
-    }
-}
-
-MigrateAiPromptTemplate(defaults) {
-    global Config, SettingsFile
-    if !Config.Has("QAI") || !Config["QAI"].Has("systemPrompt")
-        return
-    if !IsObject(defaults) || !defaults.Has("QAI") || !defaults["QAI"].Has("systemPrompt")
-        return
-
-    currentPrompt := Trim(Config["QAI"]["systemPrompt"])
-    isLegacyPrompt := InStr(currentPrompt, "CapsLock+ launcher") && InStr(currentPrompt, "Simplified Chinese") && !InStr(currentPrompt, "{{uiLanguage}}")
-    if !isLegacyPrompt
-        return
-    newPrompt := defaults["QAI"]["systemPrompt"]
-    if Trim(newPrompt) = ""
-        return
-    Config["QAI"]["systemPrompt"] := newPrompt
-    try WriteIniValue(SettingsFile, "QAI", "systemPrompt", newPrompt)
-}
-
-MigrateKeyDefaults() {
-    global Config, SettingsFile
-    if !Config.Has("Keys") || !Config["Keys"].Has("caps_f12")
-        return
-    if Trim(Config["Keys"]["caps_f12"]) != "keyFunc_switchClipboard"
-        return
-    Config["Keys"]["caps_f12"] := "keyFunc_openSettings"
-    try WriteIniValue(SettingsFile, "Keys", "caps_f12", "keyFunc_openSettings")
-}
-
 ReloadSettings(*) {
-    LoadSettings()
+    ConfigLoad()
     BuildKeySet()
     ApplyGlobalSettings()
     InitializeJavaScriptRuntime()
@@ -187,10 +90,10 @@ ReloadSettings(*) {
 
 ApplyGlobalSettings() {
     global AllowClipboardWatcher, DebugLogging
-    AllowClipboardWatcher := GetGlobalSetting("allowClipboard") != "0"
-    DebugLogging := GetGlobalSetting("debug") = "1"
+    AllowClipboardWatcher := ConfigGlobalRead("allowClipboard") != "0"
+    DebugLogging := ConfigGlobalRead("debug") = "1"
     DebugLog("Global settings applied clipboard=" . AllowClipboardWatcher . " debug=" . DebugLogging)
-    EnsureAutostartShortcut(GetGlobalSetting("autostart") = "1")
+    EnsureAutostartShortcut(ConfigGlobalRead("autostart") = "1")
     TrayMenuRefresh()
 }
 
@@ -209,13 +112,6 @@ DebugLog(message) {
 ; clipboard content, API credentials, or local paths directly to DebugLog.
 DebugLogPrivate(label, value) {
     DebugLog(label . " length=" . StrLen(String(value)))
-}
-
-GetGlobalSetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("Global") && Config["Global"].Has(key)
-        return Config["Global"][key]
-    return defaultValue
 }
 
 SettingInteger(section, key, fallback, minimum, maximum) {
@@ -240,67 +136,20 @@ SettingNumber(section, key, fallback, minimum, maximum) {
     return Max(minimum, Min(maximum, number))
 }
 
-GetSettingsModifyTime() {
-    global SettingsFile
-    if !FileExist(SettingsFile)
-        return ""
-    try return FileGetTime(SettingsFile, "M")
-    catch
-        return ""
-}
-
 MonitorSettings() {
     global SettingsModifyTime
-    currentTime := GetSettingsModifyTime()
+    currentTime := ConfigFileModifyTime()
     if currentTime = SettingsModifyTime
         return
     SettingsModifyTime := currentTime
     ReloadSettings()
 }
 
-ParseIniFile(filePath) {
-    sections := Map()
-    if !FileExist(filePath)
-        return sections
-
-    ; Force UTF-8: an ANSI (GBK) decode of a UTF-8 file can swallow the LF
-    ; after a multi-byte character, merging the next line into a comment.
-    try content := FileRead(filePath, "UTF-8")
-    catch
-        return sections
-
-    content := StrReplace(content, "`r")
-    currentSection := ""
-    for line in StrSplit(content, "`n") {
-        line := Trim(line)
-        if line = "" || SubStr(line, 1, 1) = ";"
-            continue
-
-        if SubStr(line, 1, 1) = "[" && SubStr(line, -1) = "]" {
-            currentSection := Trim(SubStr(line, 2, StrLen(line) - 2))
-            if !sections.Has(currentSection)
-                sections[currentSection] := Map()
-            continue
-        }
-
-        if currentSection = ""
-            continue
-        equalPosition := InStr(line, "=")
-        if !equalPosition
-            continue
-        key := Trim(SubStr(line, 1, equalPosition - 1))
-        value := Trim(SubStr(line, equalPosition + 1))
-        if key != ""
-            sections[currentSection][key] := value
-    }
-    return sections
-}
-
-SetSettings(section, key, value) {
+ConfigSet(section, key, value) {
     global Config, SettingsFile, SettingsModifyTime
     value := String(value)
     try {
-        WriteIniValue(SettingsFile, section, key, value)
+        ConfigWriteValue(SettingsFile, section, key, value)
     } catch as writeError {
         ShowMsg("Unable to write settings: " . writeError.Message, 2500)
         return false
@@ -308,7 +157,7 @@ SetSettings(section, key, value) {
     if !Config.Has(section)
         Config[section] := Map()
     Config[section][key] := value
-    SettingsModifyTime := GetSettingsModifyTime()
+    SettingsModifyTime := ConfigFileModifyTime()
     ApplySettingChange(section, key, value)
     return true
 }
@@ -340,63 +189,6 @@ ApplySettingChange(section, key, value) {
         case "TabHotString", "QRun", "QWeb":
             RebuildHotStringPattern()
     }
-}
-
-; UTF-8-safe replacement for IniWrite: the Win32 profile APIs treat a
-; BOM-less UTF-8 file as ANSI, which corrupts non-ASCII content on rewrite.
-WriteIniValue(filePath, section, key, value) {
-    content := FileExist(filePath) ? FileRead(filePath, "UTF-8") : ""
-    content := StrReplace(content, "`r`n", "`n")
-    lines := StrSplit(content, "`n")
-    out := []
-    currentSection := ""
-    sectionFound := false
-    keyReplaced := false
-
-    for line in lines {
-        trimmed := Trim(line)
-        if SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]" {
-            ; Leaving the target section without replacing the key: append it
-            ; at the end of the section, before the next header.
-            if currentSection = section && !keyReplaced {
-                out.Push(key . "=" . value)
-                keyReplaced := true
-            }
-            currentSection := SubStr(trimmed, 2, StrLen(trimmed) - 2)
-            if currentSection = section
-                sectionFound := true
-            out.Push(line)
-            continue
-        }
-        if currentSection = section && !keyReplaced {
-            equalPosition := InStr(trimmed, "=")
-            if equalPosition && SubStr(trimmed, 1, 1) != ";" && Trim(SubStr(trimmed, 1, equalPosition - 1)) = key {
-                out.Push(key . "=" . value)
-                keyReplaced := true
-                continue
-            }
-        }
-        out.Push(line)
-    }
-    if currentSection = section && !keyReplaced {
-        out.Push(key . "=" . value)
-        keyReplaced := true
-    }
-    if !sectionFound {
-        if out.Length && Trim(out[out.Length]) != ""
-            out.Push("")
-        out.Push("[" . section . "]")
-        out.Push(key . "=" . value)
-    }
-
-    newContent := ""
-    for line in out
-        newContent .= line . "`n"
-    fileObject := FileOpen(filePath, "w", "UTF-8-RAW")
-    if !IsObject(fileObject)
-        throw Error("Cannot open settings file for writing: " . filePath)
-    fileObject.Write(newContent)
-    fileObject.Close()
 }
 
 EnsureAutostartShortcut(enabled) {
@@ -485,11 +277,11 @@ TrayMenuRefresh() {
     }
 
     try {
-        if GetGlobalSetting("autostart") = "1"
+        if ConfigGlobalRead("autostart") = "1"
             TrayMenuObject.Check(TrayAutostartLabel)
         else
             TrayMenuObject.Uncheck(TrayAutostartLabel)
-        if GetGlobalSetting("loadingAnimation") != "0"
+        if ConfigGlobalRead("loadingAnimation") != "0"
             TrayMenuObject.Check(TrayLoadingLabel)
         else
             TrayMenuObject.Uncheck(TrayLoadingLabel)
@@ -515,13 +307,13 @@ TrayLoadingText() {
 }
 
 TrayToggleAutostart(*) {
-    enabled := GetGlobalSetting("autostart") = "1"
-    SetSettings("Global", "autostart", enabled ? "0" : "1")
+    enabled := ConfigGlobalRead("autostart") = "1"
+    ConfigSet("Global", "autostart", enabled ? "0" : "1")
 }
 
 TrayToggleLoadingAnimation(*) {
-    enabled := GetGlobalSetting("loadingAnimation") != "0"
-    SetSettings("Global", "loadingAnimation", enabled ? "0" : "1")
+    enabled := ConfigGlobalRead("loadingAnimation") != "0"
+    ConfigSet("Global", "loadingAnimation", enabled ? "0" : "1")
 }
 
 HotStringInit(*) {
@@ -529,16 +321,14 @@ HotStringInit(*) {
 }
 
 RebuildHotStringPattern() {
-    global Config, HotStringKeys
+    global HotStringKeys
     HotStringKeys := []
     ; The CapsLock+Tab tail match draws from all three value sections, like the
     ; reference CLhotString: a configured run or web entry can be expanded in an
     ; editor too. QRun/QWeb keys carry a "<display>" suffix, so they are matched
     ; by their short key; TabHotString keys have none and pass through unchanged.
     for section in ["TabHotString", "QRun", "QWeb"] {
-        if !Config.Has(section)
-            continue
-        for key, value in Config[section] {
+        for key, value in ConfigSection(section) {
             short := QbarShortKey(key)
             if short != ""
                 HotStringKeys.Push(short)
@@ -565,14 +355,11 @@ GetHotStringReplacement(text, &matchedKey := "") {
 ; like the reference CLhotString. Only TabHotString values take the escapes
 ; (see HotStringUnescape). Run and web values are used as written.
 HotStringValue(key) {
-    global Config
-    if Config.Has("TabHotString") && Config["TabHotString"].Has(key) {
-        return HotStringUnescape(Config["TabHotString"][key])
-    }
+    value := ConfigRead("TabHotString", key, "")
+    if value != ""
+        return HotStringUnescape(value)
     for section in ["QRun", "QWeb"] {
-        if !Config.Has(section)
-            continue
-        for candidate, value in Config[section] {
+        for candidate, value in ConfigSection(section) {
             if QbarShortKey(candidate) = key && Trim(value) != ""
                 return value
         }
@@ -781,7 +568,7 @@ RestoreClipboard(data) {
 }
 
 ClipboardEnabled() {
-    return GetGlobalSetting("allowClipboard") != "0"
+    return ConfigGlobalRead("allowClipboard") != "0"
 }
 
 CopyToClipboardSlot(slot, isCut := false) {
@@ -919,7 +706,7 @@ SetClipboardText(text) {
 }
 
 IsChineseLanguage() {
-    languageSetting := GetGlobalSetting("language")
+    languageSetting := ConfigGlobalRead("language")
     if languageSetting = "1"
         return true
     if languageSetting = "2"

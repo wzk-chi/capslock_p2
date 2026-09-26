@@ -26,10 +26,7 @@ global AiChatHistory := []        ; {role, content} maps, without the system pro
 ; QAI stores behavior that is specific to the assistant, such as its system
 ; prompt. All connection and sampling settings live in [LLM].
 GetQAISetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("QAI") && Config["QAI"].Has(key)
-        return Config["QAI"][key]
-    return defaultValue
+    return ConfigRead("QAI", key, defaultValue)
 }
 
 ; The assistant prompt is configurable in [QAI] systemPrompt; the default is

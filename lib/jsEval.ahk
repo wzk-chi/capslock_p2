@@ -10,7 +10,7 @@ InitializeJavaScriptRuntime() {
     JavaScriptRuntime := 0
     JavaScriptRuntimeReady := false
 
-    scriptList := Trim(GetGlobalSetting("loadScript", ""))
+    scriptList := Trim(ConfigGlobalRead("loadScript", ""))
     if scriptList = ""
         return
 

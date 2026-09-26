@@ -4,10 +4,7 @@
 global LLMStreamNextId := 0
 global LLMStreamStates := Map()
 GetLLMSetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("LLM") && Config["LLM"].Has(key)
-        return Config["LLM"][key]
-    return defaultValue
+    return ConfigRead("LLM", key, defaultValue)
 }
 
 LLMSettingsConfigured() {
@@ -70,7 +67,7 @@ LLMSaveSettings(msg) {
         value := LLMMsgField(msg, key)
         if key = "endpoint" || key = "apiKeyHeader" || key = "apiKeyPrefix" || key = "model"
             value := Trim(value)
-        WriteIniValue(SettingsFile, "LLM", key, value)
+        ConfigWriteValue(SettingsFile, "LLM", key, value)
     }
 }
 

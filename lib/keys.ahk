@@ -19,14 +19,14 @@ keyFunc_toggleCapsLock(*) {
 keyFunc_mouseSpeedIncrease(*) {
     global MouseSpeed
     MouseSpeed := Min(20, MouseSpeed + 1)
-    SetSettings("Global", "mouseSpeed", MouseSpeed)
+    ConfigSet("Global", "mouseSpeed", MouseSpeed)
     ShowMsg("Mouse speed: " . MouseSpeed, 1000)
 }
 
 keyFunc_mouseSpeedDecrease(*) {
     global MouseSpeed
     MouseSpeed := Max(1, MouseSpeed - 1)
-    SetSettings("Global", "mouseSpeed", MouseSpeed)
+    ConfigSet("Global", "mouseSpeed", MouseSpeed)
     ShowMsg("Mouse speed: " . MouseSpeed, 1000)
 }
 
@@ -171,7 +171,7 @@ keyFunc_pageMoveDown(*) {
 
 keyFunc_switchClipboard(*) {
     enabled := ClipboardEnabled()
-    SetSettings("Global", "allowClipboard", enabled ? "0" : "1")
+    ConfigSet("Global", "allowClipboard", enabled ? "0" : "1")
     ShowMsg(enabled ? "Clipboard OFF" : "Clipboard ON", 1500)
 }
 

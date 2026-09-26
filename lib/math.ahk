@@ -262,7 +262,7 @@ EvaluateExpression(expression, &success := false) {
     if expression = ""
         return ""
 
-    if GetGlobalSetting("javascriptOriginalReturn") = "1" && JavaScriptRuntimeReady {
+    if ConfigGlobalRead("javascriptOriginalReturn") = "1" && JavaScriptRuntimeReady {
         javascriptResult := EvaluateJavaScript(expression, &javascriptSuccess)
         if javascriptSuccess {
             success := true

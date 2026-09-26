@@ -110,11 +110,8 @@ SettingsConfigSections() {
 }
 
 SettingsSectionSnapshot(section) {
-    global Config
     result := Map()
-    if !Config.Has(section)
-        return result
-    for key, value in Config[section] {
+    for key, value in ConfigSection(section) {
         if SettingsIsDynamicSection(section) && Trim(String(value)) = ""
             continue
         result[key] := String(value)
@@ -217,7 +214,7 @@ SettingsWriteSection(section, values) {
     for key, value in values {
         if IsObject(value) || !SettingsAllowedKey(section, String(key))
             continue
-        WriteIniValue(SettingsFile, section, String(key), String(value))
+        ConfigWriteValue(SettingsFile, section, String(key), String(value))
     }
 }
 

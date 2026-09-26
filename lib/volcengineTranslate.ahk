@@ -7,10 +7,7 @@
 ; translate.volcengineapi.com, Action=TranslateText, Version=2020-06-01.
 
 GetVolcengineSetting(key, defaultValue := "") {
-    global Config
-    if Config.Has("TVolcengine") && Config["TVolcengine"].Has(key)
-        return Config["TVolcengine"][key]
-    return defaultValue
+    return ConfigRead("TVolcengine", key, defaultValue)
 }
 
 VolcengineSettingWith(key, defaultValue, overrides) {
@@ -280,11 +277,11 @@ TranslateProviderVolcengineTest(msg, &ok, &text) {
 
 TranslateProviderVolcengineSave(msg) {
     global SettingsFile
-    WriteIniValue(SettingsFile, "TVolcengine", "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")))
-    WriteIniValue(SettingsFile, "TVolcengine", "secretKey", LLMMsgField(msg, "volcSecretKey"))
-    WriteIniValue(SettingsFile, "TVolcengine", "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
+    ConfigWriteValue(SettingsFile, "TVolcengine", "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")))
+    ConfigWriteValue(SettingsFile, "TVolcengine", "secretKey", LLMMsgField(msg, "volcSecretKey"))
+    ConfigWriteValue(SettingsFile, "TVolcengine", "targetLanguage", Trim(LLMMsgField(msg, "volcTargetLanguage")))
     if msg.Has("volcRegion")
-        WriteIniValue(SettingsFile, "TVolcengine", "region", Trim(LLMMsgField(msg, "volcRegion")))
+        ConfigWriteValue(SettingsFile, "TVolcengine", "region", Trim(LLMMsgField(msg, "volcRegion")))
 }
 
 ; Settings-form fields pushed to the page (names as settings.js uses them).

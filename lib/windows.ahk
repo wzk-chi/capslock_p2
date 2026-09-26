@@ -25,7 +25,7 @@ InitializeWindowBindings() {
 LoadWindowBindings() {
     global WinBindings, WindowBindingFile
     WinBindings := Map()
-    sections := ParseIniFile(WindowBindingFile)
+    sections := ConfigParseIni(WindowBindingFile)
     for sectionName, values in sections {
         if !RegExMatch(sectionName, "^\d+$")
             continue
@@ -199,11 +199,6 @@ BindWindowFromActive(bindingNumber, bindType) {
     WinBindings[bindingNumber] := binding
     SaveWindowBinding(bindingNumber, binding)
     ShowMsg("Window binding " . bindingNumber . " saved (mode " . bindType . ")", 1200)
-}
-
-; Compatibility name used by the original implementation.
-getWinInfo(bindingNumber, bindType) {
-    BindWindowFromActive(bindingNumber, bindType)
 }
 
 FindReplacementWindow(item) {

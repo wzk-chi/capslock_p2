@@ -13,6 +13,7 @@ A_HotkeyInterval := 2000
 ; capslock_p2 AHK v2 entry point.
 ; Qbar and LLM translation are both hosted in WebView2 panels.
 
+#Include lib\config.ahk
 #Include lib\core.ahk
 #Include lib\windows.ahk
 #Include lib\math.ahk

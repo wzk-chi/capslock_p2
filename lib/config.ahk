@@ -1,0 +1,272 @@
+; Configuration storage and typed access for capslock_p2.
+; This file owns the UTF-8 INI document, typed access, and migration path.
+
+global SettingsFile := A_ScriptDir . "\capslock_p2.ini"
+global Config := Map()
+global SettingsModifyTime := ""
+
+ConfigLoad() {
+    global Config, SettingsFile, SettingsModifyTime
+
+    Config := ConfigParseIni(SettingsFile)
+    ConfigApplyDefaults()
+    for section in ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI", "QSearch", "QRun", "QWeb", "QStyle", "TTranslate", "TVolcengine"] {
+        if !Config.Has(section)
+            Config[section] := Map()
+    }
+    SettingsModifyTime := ConfigFileModifyTime()
+}
+
+ConfigRead(section, key, defaultValue := "") {
+    global Config
+    if Config.Has(section) && Config[section].Has(key)
+        return Config[section][key]
+    return defaultValue
+}
+
+ConfigGlobalRead(key, defaultValue := "") {
+    return ConfigRead("Global", key, defaultValue)
+}
+
+ConfigHas(section, key) {
+    global Config
+    return Config.Has(section) && Config[section].Has(key)
+}
+
+ConfigSection(section) {
+    global Config
+    return Config.Has(section) ? Config[section] : Map()
+}
+
+ConfigSectionExists(section) {
+    global Config
+    return Config.Has(section)
+}
+
+ConfigFileModifyTime() {
+    global SettingsFile
+    if !FileExist(SettingsFile)
+        return ""
+    try return FileGetTime(SettingsFile, "M")
+    catch
+        return ""
+}
+
+ConfigWrite(section, key, value) {
+    changes := Map()
+    changes[section] := Map()
+    changes[section][key] := String(value)
+    ConfigWriteBatch(changes)
+}
+
+ConfigWriteBatch(changes) {
+    global SettingsFile
+    ConfigWriteFile(SettingsFile, changes)
+}
+
+ConfigApplyDefaults() {
+    global Config, SettingsFile
+    defaultsPath := A_ScriptDir . "\capslock_p2-defaults.ini"
+    if !FileExist(defaultsPath)
+        defaultsPath := A_ScriptDir . "\tools\capslock_p2-default.ini"
+    if !FileExist(defaultsPath)
+        return
+
+    defaults := ConfigParseIni(defaultsPath)
+    for section, values in defaults {
+        if !Config.Has(section)
+            Config[section] := Map()
+        for key, value in values {
+            if Config[section].Has(key)
+                continue
+            Config[section][key] := value
+            try ConfigWriteValue(SettingsFile, section, key, value)
+            catch
+                continue
+        }
+    }
+    ConfigMigratePromptTemplates(defaults)
+    ConfigMigrateAiPromptTemplate(defaults)
+    ConfigMigrateKeyDefaults()
+}
+
+ConfigMigratePromptTemplates(defaults) {
+    global Config, SettingsFile
+    oldTranslationPrompt := "You are a precise translation engine."
+    if !Config.Has("LLMTranslate") || !Config["LLMTranslate"].Has("systemPrompt")
+        return
+    if Trim(Config["LLMTranslate"]["systemPrompt"]) != oldTranslationPrompt
+        return
+    if !IsObject(defaults) || !defaults.Has("LLMTranslate")
+        return
+    if !defaults["LLMTranslate"].Has("systemPrompt")
+        return
+    newPrompt := defaults["LLMTranslate"]["systemPrompt"]
+    if Trim(newPrompt) = ""
+        return
+    Config["LLMTranslate"]["systemPrompt"] := newPrompt
+    try ConfigWriteValue(SettingsFile, "LLMTranslate", "systemPrompt", newPrompt)
+    if Config["LLMTranslate"].Has("targetLanguage") {
+        legacyTarget := StrLower(Trim(Config["LLMTranslate"]["targetLanguage"]))
+        defaultTarget := ""
+        if defaults["LLMTranslate"].Has("targetLanguage")
+            defaultTarget := StrLower(Trim(defaults["LLMTranslate"]["targetLanguage"]))
+        if legacyTarget = "simplified chinese" && defaultTarget = "system" {
+            Config["LLMTranslate"]["targetLanguage"] := "system"
+            try ConfigWriteValue(SettingsFile, "LLMTranslate", "targetLanguage", "system")
+        }
+    }
+}
+
+ConfigMigrateAiPromptTemplate(defaults) {
+    global Config, SettingsFile
+    if !Config.Has("QAI") || !Config["QAI"].Has("systemPrompt")
+        return
+    if !IsObject(defaults) || !defaults.Has("QAI") || !defaults["QAI"].Has("systemPrompt")
+        return
+
+    currentPrompt := Trim(Config["QAI"]["systemPrompt"])
+    isLegacyPrompt := InStr(currentPrompt, "CapsLock+ launcher") && InStr(currentPrompt, "Simplified Chinese") && !InStr(currentPrompt, "{{uiLanguage}}")
+    if !isLegacyPrompt
+        return
+    newPrompt := defaults["QAI"]["systemPrompt"]
+    if Trim(newPrompt) = ""
+        return
+    Config["QAI"]["systemPrompt"] := newPrompt
+    try ConfigWriteValue(SettingsFile, "QAI", "systemPrompt", newPrompt)
+}
+
+ConfigMigrateKeyDefaults() {
+    global Config, SettingsFile
+    if !Config.Has("Keys") || !Config["Keys"].Has("caps_f12")
+        return
+    if Trim(Config["Keys"]["caps_f12"]) != "keyFunc_switchClipboard"
+        return
+    Config["Keys"]["caps_f12"] := "keyFunc_openSettings"
+    try ConfigWriteValue(SettingsFile, "Keys", "caps_f12", "keyFunc_openSettings")
+}
+
+ConfigParseIni(filePath) {
+    sections := Map()
+    if !FileExist(filePath)
+        return sections
+
+    ; Force UTF-8: an ANSI (GBK) decode of a UTF-8 file can swallow the LF
+    ; after a multi-byte character, merging the next line into a comment.
+    try content := FileRead(filePath, "UTF-8")
+    catch
+        return sections
+
+    content := StrReplace(content, "`r")
+    currentSection := ""
+    for line in StrSplit(content, "`n") {
+        line := Trim(line)
+        if line = "" || SubStr(line, 1, 1) = ";"
+            continue
+
+        if SubStr(line, 1, 1) = "[" && SubStr(line, -1) = "]" {
+            currentSection := Trim(SubStr(line, 2, StrLen(line) - 2))
+            if !sections.Has(currentSection)
+                sections[currentSection] := Map()
+            continue
+        }
+
+        if currentSection = ""
+            continue
+        equalPosition := InStr(line, "=")
+        if !equalPosition
+            continue
+        key := Trim(SubStr(line, 1, equalPosition - 1))
+        value := Trim(SubStr(line, equalPosition + 1))
+        if key != ""
+            sections[currentSection][key] := value
+    }
+    return sections
+}
+
+; The document is updated in memory and moved into place only after the
+; complete file is written to a sibling temporary file.
+ConfigWriteValue(filePath, section, key, value) {
+    changes := Map()
+    changes[section] := Map()
+    changes[section][key] := String(value)
+    ConfigWriteFile(filePath, changes)
+}
+
+ConfigWriteFile(filePath, changes) {
+    content := FileExist(filePath) ? FileRead(filePath, "UTF-8") : ""
+    content := StrReplace(content, "`r`n", "`n")
+    for section, values in changes {
+        if !IsObject(values)
+            continue
+        for key, value in values
+            content := ConfigSetIniValue(content, String(section), String(key), String(value))
+    }
+    ConfigAtomicWrite(filePath, content)
+}
+
+ConfigSetIniValue(content, section, key, value) {
+    lines := StrSplit(content, "`n")
+    out := []
+    currentSection := ""
+    sectionFound := false
+    keyReplaced := false
+
+    for line in lines {
+        trimmed := Trim(line)
+        if SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]" {
+            if currentSection = section && !keyReplaced {
+                out.Push(key . "=" . value)
+                keyReplaced := true
+            }
+            currentSection := SubStr(trimmed, 2, StrLen(trimmed) - 2)
+            if currentSection = section
+                sectionFound := true
+            out.Push(line)
+            continue
+        }
+        if currentSection = section && !keyReplaced {
+            equalPosition := InStr(trimmed, "=")
+            if equalPosition && SubStr(trimmed, 1, 1) != ";" && Trim(SubStr(trimmed, 1, equalPosition - 1)) = key {
+                out.Push(key . "=" . value)
+                keyReplaced := true
+                continue
+            }
+        }
+        out.Push(line)
+    }
+    if currentSection = section && !keyReplaced {
+        out.Push(key . "=" . value)
+        keyReplaced := true
+    }
+    if !sectionFound {
+        if out.Length && Trim(out[out.Length]) != ""
+            out.Push("")
+        out.Push("[" . section . "]")
+        out.Push(key . "=" . value)
+    }
+
+    newContent := ""
+    for line in out
+        newContent .= line . "`n"
+    return newContent
+}
+
+ConfigAtomicWrite(filePath, content) {
+    tempPath := filePath . ".tmp." . A_TickCount
+    fileObject := 0
+    try {
+        fileObject := FileOpen(tempPath, "w", "UTF-8-RAW")
+        if !IsObject(fileObject)
+            throw Error("Cannot open settings temp file: " . tempPath)
+        fileObject.Write(content)
+        fileObject.Close()
+        fileObject := 0
+        FileMove(tempPath, filePath, true)
+    } catch as writeError {
+        if IsObject(fileObject)
+            try fileObject.Close()
+        try FileDelete(tempPath)
+        throw writeError
+    }
+}

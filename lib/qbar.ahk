@@ -444,7 +444,6 @@ QbarAllItems() {
 }
 
 QbarConfigItems() {
-    global Config
     items := []
     ; Trigger rows for the built-in commands, so they are discoverable and
     ; Tab-completable like the search engines are. Enter with no argument
@@ -455,8 +454,7 @@ QbarConfigItems() {
     items.Push(Map("short", "e", "label", "e <文件搜索 everything|find|f>", "type", "search", "value", ""))
     for entry in QbarSearchEntries()
         items.Push(entry)
-    if Config.Has("QRun") {
-        for key, value in Config["QRun"] {
+    for key, value in ConfigSection("QRun") {
             if Trim(value) = ""
                 continue
             ; Resolve *RunAs / quoting / parameters once: the resolved target
@@ -475,8 +473,7 @@ QbarConfigItems() {
             ))
         }
     }
-    if Config.Has("QWeb") {
-        for key, value in Config["QWeb"] {
+    for key, value in ConfigSection("QWeb") {
             if Trim(value) = ""
                 continue
             items.Push(Map("short", QbarShortKey(key), "label", key, "type", "web", "value", value))
@@ -489,11 +486,9 @@ QbarConfigItems() {
 ; not define -- so adding one entry replaces only the trigger it names rather
 ; than dropping the whole set. The special key "default" is never listed.
 QbarSearchEntries() {
-    global Config
     entries := []
     configured := Map()
-    if Config.Has("QSearch") {
-        for key, value in Config["QSearch"] {
+    for key, value in ConfigSection("QSearch") {
             if Trim(value) = "" || QbarShortKey(key) = "default"
                 continue
             short := QbarShortKey(key)
@@ -913,14 +908,12 @@ QbarInlineSection(arrowWord, value) {
 ; already configured. TabHotString values keep a literal \n so the file stays
 ; one line per key.
 QbarAddSetting(section, key, value) {
-    global Config
     prompt := QbarText("Add to ", "添加到 ") . "[" . section . "]`n`n" . key . "=" . value
     if MsgBox(prompt, "qbar", "OKCancel") != "OK"
         return
 
     existing := ""
-    if Config.Has(section) && Config[section].Has(key)
-        existing := Config[section][key]
+    existing := ConfigRead(section, key, "")
     if existing != "" {
         prompt := QbarText("That key is already set. Replace it?", "该键已存在，要覆盖吗？")
         prompt .= "`n`n" . key . "=" . existing . "`n`n-> " . key . "=" . value
@@ -931,7 +924,7 @@ QbarAddSetting(section, key, value) {
     if section = "TabHotString"
         value := StrReplace(StrReplace(value, "\n", "`n"), "`n", "\n")
 
-    if SetSettings(section, key, value)
+    if ConfigSet(section, key, value)
         ShowMsg(QbarText("Added ", "已添加 ") . key, 1500)
 }
 
@@ -1396,11 +1389,12 @@ QbarIsValidUtf8(buf, size) {
 }
 
 QbarEsExe() {
-    global QbarEsPath, Config
+    global QbarEsPath
     if QbarEsPath != ""
         return QbarEsPath
-    if Config.Has("Qbar") && Config["Qbar"].Has("esPath") && Trim(Config["Qbar"]["esPath"]) != "" {
-        candidate := Trim(Config["Qbar"]["esPath"])
+    configuredPath := Trim(ConfigRead("Qbar", "esPath", ""))
+    if configuredPath != "" {
+        candidate := configuredPath
         if FileExist(candidate) {
             QbarEsPath := candidate
             return candidate
@@ -1415,11 +1409,12 @@ QbarEsExe() {
 ; The bundled copy lives in a versioned folder under resources; the first
 ; folder that contains everything.exe wins. [Qbar] everythingPath overrides.
 QbarEsEverythingExe() {
-    global QbarEsEverythingPath, Config
+    global QbarEsEverythingPath
     if QbarEsEverythingPath != ""
         return QbarEsEverythingPath
-    if Config.Has("Qbar") && Config["Qbar"].Has("everythingPath") && Trim(Config["Qbar"]["everythingPath"]) != "" {
-        candidate := Trim(Config["Qbar"]["everythingPath"])
+    configuredPath := Trim(ConfigRead("Qbar", "everythingPath", ""))
+    if configuredPath != "" {
+        candidate := configuredPath
         if FileExist(candidate) {
             QbarEsEverythingPath := candidate
             return candidate
@@ -1436,20 +1431,14 @@ QbarEsEverythingExe() {
 }
 
 QbarEsInstanceName() {
-    global Config
-    if Config.Has("Qbar") && Config["Qbar"].Has("esInstance") && Trim(Config["Qbar"]["esInstance"]) != ""
-        return Trim(Config["Qbar"]["esInstance"])
+    configuredName := Trim(ConfigRead("Qbar", "esInstance", ""))
+    if configuredName != ""
+        return configuredName
     return "capslock_p2"
 }
 
 QbarEsMaxResults() {
-    global Config
-    if Config.Has("Qbar") && Config["Qbar"].Has("esMaxResults") {
-        value := Trim(Config["Qbar"]["esMaxResults"])
-        if RegExMatch(value, "^\d+$") && value + 0 > 0
-            return value + 0
-    }
-    return 50
+    return SettingInteger("Qbar", "esMaxResults", 50, 1, 500)
 }
 
 ; One hint per panel show, so a missing prerequisite does not pop a message on
@@ -1594,13 +1583,10 @@ QbarSearchArgument(text, trigger) {
 }
 
 QbarConfigShortKeyExists(token) {
-    global Config
     if Trim(token) = ""
         return false
     for section in ["QRun", "QWeb", "QSearch"] {
-        if !Config.Has(section)
-            continue
-        for key, value in Config[section] {
+        for key, value in ConfigSection(section) {
             if QbarShortKey(key) = token
                 return true
         }
@@ -1609,11 +1595,8 @@ QbarConfigShortKeyExists(token) {
 }
 
 QbarConfigItemsOf(section) {
-    global Config
-    if !Config.Has(section)
-        return []
     items := []
-    for key, value in Config[section] {
+    for key, value in ConfigSection(section) {
         if Trim(value) = ""
             continue
         items.Push(Map("short", QbarShortKey(key), "label", key, "value", value))

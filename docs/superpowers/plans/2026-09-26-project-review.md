@@ -15,7 +15,7 @@
 - `AGENTS.md` forbids writing tests, starting/running scripts, deleting files, and modifying `capslock-plus/`.
 - Do not run AutoHotkey, JavaScript, the compiled application, Everything, Ahk2Exe, Inno Setup, or an installer during implementation.
 - Use the existing WebView2, SQLite, JSON, Promise, and crypto implementations; do not add a package manager or runtime dependency.
-- Keep public entry functions used by `lib/keymap.ahk`, `lib/keys.ahk`, qbar commands, and user extensions stable unless a compatibility wrapper is explicitly added.
+- Internal function names may change when a module boundary changes; update every in-repository caller in the same task and do not add compatibility wrappers.
 - Preserve user configuration files: legacy `[QStyle]`, calculator, and `loadScript` keys are ignored after migration but are not deleted automatically.
 - Never log API keys, endpoint query strings, selected text, qbar input, AI questions, translation text, or clipboard contents.
 - Verification is static only: `git diff --check`, `rg` reference checks, INI/HTML/resource consistency checks, and Git status/diff review.
@@ -37,7 +37,7 @@ The implementation uses these boundaries:
 - `lib/settings.ahk`: central settings-window host, schema, snapshot/save/test routing, and window-binding capture bridge.
 - `pages/settings.html`: sole live settings UI, including qbar backend fields and descriptive window binding labels.
 - `pages/chat.html`, `pages/translate.html`: feature panels only; their settings buttons send `openSettings` to AHK and no longer mount the embedded settings component.
-- `pages/settings.js`: retained in the repository for resource compatibility, but no live page references it after Task 6.
+- `pages/settings.js`: left in the repository only because deleting files is forbidden; no live page references it after Task 6.
 - `README.md`, `docs/architecture.md`, `docs/packaging.md`, `pages/usage.html`, `tools/capslock_p2-default.ini`, `capslock_p2-settingsDemo.ini`: synchronized documentation/configuration surface.
 
 ## Static verification convention
@@ -63,7 +63,7 @@ The exact `rg` patterns for each task are listed below. A task is not marked com
 
 **Interfaces:**
 
-- Preserve `BindWindowFromActive(bindingNumber, bindType)`, `BindingTap(bindingNumber)`, `activateWinAction(bindingNumber)`, `winsSort(bindingNumber)`, and `getWinInfo(bindingNumber, bindType)`.
+- Keep the current window-binding call sites working for `BindWindowFromActive(bindingNumber, bindType)`, `BindingTap(bindingNumber)`, `activateWinAction(bindingNumber)`, and `winsSort(bindingNumber)`; remove the unused `getWinInfo()` compatibility alias.
 - Add `WindowBindingType(value, fallback := 1) -> Integer` to clamp capture mode values to `1..3`.
 - Add `WindowBindingDisplay(type) -> Map` returning `{label, description}` for the settings snapshot/UI.
 - Preserve the serialized fields `bindType`, `count`, `id_N`, `class_N`, `exe_N`, and `path_N`.
@@ -74,7 +74,7 @@ The exact `rg` patterns for each task are listed below. A task is not marked com
 - [ ] **Step 4: Validate settings capture fields.** Use `WindowBindingType()` for `bindType`; accept a binding number only when it is an integer from 1 to 10 before scheduling the delayed capture.
 - [ ] **Step 5: Replace opaque labels.** In `pages/settings.html`, render `单个窗口`, `窗口组`, and `同应用窗口`, plus the short descriptions from the snapshot. Keep the selection values `1`, `2`, and `3` unchanged.
 - [ ] **Step 6: Update the user-facing window-binding section in `README.md`.** Explain activation versus capture with one example for each mode and remove “短按/双击/三击” wording where the settings page is the capture surface.
-- [ ] **Step 7: Run static verification.** Use `git diff --check`; search for `当前窗口|追加窗口|同类窗口` and leave those old labels only in explicitly retained migration/compatibility notes; search for `bindType` to confirm all numeric entry points use the clamp helper.
+- [ ] **Step 7: Run static verification.** Use `git diff --check`; search for `当前窗口|追加窗口|同类窗口` and confirm the live page/docs use the new labels; search for `bindType` to confirm all numeric entry points use the clamp helper.
 - [ ] **Step 8: Commit.**
 
 ```powershell
@@ -123,16 +123,16 @@ git commit -m "fix: protect debug logs and decode file results safely"
 
 **Interfaces:**
 
-- Preserve `SetSettings(section, key, value)` and `ReloadSettings()`.
+- Keep `ConfigSet(section, key, value)` and `ReloadSettings()` as the live write/reload entry points.
 - Add `ApplySettingChange(section, key, value) -> void` for incremental runtime updates.
 - Add `SettingInteger(section, key, fallback, minimum, maximum) -> Integer` and `SettingNumber(section, key, fallback, minimum, maximum) -> Number` for shared clamping.
 
 - [ ] **Step 1: Add typed setting readers.** Implement the two helpers using `Config` values and explicit regex/number checks; invalid values return the fallback and are not written back automatically.
-- [ ] **Step 2: Separate persistence from runtime application.** Make `SetSettings()` write and update the in-memory section, then call `ApplySettingChange()`; reserve `ReloadSettings()` for external file reloads and multi-section settings saves.
-- [ ] **Step 3: Handle global settings incrementally.** Update `allowClipboard`, `debug`, `mouseSpeed`, `language`, `autostart`, and `loadingAnimation` directly. Only rebuild hotstrings, JavaScript compatibility state, or the key map when their specific sections change.
+- [ ] **Step 2: Separate persistence from runtime application.** Make `ConfigSet()` write and update the in-memory section, then call `ApplySettingChange()`; reserve `ReloadSettings()` for external file reloads and multi-section settings saves.
+- [ ] **Step 3: Handle global settings incrementally.** Update `allowClipboard`, `debug`, `mouseSpeed`, `language`, `autostart`, and `loadingAnimation` directly. Only rebuild hotstrings, the JavaScript runtime, or the key map when their specific sections change.
 - [ ] **Step 4: Change runtime callers.** Mouse-speed and clipboard toggle actions must no longer parse the whole file, reinitialize JavaScript, refresh every derived setting, and rewrite the tray state on every press.
 - [ ] **Step 5: Validate settings-page batches.** `SettingsApplyDraft()` continues to use one full reload after a multi-section save, but all scalar fields go through the typed helpers before being applied.
-- [ ] **Step 6: Run static verification.** Search `SetSettings(` and `ReloadSettings()` call sites; confirm only batch saves/external reloads call the full reload path. Run `git diff --check`.
+- [ ] **Step 6: Run static verification.** Search `ConfigSet(` and `ReloadSettings()` call sites; confirm only batch saves/external reloads call the full reload path. Run `git diff --check`.
 - [ ] **Step 7: Commit.**
 
 ```powershell
@@ -166,9 +166,9 @@ git commit -m "refactor: apply small settings changes incrementally"
 - `ConfigApplyDefaults() -> void`
 - `ConfigSectionExists(section) -> Boolean`
 
-- [ ] **Step 1: Move INI parsing/default migration.** Move `ParseIniFile`, `WriteIniValue`, `LoadSettings`, `ApplySettingsDefaults`, and the three existing migrations into `lib/config.ahk`; preserve `Config`, `SettingsFile`, and `SettingsModifyTime` globals as compatibility state.
+- [ ] **Step 1: Move INI parsing/default migration.** Move the INI parser, writer, load/default flow, and the three existing migrations into `lib/config.ahk`; expose them as `ConfigParseIni`, `ConfigWriteValue`, `ConfigLoad`, and `ConfigApplyDefaults`; make `Config`, `SettingsFile`, and `SettingsModifyTime` owned by that module.
 - [ ] **Step 2: Implement atomic batch writes.** Write a complete new UTF-8-RAW document to a uniquely named sibling temp file, close it, then replace the original with the native file move operation; preserve comments and section ordering from the existing writer.
-- [ ] **Step 3: Keep compatibility wrappers.** Leave `LoadSettings()`, `SetSettings()`, `GetGlobalSetting()`, and `WriteIniValue()` as thin wrappers where existing modules still call them; wrappers delegate to `Config*` and contain no parsing logic.
+- [ ] **Step 3: Rename configuration calls directly.** Update feature modules to call `ConfigLoad`, `ConfigRead`, `ConfigWrite`, and `ConfigWriteBatch`; remove parser/writer aliases from `core.ahk` after all call sites move.
 - [ ] **Step 4: Route feature getters through the boundary.** Replace direct `Config.Has(section)` reads in LLM, translation providers, qbar path options, and settings snapshots with `ConfigRead/ConfigHas` while leaving dynamic sections (`QRun`, `QWeb`, `QSearch`, `TabHotString`) iterable through `ConfigSection`.
 - [ ] **Step 5: Add section metadata.** Define one source of truth for static sections, allowed scalar keys, dynamic sections, and numeric ranges; make `SettingsAllowedKey()` consume it rather than maintaining a second switch list.
 - [ ] **Step 6: Verify include order and references.** Include `lib/config.ahk` before modules that execute initialization; search for direct parser/writer implementations and ensure only `lib/config.ahk` contains them. Do not run AHK.
@@ -197,17 +197,17 @@ git commit -m "refactor: centralize configuration access"
 **Interfaces:**
 
 - Add `TabHotStringAction() -> String`, which performs the existing hotstring replacement path and never calls expression evaluation.
-- Preserve `keyFunc_tabScript(*)` as a compatibility wrapper that calls `TabHotStringAction()`.
+- Add `keyFunc_tabHotString(*)` as the only live CapsLock+Tab action.
 - Add `QbarSettingsSnapshot() -> Map` and `SettingsQbarAllowedKey(key) -> Boolean` for `esPath`, `everythingPath`, `esInstance`, and `esMaxResults`.
 
 - [ ] **Step 1: Extract the hotstring-only action.** Move the clipboard/selection replacement behavior from `tabAction()` into `TabHotStringAction()` without copying calculation fallback branches.
-- [ ] **Step 2: Keep the old configured action name.** Make `keyFunc_tabScript()` call `TabHotStringAction()` so old `[Keys]` values do not fail; set the shipped default key mapping to the same stable wrapper.
+- [ ] **Step 2: Update the action name directly.** Point the shipped key map and example configuration to `keyFunc_tabHotString`; do not migrate or retain `keyFunc_tabScript`.
 - [ ] **Step 3: Remove calculator runtime includes.** Stop including `lib/math.ahk` and `lib/jsEval.ahk`; stop initializing the JavaScript calculation runtime; leave both files and `loadScript/` untouched on disk.
 - [ ] **Step 4: Remove calculator settings from the live schema.** Stop rendering and accepting `loadScript` and `javascriptOriginalReturn` in the central settings page; legacy keys remain readable in the raw INI but have no runtime effect.
 - [ ] **Step 5: Stop reading QStyle.** Remove qbar style injection and the live page `setStyle` path; keep fixed qbar CSS variables and fixed row limits. Do not rewrite or delete existing `[QStyle]` entries.
 - [ ] **Step 6: Add qbar backend fields to the settings center.** Add `Qbar` to snapshots and allowed sections; render path, instance, and max-results fields with integer validation for `esMaxResults`; persist through the same batch save.
-- [ ] **Step 7: Synchronize default and example INI files.** Remove live calculator/QStyle entries and comments, add the supported Qbar backend defaults, and keep the example’s key mapping and comments consistent with `keyFunc_tabScript`.
-- [ ] **Step 8: Run static verification.** Search live includes and calls for `EvaluateExpression`, `EvaluateJavaScript`, `InitializeJavaScriptRuntime`, `QStyle`, `setStyle`, `loadScript`, and `javascriptOriginalReturn`; only intentionally retained compatibility files/comments may remain. Run `git diff --check`.
+- [ ] **Step 7: Synchronize default and example INI files.** Remove live calculator/QStyle entries and comments, add the supported Qbar backend defaults, and keep the example’s key mapping and comments consistent with `keyFunc_tabHotString`.
+- [ ] **Step 8: Run static verification.** Search live includes and calls for `EvaluateExpression`, `EvaluateJavaScript`, `InitializeJavaScriptRuntime`, `QStyle`, `setStyle`, `loadScript`, `javascriptOriginalReturn`, and `keyFunc_tabScript`; none may remain in live code or configuration. Run `git diff --check`.
 - [ ] **Step 9: Commit.**
 
 ```powershell
@@ -237,7 +237,7 @@ git commit -m "refactor: retire calculator and qbar style settings"
 - [ ] **Step 2: Route first-run setup.** Change AI and translation first-run branches to open the central settings window on `llm`; do not create an embedded form in either feature panel.
 - [ ] **Step 3: Remove live overlay mounting.** Remove `settings.js` script tags and `LLMSettings.mount()` calls from `pages/chat.html` and `pages/translate.html`; retain their buttons and `openSettings` message.
 - [ ] **Step 4: Remove duplicate host-side state.** Delete or bypass `AiChatSettingsOpen`, `LLMTranslateSettingsOpen`, their overlay save/test/push handlers, and use central settings messages instead. Keep stream cancellation and panel focus behavior intact.
-- [ ] **Step 5: Keep `pages/settings.js` inert.** Leave the file in the repository but remove any packaging/documentation claim that it is a live settings surface; add a compatibility header explaining that no shipped page references it.
+- [ ] **Step 5: Retire `pages/settings.js` as a live surface.** Leave the file untouched on disk because deletion is forbidden; remove all page references and packaging/documentation claims that it is a live settings surface.
 - [ ] **Step 6: Reconcile settings-page drafts.** Ensure central save, cancel, test, and page navigation use one draft snapshot; preserve unsaved changes until explicit cancel/save and show secrets as password fields.
 - [ ] **Step 7: Run static verification.** Search `pages/chat.html`, `pages/translate.html`, `lib/aiChat.ahk`, and `lib/llmTranslate.ahk` for `LLMSettings`, `settings.js`, and overlay save/test handlers; only `openSettings` and central AHK routing should remain. Run `git diff --check`.
 - [ ] **Step 8: Commit.**
@@ -338,9 +338,9 @@ git commit -m "refactor: split qbar responsibilities"
 - [ ] **Step 1: Remove retired feature descriptions.** Delete calculator, JavaScript-extension, QStyle, and embedded-settings instructions from user-facing docs; do not delete source files.
 - [ ] **Step 2: Document the central settings center.** List F12, tray, and `cl set` entry points; describe the LLM/translation/AI/qbar/window sections and the new binding labels.
 - [ ] **Step 3: Synchronize defaults.** Make the installation template, example INI, settings page fields, `SettingsAllowedKey`, and runtime getters use the same section/key names and default values; keep API credentials empty.
-- [ ] **Step 4: Update architecture map.** Document `config.ahk`, `panelHost.ahk`, the qbar submodules, and the retained-but-inactive compatibility files.
+- [ ] **Step 4: Update architecture map.** Document `config.ahk`, `panelHost.ahk`, the qbar submodules, and the files left on disk but excluded from the runtime because deletion is forbidden.
 - [ ] **Step 5: Check packaging.** Ensure `tools/capslock_p2.iss` still includes live pages, vendor files, dictionary, SQLite, Everything, and WebView2 loader; do not run ISCC.
-- [ ] **Step 6: Run static verification.** Search for `QStyle`, `EvaluateExpression`, `settings.js`, `loadScript`, calculator wording, and stale section names; inspect all remaining hits and confirm they are only explicitly retained compatibility files. Run `git diff --check`.
+- [ ] **Step 6: Run static verification.** Search for `QStyle`, `EvaluateExpression`, `settings.js`, `loadScript`, calculator wording, `keyFunc_tabScript`, and stale section names; inspect every remaining hit and confirm it is only a file left on disk by the no-delete constraint. Run `git diff --check`.
 - [ ] **Step 7: Commit.**
 
 ```powershell
