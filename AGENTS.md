@@ -12,6 +12,8 @@ AHK2 实现统一放在 `lib/`，WebView2 面板页面放在 `pages/`；`capsloc
 - 禁止启动或运行脚本。
 - 禁止删除文件。
 - 优先使用现有的官方实现，不要重复造轮子。
+- 临时测试或诊断文件如果不需要提交，统一加入本地 `.git/info/exclude`；不要为此修改项目级
+  `.gitignore`。确认文件尚未被 Git 跟踪，因为 `exclude` 不会隐藏已跟踪文件的修改或删除。
 
 ## 打包文档
 
@@ -44,4 +46,3 @@ Inno Setup、Ahk2Exe、发布资源清单、脱敏配置和安装目录的完整
   未赋值的局部变量，`SetTimer(() => Fn(host), -1)` 触发时抛
   "This variable has not been assigned a value"。这类延迟调用改用 `Fn.Bind(host, arg)`：
   传值，不依赖名字捕获。在函数体顶层赋值的普通局部变量（`text := ...`）不受影响。
-

@@ -57,12 +57,6 @@ LLMTranslateShow(text, allowEmpty := false) {
     if text = "" && !allowEmpty
         return
 
-    DebugLog("translate panel show textLength=" . StrLen(text)
-        . " visibleBefore=" . LLMTranslateVisible
-        . " pageReady=" . LLMTranslatePageReady
-        . " requestRunning=" . LLMTranslateRequestRunning
-        . " streamId=" . LLMTranslateStreamId
-        . " activeBefore=" . WinExist("A"))
     LLMTranslatePendingText := text
     LLMTranslateVisible := true
     if !LLMTranslateEnsureWebView() {
@@ -73,9 +67,6 @@ LLMTranslateShow(text, allowEmpty := false) {
     PanelHostShow(LLMTranslateHost, translateSize[1], translateSize[2], true)
     LLMTranslateSyncHost()
     WinActivate("ahk_id " . LLMTranslateGui.Hwnd)
-    DebugLog("translate panel activated hwnd=" . LLMTranslateGui.Hwnd
-        . " activeAfter=" . WinExist("A")
-        . " pageReady=" . LLMTranslatePageReady)
     ShowSystemCursor()
     LLMTranslateFocusTimer := PanelHostStartFocusMonitor(LLMTranslateHost, LLMTranslateFocusMonitor)
 
@@ -181,9 +172,6 @@ LLMTranslateWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         if text = ""
             return
-        DebugLog("translate page request textLength=" . StrLen(text)
-            . " running=" . LLMTranslateRequestRunning
-            . " streamId=" . LLMTranslateStreamId)
         LLMTranslatePendingText := text
         LLMTranslateSetLoading()
         SetTimer(LLMTranslateStartRequest, -1)
@@ -208,11 +196,6 @@ LLMTranslateOpenDictionary(text) {
 }
 
 LLMTranslateSetSource(text, startRequest := false) {
-    global LLMTranslateRequestRunning, LLMTranslateStreamId
-    DebugLog("translate setSource textLength=" . StrLen(text)
-        . " startRequest=" . startRequest
-        . " running=" . LLMTranslateRequestRunning
-        . " streamId=" . LLMTranslateStreamId)
     script := "window.setSource(" . LLMJsonQuote(text) . ");"
     if startRequest
         script .= "window.startTranslate();"
@@ -224,16 +207,10 @@ LLMTranslateSetLoading() {
 }
 
 LLMTranslateSetResult(text) {
-    DebugLog("translate result push length=" . StrLen(text)
-        . " visible=" . LLMTranslateVisible
-        . " activeHwnd=" . WinExist("A"))
     LLMTranslateExec("window.setResult(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
 LLMTranslateSetError(text) {
-    DebugLog("translate error push length=" . StrLen(text)
-        . " visible=" . LLMTranslateVisible
-        . " activeHwnd=" . WinExist("A"))
     LLMTranslateExec("window.setError(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
@@ -275,17 +252,11 @@ LLMTranslateExec(script) {
 LLMTranslateStartRequest(*) {
     global LLMTranslatePendingText, LLMTranslateRequestRunning
     global LLMTranslateStreamId, LLMTranslateStreamAnswer
-    if LLMTranslateRequestRunning || LLMTranslatePendingText = "" {
-        DebugLog("translate request skip running=" . LLMTranslateRequestRunning
-            . " pendingLength=" . StrLen(LLMTranslatePendingText)
-            . " streamId=" . LLMTranslateStreamId)
+    if LLMTranslateRequestRunning || LLMTranslatePendingText = ""
         return
-    }
 
     LLMTranslateRequestRunning := true
     text := LLMTranslatePendingText
-    DebugLog("translate request begin textLength=" . StrLen(text)
-        . " activeHwnd=" . WinExist("A"))
     LLMTranslateSetLoading()
     provider := TranslateResolve(GetTranslateProvider())
     if !IsObject(provider) {
@@ -323,11 +294,6 @@ LLMTranslateStreamDelta(delta) {
 
 LLMTranslateStreamFinished(answer, success, errorText) {
     global LLMTranslateRequestRunning, LLMTranslateStreamId, LLMTranslateStreamAnswer
-    DebugLog("translate request finished success=" . success
-        . " answerLength=" . StrLen(answer)
-        . " bufferedLength=" . StrLen(LLMTranslateStreamAnswer)
-        . " errorLength=" . StrLen(errorText)
-        . " visible=" . LLMTranslateVisible)
     LLMTranslateStreamId := 0
     if success {
         if answer = ""
@@ -398,22 +364,13 @@ LLMTranslateFocusMonitor(*) {
     if SettingsVisible {
         return
     }
-    if !WinActive("ahk_id " . LLMTranslateGui.Hwnd) {
-        DebugLog("translate focus blur hide panelHwnd=" . LLMTranslateGui.Hwnd
-            . " activeHwnd=" . WinExist("A")
-            . " requestRunning=" . LLMTranslateRequestRunning
-            . " streamId=" . LLMTranslateStreamId)
+    if !WinActive("ahk_id " . LLMTranslateGui.Hwnd)
         LLMTranslateHide()
-    }
 }
 
 LLMTranslateHide(*) {
     global LLMTranslateHost, LLMTranslateGui, LLMTranslateVisible, LLMTranslateFocusTimer
     global LLMTranslateStreamId, LLMTranslateRequestRunning
-    DebugLog("translate panel hide visible=" . LLMTranslateVisible
-        . " activeHwnd=" . WinExist("A")
-        . " requestRunning=" . LLMTranslateRequestRunning
-        . " streamId=" . LLMTranslateStreamId)
     if LLMTranslateStreamId {
         LLMAbortChatStream(LLMTranslateStreamId)
         LLMTranslateStreamId := 0

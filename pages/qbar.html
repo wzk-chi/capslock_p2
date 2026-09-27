@@ -486,15 +486,6 @@ input.addEventListener('keydown', event => {
   }
 });
 
-// Native focus can move to another window without changing the page's
-// document.activeElement. Clear it as soon as qbar loses window focus so a
-// later key cannot be retained by the hidden WebView2 input.
-window.addEventListener('blur', () => {
-  const active = document.activeElement;
-  if (active && (active.matches('input, textarea, select') || active.isContentEditable))
-    active.blur();
-});
-
 // Let the first Esc leave an editor, then use the next Esc to close the panel.
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;

@@ -81,12 +81,6 @@ QbarShow() {
     if !QbarEnsureWebView()
         return
 
-    ; qbar reveals itself through QbarPlace (a no-activate Show) followed by
-    ; WinActivate, so it never goes through PanelHostShow and has to record the
-    ; focus target itself -- before WinActivate takes it.
-    if !QbarHost["visible"]
-        PanelHostCaptureReturnFocus(QbarHost)
-
     QbarVisible := true
     QbarOpen := true
     ; Exactly one geometry call for the whole reveal, and it goes through

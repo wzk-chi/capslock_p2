@@ -82,9 +82,8 @@ QbarFocusMonitor(*) {
         QbarFocusTimer := false
         return
     }
-    if !WinActive("ahk_id " . QbarGui.Hwnd) {
+    if !WinActive("ahk_id " . QbarGui.Hwnd)
         QbarHide()
-    }
 }
 
 QbarShutdown(*) {

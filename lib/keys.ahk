@@ -1,7 +1,5 @@
 ; Key functions used by the AHK v2 key maps.
 
-global TranslateHotkeySequence := 0
-
 keyFunc_doNothing(*) {
 }
 
@@ -186,7 +184,6 @@ keyFunc_cut_1(*) {
 }
 
 keyFunc_copy_1(*) {
-    DebugLog("keyFunc_copy_1")
     CopyToClipboardSlot(1, false)
 }
 
@@ -210,7 +207,6 @@ keyFunc_cut_2(*) {
 }
 
 keyFunc_copy_2(*) {
-    DebugLog("keyFunc_copy_2")
     CopyToClipboardSlot(2, false)
 }
 
@@ -232,49 +228,19 @@ keyFunc_qbar(*) {
 }
 
 keyFunc_translate(*) {
-    DebugLog("keyFunc_translate")
-    global A_Clipboard, ClipboardWatcherSuspended, CapsLockHeld, TranslateHotkeySequence
-    TranslateHotkeySequence += 1
-    traceId := TranslateHotkeySequence
-    DebugLog("translate hotkey begin id=" . traceId
-        . " capsHeld=" . CapsLockHeld
-        . " activeHwnd=" . WinExist("A"))
     ; "multiline": a real multi-paragraph selection ends with a newline, which
-    ; strict mode would discard. The no-selection word fallback below is
-    ; temporarily disabled because it can extend an existing selection.
+    ; strict mode would discard.
     ; Keep the clipboard wait unchanged; GetSelectedText retries with Ctrl+C
     ; only when Ctrl+Insert produced no clipboard event.
-    selectedText := GetSelectedText("multiline", 0.15, "translate#" . traceId, true)
-    DebugLog("translate hotkey selection id=" . traceId
-        . " length=" . StrLen(selectedText)
-        . " activeHwnd=" . WinExist("A"))
-    ; Temporarily disabled; keep the original block for a later re-enable.
-    ; if selectedText = "" {
-    ;     oldClipboard := ClipboardAll()
-    ;     ClipboardWatcherSuspended := true
-    ;     try {
-    ;         A_Clipboard := ""
-    ;         SendInput("^{Left}+^{Right}^{Insert}")
-    ;         if ClipWait(0.15)
-    ;             selectedText := A_Clipboard
-    ;     } finally {
-    ;         A_Clipboard := oldClipboard
-    ;         ClipboardWatcherSuspended := false
-    ;     }
-    ; }
+    selectedText := GetSelectedText("multiline", 0.15, true)
     if selectedText != "" {
         ; A single English word the local dictionary knows opens the
         ; dictionary card; everything else goes to the translate panel.
-        if DictionaryTryShow(selectedText) {
-            DebugLog("translate hotkey route=dictionary id=" . traceId)
+        if DictionaryTryShow(selectedText)
             return
-        }
-        DebugLog("translate hotkey route=llm id=" . traceId)
         LLMTranslateShow(selectedText)
-    } else {
-        DebugLog("translate hotkey route=emptyDictionary id=" . traceId)
+    } else
         DictionaryShow()
-    }
 }
 
 keyFunc_tabPrve(*) {

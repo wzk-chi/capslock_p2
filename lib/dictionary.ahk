@@ -96,9 +96,6 @@ DictionaryTryShow(text) {
 DictionaryShow(entry := 0, query := "") {
     global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
-    DebugLog("dictionary show kind=" . (IsObject(entry) ? "entry" : "blank")
-        . " queryLength=" . StrLen(query)
-        . " activeBefore=" . WinExist("A"))
     DictionaryVisible := true
     DictionaryPendingEntry := entry
     DictionaryPendingQuery := Trim(query)
@@ -113,9 +110,6 @@ DictionaryShow(entry := 0, query := "") {
     DictionarySyncHost()
     DictionaryRemoveFrameBorder(DictionaryGui.Hwnd)
     WinActivate("ahk_id " . DictionaryGui.Hwnd)
-    DebugLog("dictionary activated hwnd=" . DictionaryGui.Hwnd
-        . " activeAfter=" . WinExist("A")
-        . " pageReady=" . DictionaryPageReady)
     ShowSystemCursor()
     DictionaryFocusTimer := PanelHostStartFocusMonitor(DictionaryHost, DictionaryFocusMonitor)
 
@@ -408,18 +402,13 @@ DictionaryFocusMonitor(*) {
         DictionaryFocusTimer := false
         return
     }
-    if !WinActive("ahk_id " . DictionaryGui.Hwnd) {
-        DebugLog("dictionary focus blur hide panelHwnd=" . DictionaryGui.Hwnd
-            . " activeHwnd=" . WinExist("A"))
+    if !WinActive("ahk_id " . DictionaryGui.Hwnd)
         DictionaryHide()
-    }
 }
 
 DictionaryHide(*) {
     global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryFocusTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
-    DebugLog("dictionary hide visible=" . DictionaryVisible
-        . " activeHwnd=" . WinExist("A"))
     DictionaryVisible := false
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""

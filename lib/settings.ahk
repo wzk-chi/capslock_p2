@@ -53,7 +53,6 @@ SettingsEnsureWebView() {
         "callbacks", Map(
             "close", SettingsRequestClose,
             "resize", SettingsResize,
-            "lostFocus", SettingsOnHostLostFocus,
             "navigation", SettingsNavigationCompleted,
             "message", SettingsWebMessageReceived,
             "backColor", SettingsIsDarkTheme() ? "20242B" : "F5F7FB")))
@@ -159,13 +158,6 @@ SettingsStopShortcutCapture(*) {
     SettingsShortcutTarget := ""
     if IsObject(hook)
         try hook.Stop()
-}
-
-; The page also listens for blur, but WebView2 can lose native focus without
-; dispatching a document blur event. Never leave the suppressing InputHook
-; active while the settings window is no longer the keyboard surface.
-SettingsOnHostLostFocus(*) {
-    SettingsStopShortcutCapture()
 }
 
 SettingsShortcutKeyDown(hook, vk, sc) {
