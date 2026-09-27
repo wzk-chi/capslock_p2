@@ -107,7 +107,7 @@ CapsLockWithAltPress(*) {
 }
 
 HandleCapsLockPress(runTapAction) {
-    global CapsLockHeld, CapsLockUsed, CtrlZPending, WinTapedX, KeySet
+    global CapsLockHeld, CapsLockUsed, CtrlZPending, KeySet
     if CapsLockHeld {
         DebugLog("CapsLock press ignored: layer already held")
         KeyWait("CapsLock")
@@ -132,8 +132,6 @@ HandleCapsLockPress(runTapAction) {
         CapsLockHeld := false
         DebugLog("CapsLockUp used=" . CapsLockUsed . " tapAction=" . tapPending)
 
-        if WinTapedX != -1
-            winsSort(WinTapedX)
         if tapPending && !CapsLockUsed
             RunConfiguredAction(KeySet.Has("press_caps") ? KeySet["press_caps"] : "keyFunc_toggleCapsLock")
         CapsLockUsed := false

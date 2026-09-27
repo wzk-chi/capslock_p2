@@ -40,7 +40,7 @@ A_HotkeyInterval := 2000
 #Include lib\input\keys.ahk
 #Include lib\input\keymap.ahk
 #Include lib\input\customHotkeys.ahk
-#Include userAHK\main.ahk
+#Include *i userAHK\main.ahk
 
 Persistent()
 OnExit(Shutdown)

@@ -67,7 +67,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+Tab | 热串替换 | CapsLock+F1 | 打开使用介绍 |
 | CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
 | CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
-| CapsLock+LAlt+1~0 | 绑定当前窗口 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
+| CapsLock+LAlt+1~0 | 单击/双击/三击绑定窗口、窗口组、应用 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
 | CapsLock+F12 | 打开设置中心 |  |  |
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
@@ -284,11 +284,11 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 
 ## 窗口功能
 
-- **winbind**：CapsLock+数字激活对应编号的窗口；设置中心的「窗口绑定」页用「捕获当前窗口」保存绑定。
-  绑定模式有三种：
-  - **单个窗口**：只绑定当前激活的窗口；窗口重启后会按程序信息尝试找回，找不到时尝试启动原路径。
-  - **窗口组**：保留已有绑定，再把当前窗口追加进去；CapsLock+数字会在组内循环切换。
-  - **同应用窗口**：按程序名和窗口类自动维护该应用的窗口组，新开的同应用窗口也会加入。
+- **winbind**：CapsLock+数字激活对应编号的窗口；设置中心支持「窗口」「窗口组」「应用」三种模式。
+  - **窗口**：绑定一个选定窗口；窗口重启后会按程序信息尝试找回，找不到时尝试启动原路径。
+  - **窗口组**：手动添加已打开窗口；CapsLock+数字按保存顺序循环切换，当前窗口不在组内时回到第一个窗口。
+  - **应用**：选择已打开应用或其他应用，自动维护该应用的全部窗口；应用未运行时会尝试启动。
+  - 默认 CapsLock+LAlt+数字在 500ms 内单击、双击、三击，分别绑定窗口、窗口组、应用。
   绑定关系保存在 `capslock_p2-winsInfosRecorder.ini`。
 - **CapsLock+F4**：窗口透明度循环切换；**CapsLock+F6**：置顶切换。
 - **CapsLock+LAlt+鼠标滚轮**：临时调鼠标速度（`[Global] mouseSpeed` 为默认值，1~20），松开后恢复。

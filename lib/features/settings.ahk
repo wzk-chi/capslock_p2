@@ -6,6 +6,15 @@ global SettingsVisible := false
 global SettingsPendingPage := "general"
 global SettingsShortcutHook := 0
 global SettingsShortcutTarget := ""
+global WindowPickerGui := 0
+global WindowPickerList := 0
+global WindowPickerRows := []
+global WindowPickerBindingNumber := 0
+global WindowPickerBindType := 1
+global ApplicationPickerGui := 0
+global ApplicationPickerList := 0
+global ApplicationPickerRows := []
+global ApplicationPickerBindingNumber := 0
 
 SettingsShow(initialPage := "general", *) {
     global SettingsHost, SettingsVisible, SettingsPendingPage
@@ -91,8 +100,12 @@ SettingsWebMessageReceived(sender, args) {
         SetTimer(SettingsStartShortcutCapture.Bind(message), -1)
     else if messageType = "stopShortcutRecording"
         SettingsStopShortcutCapture()
-    else if messageType = "captureWindow"
-        SetTimer(SettingsCaptureWindow.Bind(message), -1)
+    else if messageType = "selectOpenWindow"
+        SetTimer(SettingsOpenWindowPicker.Bind(message), -1)
+    else if messageType = "selectOpenApplication"
+        SetTimer(SettingsOpenOpenApplicationPicker.Bind(message), -1)
+    else if messageType = "selectOtherApplication"
+        SetTimer(SettingsOpenOtherApplicationPicker.Bind(message), -1)
 }
 
 SettingsStartShortcutCapture(message) {
@@ -268,14 +281,15 @@ SettingsBindingSnapshot() {
     result := []
     Loop 10 {
         bindingNumber := A_Index
-        row := Map("number", bindingNumber, "bindType", 0, "items", [])
+        row := Map("number", bindingNumber, "bindType", 0, "applicationPath", "", "items", [])
         if WinBindings.Has(bindingNumber) {
             binding := WinBindings[bindingNumber]
             row["bindType"] := WindowBindingType(binding.bindType, 0)
+            row["applicationPath"] := WindowBindingApplicationPath(binding)
             items := []
             for item in binding.items
-                items.Push(Map("id", String(item.id), "windowClass", item.windowClass,
-                    "exe", item.exe, "path", item.path))
+                items.Push(Map("id", String(item.id), "title", WindowBindingItemTitle(item),
+                    "windowClass", item.windowClass, "exe", item.exe, "path", item.path))
             row["items"] := items
         }
         result.Push(row)
@@ -435,25 +449,217 @@ SettingsSendTestResult(ok, text) {
     PanelHostExecute(SettingsHost, script)
 }
 
-SettingsCaptureWindow(message) {
+SettingsOpenWindowPicker(message) {
     msg := LLMMessageParse(message)
     numberValid := false
     bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
     if !numberValid || bindingNumber < 1 || bindingNumber > 10
         return
     bindTypeValid := false
-    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true))
-    if !bindTypeValid || bindType < 1 || bindType > 3
+    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
+    if !bindTypeValid || bindType < 1 || bindType > 2
         return
-    SettingsHide()
-    SetTimer(SettingsCompleteCapture.Bind(bindingNumber, bindType), -180)
+    try SettingsShowWindowPicker(bindingNumber, bindType)
+    catch as pickerError {
+        SettingsShow("windows")
+        ShowMsg("Unable to open window picker: " . pickerError.Message, 3000)
+    }
 }
 
-SettingsCompleteCapture(bindingNumber, bindType) {
-    bindType := WindowBindingType(bindType)
-    BindWindowFromActive(bindingNumber, bindType)
+SettingsOpenOpenApplicationPicker(message) {
+    msg := LLMMessageParse(message)
+    numberValid := false
+    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
+    if !numberValid || bindingNumber < 1 || bindingNumber > 10
+        return
+    bindTypeValid := false
+    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
+    if !bindTypeValid || bindType != 3
+        return
+    try SettingsShowApplicationPicker(bindingNumber)
+    catch as pickerError {
+        SettingsShow("windows")
+        ShowMsg("Unable to open application picker: " . pickerError.Message, 3000)
+    }
+}
+
+SettingsOpenOtherApplicationPicker(message) {
+    msg := LLMMessageParse(message)
+    numberValid := false
+    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
+    if !numberValid || bindingNumber < 1 || bindingNumber > 10
+        return
+    bindTypeValid := false
+    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
+    if !bindTypeValid || bindType != 3
+        return
+    applicationPath := ""
+    try applicationPath := FileSelect(1, "", "选择其他应用", "应用程序 (*.exe)")
+    catch as pickerError {
+        SettingsShow("windows")
+        ShowMsg("Unable to open application picker: " . pickerError.Message, 3000)
+        return
+    }
+    if applicationPath = "" {
+        SettingsShow("windows")
+        return
+    }
+    BindWindowToApplication(bindingNumber, applicationPath)
     SettingsShow("windows")
     SetTimer(SettingsPushSnapshot, -1)
+}
+
+SettingsShowWindowPicker(bindingNumber, bindType) {
+    global SettingsHost, WindowPickerGui, WindowPickerList, WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
+    if IsObject(WindowPickerGui)
+        SettingsCloseWindowPicker(false)
+
+    settingsGui := PanelHostGui(SettingsHost)
+    excludeHwnd := IsObject(settingsGui) ? settingsGui.Hwnd : 0
+    rows := WindowBindingOpenWindows(excludeHwnd)
+    if !rows.Length {
+        SettingsShow("windows")
+        ShowMsg("没有找到当前用户已打开的窗口。", 2500)
+        return
+    }
+
+    picker := Gui("+AlwaysOnTop +ToolWindow", "选择已打开窗口")
+    picker.MarginX := 10
+    picker.MarginY := 10
+    list := picker.Add("ListView", "x10 y10 w780 h340 Grid -Multi", ["窗口标题", "应用", "窗口类"])
+    list.ModifyCol(1, 430)
+    list.ModifyCol(2, 220)
+    list.ModifyCol(3, 120)
+    for item in rows
+        list.Add("", item.title, item.exe, item.windowClass)
+
+    picker.Add("Text", "x10 y358 w780 h22", "选择当前用户已打开的窗口作为窗口绑定。")
+    choose := picker.Add("Button", "x610 y388 w84 h28 Default", "选择")
+    cancel := picker.Add("Button", "x706 y388 w84 h28", "取消")
+    choose.OnEvent("Click", SettingsWindowPickerAccept)
+    cancel.OnEvent("Click", SettingsWindowPickerCancel)
+    list.OnEvent("DoubleClick", SettingsWindowPickerAccept)
+    picker.OnEvent("Close", SettingsWindowPickerCancel)
+    picker.OnEvent("Escape", SettingsWindowPickerCancel)
+
+    WindowPickerGui := picker
+    WindowPickerList := list
+    WindowPickerRows := rows
+    WindowPickerBindingNumber := bindingNumber
+    WindowPickerBindType := bindType
+    picker.Show("w800 h426 Center")
+}
+
+SettingsShowApplicationPicker(bindingNumber) {
+    global SettingsHost, WindowPickerGui, ApplicationPickerGui, ApplicationPickerList, ApplicationPickerRows, ApplicationPickerBindingNumber
+    if IsObject(ApplicationPickerGui)
+        SettingsCloseApplicationPicker(false)
+    if IsObject(WindowPickerGui)
+        SettingsCloseWindowPicker(false)
+
+    settingsGui := PanelHostGui(SettingsHost)
+    excludeHwnd := IsObject(settingsGui) ? settingsGui.Hwnd : 0
+    rows := WindowBindingOpenApplications(excludeHwnd)
+    if !rows.Length {
+        SettingsShow("windows")
+        ShowMsg("没有找到当前用户已打开的应用。", 2500)
+        return
+    }
+
+    picker := Gui("+AlwaysOnTop +ToolWindow", "选择已打开应用")
+    picker.MarginX := 10
+    picker.MarginY := 10
+    list := picker.Add("ListView", "x10 y10 w780 h340 Grid -Multi", ["应用", "窗口数", "程序路径"])
+    list.ModifyCol(1, 180)
+    list.ModifyCol(2, 80)
+    list.ModifyCol(3, 510)
+    for application in rows
+        list.Add("", application.exe, application.items.Length, application.path)
+
+    picker.Add("Text", "x10 y358 w780 h22", "选择一个已打开应用，绑定它的全部窗口。")
+    choose := picker.Add("Button", "x610 y388 w84 h28 Default", "选择")
+    cancel := picker.Add("Button", "x706 y388 w84 h28", "取消")
+    choose.OnEvent("Click", SettingsApplicationPickerAccept)
+    cancel.OnEvent("Click", SettingsApplicationPickerCancel)
+    list.OnEvent("DoubleClick", SettingsApplicationPickerAccept)
+    picker.OnEvent("Close", SettingsApplicationPickerCancel)
+    picker.OnEvent("Escape", SettingsApplicationPickerCancel)
+
+    ApplicationPickerGui := picker
+    ApplicationPickerList := list
+    ApplicationPickerRows := rows
+    ApplicationPickerBindingNumber := bindingNumber
+    picker.Show("w800 h426 Center")
+}
+
+SettingsApplicationPickerAccept(*) {
+    global ApplicationPickerList, ApplicationPickerRows, ApplicationPickerBindingNumber
+    if !IsObject(ApplicationPickerList)
+        return
+    row := ApplicationPickerList.GetNext(0)
+    if !row || row > ApplicationPickerRows.Length {
+        ShowMsg("请先选择一个应用。", 2000)
+        return
+    }
+    application := ApplicationPickerRows[row]
+    bindingNumber := ApplicationPickerBindingNumber
+    SettingsCloseApplicationPicker(false)
+    BindWindowToApplication(bindingNumber, application.path)
+    SettingsShow("windows")
+    SetTimer(SettingsPushSnapshot, -1)
+}
+
+SettingsApplicationPickerCancel(*) {
+    SettingsCloseApplicationPicker(true)
+}
+
+SettingsCloseApplicationPicker(restoreSettings := true) {
+    global ApplicationPickerGui, ApplicationPickerList, ApplicationPickerRows, ApplicationPickerBindingNumber
+    picker := ApplicationPickerGui
+    ApplicationPickerGui := 0
+    ApplicationPickerList := 0
+    ApplicationPickerRows := []
+    ApplicationPickerBindingNumber := 0
+    if IsObject(picker)
+        try picker.Destroy()
+    if restoreSettings
+        SettingsShow("windows")
+}
+
+SettingsWindowPickerAccept(*) {
+    global WindowPickerGui, WindowPickerList, WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
+    if !IsObject(WindowPickerList)
+        return
+    row := WindowPickerList.GetNext(0)
+    if !row || row > WindowPickerRows.Length {
+        ShowMsg("请先选择一个窗口。", 2000)
+        return
+    }
+    item := WindowPickerRows[row]
+    bindingNumber := WindowPickerBindingNumber
+    bindType := WindowPickerBindType
+    SettingsCloseWindowPicker(false)
+    BindWindowItemSelection(bindingNumber, item, bindType)
+    SettingsShow("windows")
+    SetTimer(SettingsPushSnapshot, -1)
+}
+
+SettingsWindowPickerCancel(*) {
+    SettingsCloseWindowPicker(true)
+}
+
+SettingsCloseWindowPicker(restoreSettings := true) {
+    global WindowPickerGui, WindowPickerList, WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
+    picker := WindowPickerGui
+    WindowPickerGui := 0
+    WindowPickerList := 0
+    WindowPickerRows := []
+    WindowPickerBindingNumber := 0
+    WindowPickerBindType := 1
+    if IsObject(picker)
+        try picker.Destroy()
+    if restoreSettings
+        SettingsShow("windows")
 }
 
 SettingsResize(targetGui, minMax, width, height) {
@@ -480,14 +686,22 @@ SettingsIsDarkTheme() {
 }
 
 SettingsHide(*) {
-    global SettingsHost, SettingsVisible
+    global SettingsHost, SettingsVisible, WindowPickerGui, ApplicationPickerGui
+    if IsObject(WindowPickerGui)
+        SettingsCloseWindowPicker(false)
+    if IsObject(ApplicationPickerGui)
+        SettingsCloseApplicationPicker(false)
     SettingsStopShortcutCapture()
     SettingsVisible := false
     PanelHostHide(SettingsHost)
 }
 
 SettingsShutdown(*) {
-    global SettingsHost, SettingsVisible, SettingsPendingPage
+    global SettingsHost, SettingsVisible, SettingsPendingPage, WindowPickerGui, ApplicationPickerGui
+    if IsObject(WindowPickerGui)
+        SettingsCloseWindowPicker(false)
+    if IsObject(ApplicationPickerGui)
+        SettingsCloseApplicationPicker(false)
     SettingsStopShortcutCapture()
     SettingsVisible := false
     SettingsPendingPage := "general"

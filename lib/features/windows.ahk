@@ -5,7 +5,6 @@ global WinBindings := Map()
 global PendingBindingNumber := -1
 global PendingBindingCount := 0
 global PendingBindingTime := 0
-global WinTapedX := -1
 global LastActiveWinId := 0
 global MinimizeWinStack := []
 global WinTransparentActive := false
@@ -33,9 +32,13 @@ LoadWindowBindings() {
             continue
 
         bindType := values.Has("bindType") ? WindowBindingType(values["bindType"], 0) : 0
+        applicationPath := values.Has("applicationPath") ? Trim(String(values["applicationPath"])) : ""
+        if bindType = 2 && applicationPath != ""
+            bindType := 3
         items := []
-        count := values.Has("count") ? values["count"] + 0 : 0
-        if count > 0 {
+        hasCount := values.Has("count")
+        count := hasCount ? values["count"] + 0 : 0
+        if hasCount {
             Loop count {
                 index := A_Index
                 item := ReadWindowBindingItem(values, index)
@@ -52,8 +55,10 @@ LoadWindowBindings() {
                 index += 1
             }
         }
-        if bindType && items.Length
-            WinBindings[bindingNumber] := {bindType: bindType, items: items}
+        if bindType = 3 && applicationPath = "" && items.Length
+            applicationPath := items[1].path
+        if bindType && (items.Length || applicationPath != "")
+            WinBindings[bindingNumber] := {bindType: bindType, applicationPath: applicationPath, items: items}
     }
 }
 
@@ -73,20 +78,20 @@ WindowBindingNumber(value, fallback := 0) {
 
 WindowBindingModes() {
     return [
-        Map("id", 1, "label", "单个窗口", "description", "只绑定当前激活的窗口"),
-        Map("id", 2, "label", "窗口组", "description", "把当前窗口追加到已有窗口组"),
-        Map("id", 3, "label", "同应用窗口", "description", "自动匹配同一程序的窗口")]
+        Map("id", 1, "label", "窗口", "description", "绑定一个已打开窗口"),
+        Map("id", 2, "label", "窗口组", "description", "添加已打开窗口到窗口组"),
+        Map("id", 3, "label", "应用", "description", "自动绑定应用的全部窗口")]
 }
 
 WindowBindingDisplay(bindType) {
     bindType := WindowBindingType(bindType, 0)
     if !bindType
-        return Map("id", 0, "label", "未绑定", "description", "尚未捕获窗口")
+        return Map("id", 0, "label", "未绑定", "description", "尚未选择窗口")
     for mode in WindowBindingModes() {
         if mode["id"] = bindType
             return mode
     }
-    return Map("id", 0, "label", "未绑定", "description", "尚未捕获窗口")
+    return Map("id", 0, "label", "未绑定", "description", "尚未选择窗口")
 }
 
 ReadWindowBindingItem(values, index) {
@@ -97,6 +102,12 @@ ReadWindowBindingItem(values, index) {
     exeName := values.Has("exe_" . index) ? values["exe_" . index] : ""
     path := values.Has("path_" . index) ? values["path_" . index] : exeName
     return {id: values[idKey] + 0, windowClass: className, exe: exeName, path: path}
+}
+
+WindowBindingApplicationPath(binding) {
+    if !IsObject(binding) || !ObjHasOwnProp(binding, "applicationPath")
+        return ""
+    return Trim(String(binding.applicationPath))
 }
 
 GetActiveWindowInfo(hwnd := 0) {
@@ -113,6 +124,72 @@ GetActiveWindowInfo(hwnd := 0) {
     return {id: hwnd, windowClass: className, exe: exeName, path: path}
 }
 
+WindowBindingIsVisible(hwnd) {
+    try return (WinGetStyle(hwnd) & 0x10000000) != 0
+    catch
+        return false
+}
+
+WindowBindingOpenWindows(excludeHwnd := 0) {
+    items := []
+    for hwnd in WinGetList() {
+        if excludeHwnd && hwnd = excludeHwnd
+            continue
+        if !WindowBindingIsVisible(hwnd)
+            continue
+        try {
+            title := Trim(String(WinGetTitle(hwnd)))
+            className := WinGetClass(hwnd)
+        } catch
+            continue
+        if title = "" && className = ""
+            continue
+        item := GetActiveWindowInfo(hwnd)
+        if !item
+            continue
+        item.title := title != "" ? title : "（无标题）"
+        items.Push(item)
+    }
+    return items
+}
+
+WindowBindingApplicationItems(applicationPath) {
+    applicationPath := Trim(String(applicationPath))
+    items := []
+    if applicationPath = ""
+        return items
+    for item in WindowBindingOpenWindows() {
+        if item.path != "" && StrLower(String(item.path)) = StrLower(applicationPath)
+            items.Push(item)
+    }
+    return items
+}
+
+WindowBindingOpenApplications(excludeHwnd := 0) {
+    applications := Map()
+    for item in WindowBindingOpenWindows(excludeHwnd) {
+        if item.path = ""
+            continue
+        key := StrLower(String(item.path))
+        if !applications.Has(key)
+            applications[key] := {path: item.path, exe: item.exe, items: []}
+        applications[key].items.Push(item)
+    }
+    result := []
+    for key, application in applications
+        result.Push(application)
+    return result
+}
+
+WindowBindingItemTitle(item) {
+    if IsObject(item) && ObjHasOwnProp(item, "title") && item.title != ""
+        return String(item.title)
+    if IsObject(item) && WindowIsAlive(item.id) {
+        try return Trim(String(WinGetTitle(item.id)))
+    }
+    return ""
+}
+
 WindowIsAlive(hwnd) {
     return hwnd && WinExist("ahk_id " . hwnd)
 }
@@ -124,6 +201,7 @@ SaveWindowBinding(bindingNumber, binding) {
         return
     try {
         IniWrite(binding.bindType, WindowBindingFile, bindingNumber, "bindType")
+        IniWrite(WindowBindingApplicationPath(binding), WindowBindingFile, bindingNumber, "applicationPath")
         IniWrite(binding.items.Length, WindowBindingFile, bindingNumber, "count")
         for index, item in binding.items {
             IniWrite(item.id, WindowBindingFile, bindingNumber, "id_" . index)
@@ -136,30 +214,15 @@ SaveWindowBinding(bindingNumber, binding) {
     }
 }
 
-ContainsWindow(items, hwnd) {
-    for item in items {
-        if item.id = hwnd
-            return true
-    }
-    return false
-}
-
-CloneWindowItems(items) {
-    result := []
-    for item in items
-        result.Push({id: item.id, windowClass: item.windowClass, exe: item.exe, path: item.path})
-    return result
-}
-
 BindingTap(bindingNumber) {
     global PendingBindingNumber, PendingBindingCount, PendingBindingTime
     bindingNumber := WindowBindingNumber(bindingNumber)
     if !bindingNumber
         return
     now := A_TickCount
-    if PendingBindingNumber = bindingNumber && now - PendingBindingTime < 500 {
+    if PendingBindingNumber = bindingNumber && now - PendingBindingTime < 500
         PendingBindingCount := Min(PendingBindingCount + 1, 3)
-    } else {
+    else {
         PendingBindingNumber := bindingNumber
         PendingBindingCount := 1
     }
@@ -169,16 +232,15 @@ BindingTap(bindingNumber) {
 
 CompletePendingBinding(*) {
     global PendingBindingNumber, PendingBindingCount
-    pendingNumber := WindowBindingNumber(PendingBindingNumber)
-    count := PendingBindingCount
+    bindingNumber := WindowBindingNumber(PendingBindingNumber)
+    bindType := PendingBindingCount
     PendingBindingNumber := -1
     PendingBindingCount := 0
-    if pendingNumber && count > 0
-        BindWindowFromActive(pendingNumber, count)
+    if bindingNumber && bindType >= 1
+        BindWindowFromActive(bindingNumber, bindType)
 }
 
 BindWindowFromActive(bindingNumber, bindType) {
-    global WinBindings
     bindingNumber := WindowBindingNumber(bindingNumber)
     if !bindingNumber
         return
@@ -188,41 +250,102 @@ BindWindowFromActive(bindingNumber, bindType) {
     active := GetActiveWindowInfo()
     if !active
         return
+    if bindType = 1
+        BindWindowToItem(bindingNumber, active)
+    else if bindType = 2
+        AddWindowToGroup(bindingNumber, active)
+    else if active.path != ""
+        BindWindowToApplication(bindingNumber, active.path)
+}
 
-    if bindType = 1 {
-        binding := {bindType: 1, items: [active]}
-    } else if bindType = 2 {
-        if WinBindings.Has(bindingNumber) && WinBindings[bindingNumber].bindType != 3
-            items := CloneWindowItems(WinBindings[bindingNumber].items)
-        else
-            items := []
-        if !ContainsWindow(items, active.id)
-            items.Push(active)
-        binding := {bindType: 2, items: items}
-    } else {
-        items := []
-        windowList := WinGetList("ahk_class " . active.windowClass . " ahk_exe " . active.exe)
-        for hwnd in windowList {
-            item := GetActiveWindowInfo(hwnd)
-            if item
-                items.Push(item)
-        }
-        if !items.Length
-            items.Push(active)
-        binding := {bindType: 3, items: items}
-    }
-
+BindWindowToItem(bindingNumber, item) {
+    global WinBindings
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber || !IsObject(item)
+        return false
+    binding := {bindType: 1, applicationPath: "", items: [item]}
     WinBindings[bindingNumber] := binding
     SaveWindowBinding(bindingNumber, binding)
-    ShowMsg("Window binding " . bindingNumber . " saved (mode " . bindType . ")", 1200)
+    ShowMsg("Window binding " . bindingNumber . " saved (window)", 1200)
+    return true
+}
+
+BindWindowItemSelection(bindingNumber, item, bindType) {
+    bindType := WindowBindingType(bindType, 0)
+    if !bindType
+        return false
+    if bindType = 1
+        return BindWindowToItem(bindingNumber, item)
+    if bindType = 2
+        return AddWindowToGroup(bindingNumber, item)
+    return false
+}
+
+CloneWindowBindingItems(items) {
+    result := []
+    for item in items {
+        clone := {id: item.id, windowClass: item.windowClass, exe: item.exe, path: item.path}
+        if ObjHasOwnProp(item, "title")
+            clone.title := item.title
+        result.Push(clone)
+    }
+    return result
+}
+
+WindowBindingSameApplicationPath(item, applicationPath) {
+    return IsObject(item) && item.path != "" && applicationPath != "" && StrLower(String(item.path)) = StrLower(String(applicationPath))
+}
+
+AddWindowToGroup(bindingNumber, item) {
+    global WinBindings
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber || !IsObject(item)
+        return false
+
+    items := []
+    applicationPath := ""
+    if WinBindings.Has(bindingNumber) {
+        existing := WinBindings[bindingNumber]
+        items := CloneWindowBindingItems(existing.items)
+        applicationPath := WindowBindingApplicationPath(existing)
+        if existing.bindType != 2
+            applicationPath := ""
+    }
+    if applicationPath != "" && !WindowBindingSameApplicationPath(item, applicationPath)
+        applicationPath := ""
+    if !ContainsWindow(items, item.id)
+        items.Push(item)
+
+    binding := {bindType: 2, applicationPath: applicationPath, items: items}
+    WinBindings[bindingNumber] := binding
+    SaveWindowBinding(bindingNumber, binding)
+    ShowMsg("Window binding " . bindingNumber . " saved (group)", 1200)
+    return true
+}
+
+BindWindowToApplication(bindingNumber, applicationPath) {
+    global WinBindings
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    applicationPath := Trim(String(applicationPath))
+    if !bindingNumber || applicationPath = "" || !FileExist(applicationPath)
+        return false
+    items := WindowBindingApplicationItems(applicationPath)
+    binding := {bindType: 3, applicationPath: applicationPath, items: items}
+    WinBindings[bindingNumber] := binding
+    SaveWindowBinding(bindingNumber, binding)
+    ShowMsg("Window binding " . bindingNumber . " saved (application)", 1200)
+    return true
 }
 
 FindReplacementWindow(item) {
     if WindowIsAlive(item.id)
         return item.id
-    if item.windowClass = "" || item.exe = ""
+    if item.exe = ""
         return 0
-    windowList := WinGetList("ahk_class " . item.windowClass . " ahk_exe " . item.exe)
+    if item.windowClass = ""
+        windowList := WinGetList("ahk_exe " . item.exe)
+    else
+        windowList := WinGetList("ahk_class " . item.windowClass . " ahk_exe " . item.exe)
     if windowList.Length {
         item.id := windowList[1]
         return item.id
@@ -243,27 +366,25 @@ PruneBindingItems(binding) {
     return changed
 }
 
-RefreshProgramBinding(binding) {
-    if !binding.items.Length
-        return false
-    anchor := binding.items[1]
-    for item in binding.items {
-        if item.windowClass != "" && item.exe != "" {
-            anchor := item
-            break
-        }
+ContainsWindow(items, hwnd) {
+    for item in items {
+        if item.id = hwnd
+            return true
     }
+    return false
+}
+
+RefreshWindowGroup(binding) {
     changed := PruneBindingItems(binding)
-    if anchor.windowClass = "" || anchor.exe = ""
+    if binding.bindType != 3
         return changed
-    windowList := WinGetList("ahk_class " . anchor.windowClass . " ahk_exe " . anchor.exe)
-    for hwnd in windowList {
-        if !ContainsWindow(binding.items, hwnd) {
-            item := GetActiveWindowInfo(hwnd)
-            if item {
-                binding.items.Push(item)
-                changed := true
-            }
+    applicationPath := WindowBindingApplicationPath(binding)
+    if applicationPath = ""
+        return changed
+    for item in WindowBindingApplicationItems(applicationPath) {
+        if !ContainsWindow(binding.items, item.id) {
+            binding.items.Push(item)
+            changed := true
         }
     }
     return changed
@@ -275,7 +396,7 @@ ActivateWinId(hwnd) {
 }
 
 activateWinAction(bindingNumber) {
-    global WinBindings, LastActiveWinId, WinTapedX
+    global WinBindings, LastActiveWinId
     bindingNumber := WindowBindingNumber(bindingNumber)
     if !bindingNumber
         return
@@ -310,15 +431,19 @@ activateWinAction(bindingNumber) {
         return
     }
 
-    bindingChanged := binding.bindType = 3
-        ? RefreshProgramBinding(binding)
-        : PruneBindingItems(binding)
+    bindingChanged := binding.bindType = 3 ? RefreshWindowGroup(binding) : PruneBindingItems(binding)
     if bindingChanged
         SaveWindowBinding(bindingNumber, binding)
-    if !binding.items.Length
+    if !binding.items.Length {
+        applicationPath := WindowBindingApplicationPath(binding)
+        if binding.bindType = 3 && applicationPath != "" && FileExist(applicationPath) {
+            try Run(applicationPath)
+            catch as launchError
+                DebugLog("Window group launch failed")
+        }
         return
+    }
 
-    WinTapedX := bindingNumber
     activeId := WinExist("A")
     currentIndex := 0
     for index, item in binding.items {
@@ -327,27 +452,10 @@ activateWinAction(bindingNumber) {
             break
         }
     }
+    ; Keep the saved order stable: next item, wrap after the last, or first
+    ; item when the active window is outside this group.
     nextIndex := currentIndex = 0 || currentIndex >= binding.items.Length ? 1 : currentIndex + 1
     ActivateWinId(binding.items[nextIndex].id)
-}
-
-winsSort(bindingNumber) {
-    global WinBindings, WinTapedX
-    bindingNumber := WindowBindingNumber(bindingNumber)
-    if !bindingNumber
-        return
-    if WinBindings.Has(bindingNumber) {
-        binding := WinBindings[bindingNumber]
-        activeId := WinExist("A")
-        for index, item in binding.items {
-            if item.id = activeId {
-                if index > 1
-                    binding.items.InsertAt(1, binding.items.RemoveAt(index))
-                break
-            }
-        }
-    }
-    WinTapedX := -1
 }
 
 ShowSystemCursor() {

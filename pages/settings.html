@@ -121,12 +121,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .mini { padding: 6px 10px; font-size: 11px; }
 .filter { margin-bottom: 12px; }
 .binding-card { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
-.binding-head { display: flex; align-items: center; gap: 8px; }
+.binding-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .binding-number { min-width: 86px; font-size: 12px; font-weight: 650; }
-.binding-head select { max-width: 160px; padding: 6px 8px; }
-.binding-head .btn { margin-left: auto; padding: 6px 10px; font-size: 11px; }
+.binding-head select { max-width: 150px; padding: 6px 8px; }
+.binding-actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.binding-actions .btn { padding: 6px 10px; font-size: 11px; }
 .binding-mode-hint { color: var(--muted); font-size: 11px; }
-.binding-items { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.binding-items { display: grid; gap: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .empty { padding: 24px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; }
 .result-dialog { width: min(460px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 13px; padding: 0; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
 .result-dialog::backdrop { background: rgba(10, 18, 32, .34); }
@@ -319,6 +320,15 @@ const post = payload => {
 const clone = value => JSON.parse(JSON.stringify(value || {}));
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const compactWindowText = value => {
+  const text = String(value ?? '').trim();
+  return text.length > 40 ? text.slice(0, 40) + '…' : text;
+};
+const applicationName = value => {
+  const raw = String(value ?? '').trim().split(/[\\/]/).pop().replace(/\.exe$/i, '');
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+};
+const windowApplicationName = item => applicationName(item && item.exe) || compactWindowText(item && (item.title || item.windowClass));
 
 function setStatus(text, error = false) {
   const node = $('#status');
@@ -420,7 +430,7 @@ const ACTION_LABELS = {
   keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
   keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
   keyFunc_volumeDown: '减小音量', keyFunc_volumeMute: '静音', keyFunc_winbind_activate: '激活绑定窗口',
-  keyFunc_winbind_binding: '绑定当前窗口', keyFunc_winPin: '切换窗口置顶', keyFunc_winTransparent: '切换窗口透明度',
+  keyFunc_winbind_binding: '绑定窗口 / 窗口组 / 应用', keyFunc_winPin: '切换窗口置顶', keyFunc_winTransparent: '切换窗口透明度',
   keyFunc_selectUp: '向上选中', keyFunc_selectDown: '向下选中', keyFunc_selectLeft: '向左选中', keyFunc_selectRight: '向右选中',
   keyFunc_selectHome: '选中到行首', keyFunc_selectEnd: '选中到行尾', keyFunc_selectToPageBeginning: '选中到页面开头',
   keyFunc_selectToPageEnd: '选中到页面末尾', keyFunc_selectCurrentWord: '选中当前词', keyFunc_selectCurrentLine: '选中当前行',
@@ -767,22 +777,50 @@ function renderBindings() {
     const head = document.createElement('div'); head.className = 'binding-head';
     const title = document.createElement('span'); title.className = 'binding-number';
     title.textContent = 'CapsLock + ' + (binding.number === 10 ? '0' : binding.number);
+    const mode = modes.get(String(binding.bindType));
     const select = document.createElement('select');
-    select.innerHTML = [...modes.entries()].map(([value, mode]) =>
-      `<option value="${value}">${mode.label}</option>`).join('');
-    select.value = modes.has(String(binding.bindType)) && binding.bindType ? String(binding.bindType) : '1';
-    const capture = document.createElement('button'); capture.className = 'btn'; capture.textContent = '捕获当前窗口';
-    capture.addEventListener('click', () => post({ type: 'captureWindow', number: binding.number, bindType: Number(select.value) }));
-    head.append(title, select, capture); card.append(head);
+    select.innerHTML = [...modes.entries()].map(([value, item]) =>
+      `<option value="${value}">${item.label}</option>`).join('');
+    select.value = mode ? String(binding.bindType) : '1';
+    const actions = document.createElement('div'); actions.className = 'binding-actions';
+    const renderActions = () => {
+      actions.replaceChildren();
+      if (select.value === '3') {
+        const selectOpenApplication = document.createElement('button');
+        selectOpenApplication.type = 'button'; selectOpenApplication.className = 'btn'; selectOpenApplication.textContent = '选择已打开应用';
+        selectOpenApplication.addEventListener('click', () => post({ type: 'selectOpenApplication', number: binding.number, bindType: 3 }));
+        const selectOtherApplication = document.createElement('button');
+        selectOtherApplication.type = 'button'; selectOtherApplication.className = 'btn'; selectOtherApplication.textContent = '选择其他应用';
+        selectOtherApplication.addEventListener('click', () => post({ type: 'selectOtherApplication', number: binding.number, bindType: 3 }));
+        actions.append(selectOpenApplication, selectOtherApplication);
+      } else {
+        const selectWindow = document.createElement('button');
+        selectWindow.type = 'button'; selectWindow.className = 'btn';
+        selectWindow.textContent = select.value === '2' ? '添加已打开窗口' : '绑定已打开窗口';
+        selectWindow.addEventListener('click', () => post({ type: 'selectOpenWindow', number: binding.number, bindType: Number(select.value) }));
+        actions.append(selectWindow);
+      }
+    };
+    head.append(title, select, actions); card.append(head);
     const modeHint = document.createElement('div'); modeHint.className = 'binding-mode-hint'; card.append(modeHint);
     const updateModeHint = () => { modeHint.textContent = (modes.get(select.value) || modes.get('1')).description; };
-    select.addEventListener('change', updateModeHint);
+    select.addEventListener('change', () => { updateModeHint(); renderActions(); });
     updateModeHint();
+    renderActions();
     const items = document.createElement('div'); items.className = 'binding-items';
-    if (binding.items && binding.items.length) binding.items.forEach(item => {
-      const line = document.createElement('div'); line.textContent = `${item.exe || ''} · ${item.windowClass || ''}`;
-      items.append(line);
-    }); else items.textContent = '未绑定';
+    if (binding.items && binding.items.length) {
+      const applicationNames = [...new Set(binding.items.map(windowApplicationName).filter(Boolean))];
+      const fullText = binding.items.map(item => [item.title, item.exe, item.windowClass].filter(Boolean).join(' · ')).join('\n');
+      applicationNames.forEach(name => {
+        const line = document.createElement('div');
+        line.textContent = name;
+        line.title = fullText;
+        items.append(line);
+      });
+    } else if (binding.applicationPath) {
+      items.textContent = applicationName(binding.applicationPath);
+      items.title = binding.applicationPath;
+    } else items.textContent = '未绑定';
     card.append(items); root.append(card);
   }
 }
