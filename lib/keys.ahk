@@ -215,14 +215,13 @@ keyFunc_paste_2(*) {
 }
 
 keyFunc_qbar(*) {
-    global AiChatGui, LLMTranslateGui, DictionaryGui
     ; The chat and translate panels are typing surfaces: CapsLock+Q there is
     ; an uppercase letter, not a qbar summons landing on top of the panel.
-    if IsObject(AiChatGui) && WinActive("ahk_id " . AiChatGui.Hwnd)
+    if AiChatIsActive()
         return
-    if IsObject(LLMTranslateGui) && WinActive("ahk_id " . LLMTranslateGui.Hwnd)
+    if LLMTranslateIsActive()
         return
-    if IsObject(DictionaryGui) && WinActive("ahk_id " . DictionaryGui.Hwnd)
+    if DictionaryIsActive()
         return
     QbarToggle()
 }
@@ -385,11 +384,11 @@ keyFunc_qbar_lowerFolderPath(*) {
 }
 
 keyFunc_winbind_activate(bindingNumber) {
-    activateWinAction(bindingNumber + 0)
+    activateWinAction(bindingNumber)
 }
 
 keyFunc_winbind_binding(bindingNumber) {
-    BindingTap(bindingNumber + 0)
+    BindingTap(bindingNumber)
 }
 
 keyFunc_winPin(*) {

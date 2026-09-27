@@ -188,8 +188,6 @@ let reportedRows = -1;
 let ICONS = {};   // iconKey -> PNG data URI, pushed by AHK once per key
 let loadingVisible = true;
 let composing = false;
-let deferredQuery = false;
-let querySerial = 0;
 
 function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
@@ -204,24 +202,12 @@ function postType(type, text = '') {
   post({ type, text });
 }
 
-function qbarDebug(event, details = '') {
-  const suffix = details ? ' ' + details : '';
-  postType('debug', event + ' value=' + JSON.stringify(input.value) + suffix);
-}
-
 // Tells AHK the page script is alive and how big its viewport is, so a blank
 // panel can be told apart from a zero-sized one.
 postType('ready', window.innerWidth + 'x' + window.innerHeight);
 
 function requestQuery(reason = 'input') {
-  if (composing) {
-    deferredQuery = true;
-    qbarDebug('query-deferred reason=' + reason);
-    return;
-  }
-  deferredQuery = false;
-  querySerial += 1;
-  qbarDebug('query-post serial=' + querySerial + ' reason=' + reason);
+  if (composing) return;
   postType('query', input.value);
 }
 
@@ -417,34 +403,22 @@ window.addIcons = function (map) {
 
 input.addEventListener('compositionstart', () => {
   composing = true;
-  deferredQuery = true;
-  qbarDebug('compositionstart');
 });
 
-input.addEventListener('compositionupdate', event => {
-  qbarDebug('compositionupdate', 'data=' + JSON.stringify(event.data || ''));
-});
-
-input.addEventListener('compositionend', event => {
+input.addEventListener('compositionend', () => {
   composing = false;
-  qbarDebug('compositionend', 'data=' + JSON.stringify(event.data || '')
-    + ' deferred=' + deferredQuery);
   requestQuery('compositionend');
 });
 
 input.addEventListener('input', event => {
   // A fresh query resets the selection; setResults re-selects the first row.
-  qbarDebug('input', 'isComposing=' + !!event.isComposing);
   if (event.isComposing || composing) {
-    deferredQuery = true;
     return;
   }
   requestQuery('input');
 });
 
 input.addEventListener('keydown', event => {
-  if (event.isComposing || composing)
-    qbarDebug('keydown', 'key=' + JSON.stringify(event.key));
   if (event.key === 'Tab') {
     event.preventDefault();
     if (!results.length) return;

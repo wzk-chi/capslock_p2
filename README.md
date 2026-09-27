@@ -33,7 +33,7 @@ Everything 为可选（`resources/` 已内置一份，首次运行会自动建�
 1. 双击 `capslock_p2.ahk`，托盘出现图标即已运行。
 2. 开机自启：右键托盘菜单「开机自启动」切换；或编辑 `capslock_p2.ini` 的 `[Global] autostart=1`
    （保存后程序自动重读）。
-3. 默认值在 `capslock_p2-default.ini`，用户修改写入 `capslock_p2.ini`，保存后程序自动重读，无需重启。
+3. 默认值在 `capslock_p2-default.ini`，用户修改写入 `capslock_p2.ini`，只有有效变化才触发对应运行时更新，无需重启。
    完整说明和示例见 `capslock_p2-settingsDemo.ini`（只读参考，程序不加载它）。
 
 发布版是**单文件安装包** `capslock_p2-setup.exe`（也常按版本命名如 `capslock_p2-setup-0.1.1.exe`）。
@@ -146,15 +146,14 @@ gh<GitHub>=https://github.com
 后端自动选择：本机 Everything 在运行就直接用它；没在运行则自动启动 `resources/` 里的内置实例
 （首次需要一次管理员确认建立 NTFS 索引，之后随程序启停）。二者都没有时给出提示。
 
-可选配置（`[Qbar]`，全部留空用默认）：
+可选配置（`[Qbar]`）：
 
 ```ini
 [Qbar]
-; esPath=…           es.exe 路径，默认 resources\es.exe
-; everythingPath=…   内置 Everything 主程序路径，默认在 resources 下自动找
-; esInstance=…       内置实例名，默认 capslock_p2
 ; esMaxResults=50    最多返回条数
 ```
+
+`es.exe`、内置 Everything 和实例名由安装包资源策略管理，设置中心不提供路径覆盖；旧配置中的路径字段不再生效。配置层会为提示词和 Tab 替换处理单行 INI 存储编码，日志不写入 API Key、请求正文、剪贴板或用户输入。
 
 ### 内置命令
 
@@ -297,7 +296,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 ## 配置说明
 
 - 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
-- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读；CapsLock+F5 可手动重载。
+- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读，只有实际变化才应用；CapsLock+F5 可手动重载。外部修改与设置页未保存草稿冲突时，页面会提示重新载入。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
 - 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
 - `[Global]` 常用项：

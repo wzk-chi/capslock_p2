@@ -149,7 +149,7 @@ VolcengineTranslateBatch(texts, targetCode, accessKey, secretKey, region, &succe
     authorization := "HMAC-SHA256 Credential=" . accessKey . "/" . credentialScope
         . ", SignedHeaders=" . signedHeaders
         . ", Signature=" . signature
-    DebugLog("volcengine request texts=" . texts.Length . " chars=" . StrLen(body) . " to=" . targetCode)
+    DebugLog("volcengine request texts=" . texts.Length . " chars=" . StrLen(body))
 
     try {
         request := ComObject("WinHttp.WinHttpRequest.5.1")

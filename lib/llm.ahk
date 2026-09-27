@@ -19,16 +19,6 @@ LLMText(english, chinese) {
     return LLMUiLanguage() = "zh" ? chinese : english
 }
 
-LLMLogEndpoint(url) {
-    url := Trim(String(url))
-    if url = ""
-        return "<empty>"
-    url := RegExReplace(url, "[#?].*$")
-    if RegExMatch(url, "i)^(https?://[^/]+)(/.*)?$", &match)
-        return match[1] . match[2]
-    return "<configured>"
-}
-
 LLMSettingWith(key, defaultValue, overrides) {
     if IsObject(overrides) && overrides.Has(key)
         return overrides[key]
@@ -55,6 +45,35 @@ LLMInputTokenBudget(overrides := 0) {
     if !RegExMatch(value, "^\d+$") || value + 0 < 1
         return 0
     return value + 0
+}
+
+LLMSettingInteger(key, fallback, minimum, maximum, overrides := 0, &valid := false) {
+    valid := false
+    raw := Trim(String(LLMSettingWith(key, "", overrides)))
+    if raw = "" {
+        valid := true
+        return fallback
+    }
+    if !RegExMatch(raw, "^\d+$")
+        return fallback
+    parsedSettingInteger := raw + 0
+    if parsedSettingInteger < minimum || parsedSettingInteger > maximum
+        return fallback
+    valid := true
+    return parsedSettingInteger
+}
+
+LLMLogErrorKind(errorText, status := 0) {
+    if status >= 400
+        return "http"
+    lower := StrLower(String(errorText))
+    if InStr(lower, "timeout")
+        return "timeout"
+    if InStr(lower, "network") || InStr(lower, "connect")
+        return "network"
+    if InStr(lower, "decode") || InStr(lower, "parse")
+        return "decode"
+    return errorText = "" ? "" : "request"
 }
 
 LLMEstimateTokens(text) {
@@ -101,7 +120,9 @@ LLMLimitInputText(text, systemPrompt, overrides := 0) {
 }
 
 LLMMessageParse(message) {
-    try return JSON.Parse(message)
+    ; Keep WebView booleans as JSON.true/JSON.false ComValues so numeric 1/0
+    ; cannot be mistaken for a boolean by the text compatibility reader.
+    try return JSON.Parse(message, true)
     catch
         return Map()
 }
@@ -110,13 +131,61 @@ LLMMsgField(msg, key) {
     if !IsObject(msg) || !msg.Has(key)
         return ""
     value := msg[key]
+    isJsonTrue := false
+    isJsonFalse := false
+    if Type(value) = "ComValue" {
+        try {
+            isJsonTrue := value == JSON.true
+            isJsonFalse := value == JSON.false
+        } catch as boolCheckError {
+            isJsonTrue := false
+            isJsonFalse := false
+        }
+    }
+    if isJsonTrue
+        return "true"
+    if isJsonFalse
+        return "false"
+    if Type(value) = "ComValue"
+        return ""
     if IsObject(value)
         return ""
     ; WebView2 form fields are strings. Keep a numeric-looking string such as
     ; "1" as a string instead of comparing it loosely with boolean true.
     if Type(value) = "String"
         return value
-    return value = true ? "true" : value = false ? "false" : String(value)
+    if Type(value) = "Integer" || Type(value) = "Float"
+        return String(value)
+    return String(value)
+}
+
+LLMMsgNumber(msg, key, &ok := false, defaultValue := 0, integerOnly := false) {
+    ok := false
+    raw := LLMMsgField(msg, key)
+    if raw = ""
+        return defaultValue
+    pattern := integerOnly ? "^-?\d+$" : "^-?(?:\d+\.?\d*|\.\d+)$"
+    if !RegExMatch(Trim(raw), pattern)
+        return defaultValue
+    try parsedNumber := raw + 0
+    catch
+        return defaultValue
+    ok := true
+    return parsedNumber
+}
+
+LLMMsgBoolean(msg, key, &ok := false, defaultValue := false) {
+    ok := false
+    raw := StrLower(Trim(LLMMsgField(msg, key)))
+    if raw = "true" || raw = "1" {
+        ok := true
+        return true
+    }
+    if raw = "false" || raw = "0" {
+        ok := true
+        return false
+    }
+    return defaultValue
 }
 
 LLMMessageOverrides(msg, keys) {
@@ -260,25 +329,67 @@ LLMBuildChatBody(model, messages, temperature, thinking, structuredOn := false, 
 LLMBuildRequest(messages, &endpoint, &headerName, &headerValue, &timeout, &errorText,
     overrides := 0, stream := false, structuredOn := false) {
     errorText := ""
-    endpoint := LLMNormalizeEndpoint(LLMSettingWith("endpoint", "", overrides))
-    apiKey := LLMSettingWith("apiKey", "", overrides)
-    model := Trim(LLMSettingWith("model", "", overrides))
+    endpointRaw := Trim(String(LLMSettingWith("endpoint", "", overrides)))
+    apiKey := Trim(String(LLMSettingWith("apiKey", "", overrides)))
+    model := Trim(String(LLMSettingWith("model", "", overrides)))
+    if RegExMatch(endpointRaw . apiKey . model, "[`r`n]") {
+        errorText := LLMText("LLM settings contain an invalid line break.",
+            "LLM 配置包含非法换行。")
+        return ""
+    }
+    endpoint := LLMNormalizeEndpoint(endpointRaw)
     if endpoint = "" {
         errorText := LLMText(
             "No API endpoint configured. Open Settings.",
             "尚未配置 API 地址，请先在设置里填写。")
         return ""
     }
+    if apiKey = "" {
+        errorText := LLMText(
+            "No API key configured. Open Settings.",
+            "尚未配置 API Key，请先在设置里填写。")
+        return ""
+    }
+    temperature := Trim(String(LLMSettingWith("temperature", "", overrides)))
+    if temperature != "" && !RegExMatch(temperature, "^-?(?:\d+\.?\d*|\.\d+)$") {
+        errorText := LLMText("Temperature must be a number.", "Temperature 必须是数字。")
+        return ""
+    }
+    thinking := StrLower(Trim(String(LLMSettingWith("thinking", "", overrides))))
+    if thinking != "" && (thinking != "0" && thinking != "1"
+        && thinking != "true" && thinking != "false" && thinking != "on" && thinking != "off") {
+        errorText := LLMText("Thinking must be a boolean.", "思考模式必须是布尔值。")
+        return ""
+    }
+    maxInputTokens := Trim(String(LLMSettingWith("maxInputTokens", "", overrides)))
+    if maxInputTokens != "" && (!RegExMatch(maxInputTokens, "^\d+$") || maxInputTokens + 0 < 1) {
+        errorText := LLMText("Maximum input tokens must be a positive integer.",
+            "最大输入 Token 必须是正整数。")
+        return ""
+    }
 
     body := LLMBuildChatBody(model, messages,
-        LLMSettingWith("temperature", "", overrides),
-        StrLower(Trim(LLMSettingWith("thinking", "", overrides))),
+        temperature,
+        thinking,
         structuredOn, stream)
-    headerName := Trim(LLMSettingWith("apiKeyHeader", "", overrides))
-    prefix := LLMSettingWith("apiKeyPrefix", "", overrides)
+    headerName := Trim(String(LLMSettingWith("apiKeyHeader", "", overrides)))
+    if headerName = ""
+        headerName := "Authorization"
+    prefix := Trim(String(LLMSettingWith("apiKeyPrefix", "", overrides)))
+    if RegExMatch(headerName . prefix, "[`r`n]") {
+        errorText := LLMText("LLM header settings contain an invalid line break.",
+            "LLM 请求头配置包含非法换行。")
+        return ""
+    }
     headerValue := prefix = "" ? apiKey : prefix . " " . apiKey
-    timeout := LLMSettingWith("timeout", "", overrides) + 0
-    timeout := Max(1000, Min(120000, timeout))
+    timeoutValid := false
+    timeout := LLMSettingInteger("timeout", 30000, 1000, 120000, overrides, &timeoutValid)
+    if !timeoutValid {
+        errorText := LLMText(
+            "The LLM timeout must be an integer from 1000 to 120000 ms.",
+            "LLM 超时必须是 1000 到 120000 毫秒之间的整数。")
+        return ""
+    }
     return body
 }
 
@@ -335,7 +446,7 @@ LLMSendChatBody(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, &suc
         success := true
         return responseText
     } catch as apiRequestError {
-        errorText := LLMText("LLM request failed: ", "请求失败：") . apiRequestError.Message
+        errorText := LLMText("LLM request failed.", "请求失败。")
         return ""
     }
 }
@@ -390,11 +501,11 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
 
         stage := "sending request"
         request.Send(LLMUtf8Bytes(body))
-        DebugLog("LLM stream started id=" . id . " endpoint=" . LLMLogEndpoint(endpoint))
+        DebugLog("LLM stream started id=" . id)
         return id
     } catch as streamError {
-        errorText := "LLM stream " . stage . " failed: " . streamError.Message
-        DebugLog("LLM stream failed id=" . id . " stage=" . stage)
+        errorText := "LLM stream " . stage . " failed."
+        DebugLog("LLM stream failed")
         LLMStreamComplete(state, false, errorText)
         return 0
     }
@@ -442,7 +553,7 @@ class LLMWinHttpEventSink extends Buffer {
                 return 0x80004003
             DllCall("ole32\StringFromGUID2", "ptr", riid, "ptr", guidText := Buffer(78, 0), "int", 39)
             iid := StrUpper(StrGet(guidText, "UTF-16"))
-            DebugLog("LLM event sink QueryInterface iid=" . iid . " out=" . ppvObject)
+            DebugLog("LLM event sink QueryInterface")
             if iid = "{00000000-0000-0000-C000-000000000046}"
                 || iid = "{F97F4E15-B787-4212-80D1-D380CBBF982E}" {
                 ObjAddRef(pThis)
@@ -509,7 +620,7 @@ LLMStreamAttachEvents(request, state) {
     try {
         ComCall(5, connectionPoint, "ptr", state["sink"].Ptr, "uint*", &cookie := 0)
         state["connectionCookie"] := cookie
-        DebugLog("LLM stream events connected id=" . state["id"] . " cookie=" . cookie)
+        DebugLog("LLM stream events connected")
     } catch as connectionError {
         ObjRelease(connectionPoint)
         state["connectionPoint"] := 0
@@ -572,8 +683,8 @@ LLMStreamOnData(state, data) {
             state["lineBytes"] := []
             LLMStreamLine(state, line)
         } else if byte != 13 {
-            if Type(byte) != "Integer"
-                DebugLog("LLM stream pushed non-integer byte type=" . Type(byte))
+            if Type(byte) != "Integer" || byte < 0 || byte > 255
+                continue
             state["lineBytes"].Push(byte)
         }
     }
@@ -586,18 +697,14 @@ LLMStreamDecode(bytes) {
     for index, byte in bytes {
         offset := index - 1
         if offset < 0 || offset >= rawBuffer.Size {
-            ; Diagnostics: an index past the buffer means the enumerator
-            ; handed us something an AHK Array never produces — log it and
-            ; decode the rest instead of killing the stream.
-            DebugLog("LLM decode offset skipped index=" . index . " len=" . bytes.Length
-                . " arrayType=" . Type(bytes) . " elementType=" . Type(byte))
             continue
         }
+        if Type(byte) != "Integer" || byte < 0 || byte > 255
+            continue
         try {
-            NumPut("UChar", Integer(byte), rawBuffer, offset)
-        } catch {
-            DebugLog("LLM decode element skipped index=" . index . " type=" . Type(byte))
-        }
+            NumPut("UChar", byte, rawBuffer, offset)
+        } catch
+            continue
     }
     try return StrGet(rawBuffer, "UTF-8")
     catch
@@ -684,7 +791,8 @@ LLMStreamComplete(state, success, errorText) {
     text := state["text"]
     callback := state["onFinished"]
     DebugLog("LLM stream completed id=" . state["id"] . " success=" . success
-        . " chars=" . StrLen(text) . (errorText = "" ? "" : " error=" . errorText))
+        . " chars=" . StrLen(text) . " errorKind=" . LLMLogErrorKind(errorText, state["status"])
+        . " errorLength=" . StrLen(String(errorText)))
     LLMStreamRelease(state)
     try callback.Call(text, success, errorText)
 }

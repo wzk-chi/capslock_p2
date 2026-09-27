@@ -1,16 +1,15 @@
 ; qbar WebView2 panel lifecycle and page messaging.
 
 QbarEnsureWebView() {
-    global QbarHost, QbarGui, QbarController, QbarWebView, QbarPageReady
+    global QbarHost
     pagePath := A_ScriptDir . "\pages\qbar.html"
     if IsObject(QbarHost) {
         try {
             PanelHostEnsure(QbarHost)
-            QbarSyncHost()
             return true
         } catch as existingError {
             PanelHostHide(QbarHost)
-            DebugLog("qbar webview failed: " . existingError.Message)
+            DebugLog("qbar webview failed")
             ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
             return false
         }
@@ -26,46 +25,22 @@ QbarEnsureWebView() {
             "escape", QbarHide,
             "navigation", QbarNavigationCompleted,
             "message", QbarWebMessageReceived)))
-    QbarSyncHost()
 
     try {
         PanelHostEnsure(QbarHost)
-        QbarSyncHost()
         DebugLog("Qbar WebView2 ready")
         return true
     } catch as webViewError {
         PanelHostHide(QbarHost)
-        QbarSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
-QbarSyncHost() {
-    global QbarHost, QbarGui, QbarController, QbarWebView, QbarPageReady
-    if !IsObject(QbarHost) {
-        QbarGui := 0
-        QbarController := 0
-        QbarWebView := 0
-        QbarPageReady := false
-        return
-    }
-    QbarGui := QbarHost["gui"]
-    QbarController := QbarHost["controller"]
-    QbarWebView := QbarHost["webView"]
-    QbarPageReady := QbarHost["pageReady"]
-}
-
-QbarNavigationCompleted(sender, args) {
-    global QbarHost, QbarPageReady, QbarVisible, QbarPendingText
-    try success := args.IsSuccess
-    catch
-        success := false
-    DebugLog("Qbar navigation completed success=" . success)
-    QbarPageReady := success
-    if IsObject(QbarHost)
-        QbarHost["pageReady"] := success
-    if !success {
+QbarNavigationCompleted(host, sender, args) {
+    global QbarVisible
+    DebugLog("Qbar navigation completed success=" . PanelHostPageReady(host))
+    if !PanelHostPageReady(host) {
         try ShowMsg("Qbar page failed to load (" . args.WebErrorStatus . ").", 4000)
         return
     }
@@ -76,24 +51,23 @@ QbarNavigationCompleted(sender, args) {
 }
 
 QbarFocusMonitor(*) {
-    global QbarHost, QbarGui, QbarVisible, QbarFocusTimer
-    if !QbarVisible || !IsObject(QbarGui) {
+    global QbarHost, QbarVisible
+    if !QbarVisible || !IsObject(PanelHostGui(QbarHost)) {
         PanelHostStopFocusMonitor(QbarHost)
-        QbarFocusTimer := false
         return
     }
-    if !WinActive("ahk_id " . QbarGui.Hwnd)
+    if !PanelHostWindowActive(QbarHost)
         QbarHide()
 }
 
 QbarShutdown(*) {
-    global QbarHost, QbarGui, QbarController, QbarWebView, QbarVisible, QbarOpen, QbarPageReady, QbarFocusTimer
+    global QbarHost, QbarVisible, QbarOpen
     global QbarIndexReady, QbarIndexLoading
     global QbarEsBundledStarted
     QbarVisible := false
     QbarOpen := false
-    QbarPageReady := false
     QbarIndexReady := false
+    QbarEsCancelJob("shutdown")
     PanelHostStopFocusMonitor(QbarHost)
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
@@ -104,14 +78,10 @@ QbarShutdown(*) {
     if QbarEsBundledStarted {
         everythingExe := QbarEsEverythingExe()
         if everythingExe != ""
-            try Run(Chr(34) . everythingExe . Chr(34) . " -instance " . QbarEsInstanceName() . " -exit")
+            try Run(QbarEsQuoteArg(everythingExe) . " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) . " -exit")
     }
     PanelHostDestroy(QbarHost)
     QbarHost := 0
-    QbarWebView := 0
-    QbarController := 0
-    QbarGui := 0
-    QbarFocusTimer := false
     try IconGdiplusStop()
 }
 
@@ -133,31 +103,37 @@ QbarWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         QbarQuerySeq += 1
         querySeq := QbarQuerySeq
-        DebugLog("Qbar query received seq=" . querySeq)
+        DebugLog("Qbar query received")
         DebugLogPrivate("Qbar query", text)
-        SetTimer(() => QbarQuery(text, querySeq), -1)
+        SetTimer(QbarQuery.Bind(text, querySeq), -1)
     } else if messageType = "execute" {
         text := LLMMsgField(msg, "text")
         selected := LLMMsgField(msg, "selected")
         selectedType := LLMMsgField(msg, "selectedType")
-        ctrl := LLMMsgField(msg, "ctrl") = "true"
-        SetTimer(() => QbarExecute(text, selected, ctrl, selectedType), -1)
+        ctrlValid := false
+        ctrl := LLMMsgBoolean(msg, "ctrl", &ctrlValid, false)
+        if !ctrlValid
+            ctrl := false
+        SetTimer(QbarExecute.Bind(text, selected, ctrl, selectedType), -1)
     } else if messageType = "resize" {
-        ; WebView2 delivers the row count as a JSON string. Validate the
-        ; integer text before converting it; malformed messages are ignored.
-        raw := LLMMsgField(msg, "text")
-        if !RegExMatch(raw, "^\d+$") {
-            DebugLog("Qbar resize ignored: non-numeric payload type=" . Type(raw))
+        ; WebView2 may deliver the row count as a JSON number or numeric text.
+        ; Reject fractions and malformed values before converting.
+        rowsValid := false
+        rows := LLMMsgNumber(msg, "text", &rowsValid, 0, true)
+        if !rowsValid {
+            rowsValid := false
+            rows := LLMMsgNumber(msg, "rows", &rowsValid, 0, true)
+        }
+        if !rowsValid {
+            DebugLog("Qbar resize ignored: invalid row count")
             return
         }
-        QbarResize(Integer(raw))
+        QbarResize(Integer(rows))
     } else if messageType = "ready" {
         ; The page's script is alive; the payload is its viewport size, which
         ; tells a blank panel apart from a zero-sized one.
         DebugLog("Qbar page script ready")
         QbarRefit()
-    } else if messageType = "debug" {
-        DebugLog("Qbar page debug message received")
     } else if messageType = "hide" {
         QbarHide()
     }
@@ -169,8 +145,8 @@ QbarWebMessageReceived(sender, args) {
 ; Warm the index before enabling the input instead, with a visible loading row.
 
 QbarStartIndexLoad() {
-    global QbarVisible, QbarPageReady, QbarIndexReady, QbarIndexLoading
-    if !QbarVisible || !QbarPageReady
+    global QbarHost, QbarVisible, QbarIndexReady, QbarIndexLoading
+    if !QbarVisible || !PanelHostPageReady(QbarHost)
         return
     if QbarIndexReady {
         QbarFinishIndexLoad()
@@ -195,7 +171,7 @@ QbarWarmIndex(*) {
     ; caches the result, so normal queries do not repeat the scan.
     try QbarStartMenuItems()
     catch as scanError {
-        DebugLog("Qbar index scan failed: " . scanError.Message)
+        DebugLog("Qbar index scan failed")
         QbarStartMenuCache := []
     }
     QbarIndexLoading := false
@@ -205,19 +181,21 @@ QbarWarmIndex(*) {
 }
 
 QbarFinishIndexLoad() {
-    global QbarVisible, QbarPageReady, QbarPendingText
-    if !QbarVisible || !QbarPageReady
+    global QbarHost, QbarVisible, QbarPendingText
+    if !QbarVisible || !PanelHostPageReady(QbarHost)
         return
     QbarExec("window.setLoading(false);window.setInput(" . LLMJsonQuote(QbarPendingText)
         . ");window.focusInput();")
 }
 
 QbarRefit() {
-    global QbarHost, QbarController
+    global QbarHost
     if !IsObject(QbarHost)
         return
     PanelHostFill(QbarHost)
-    try QbarController.IsVisible := true
+    controller := QbarHost["controller"]
+    if IsObject(controller)
+        try controller.IsVisible := true
 }
 
 ; ---------------------------------------------------------------------------
@@ -225,12 +203,12 @@ QbarRefit() {
 ; ---------------------------------------------------------------------------
 
 QbarResize(rows) {
-    global QbarHost, QbarGui, QbarController, QbarCurrentRows, QbarInputHeight, QbarRowHeight, QbarPadding, QbarGap
+    global QbarHost, QbarCurrentRows, QbarInputHeight, QbarRowHeight, QbarPadding, QbarGap
     rows := Max(0, Min(QbarMaxRows, rows + 0))
     if rows = QbarCurrentRows
         return
     QbarCurrentRows := rows
-    if !IsObject(QbarGui)
+    if !IsObject(PanelHostGui(QbarHost))
         return
     height := FixDpi(QbarPadding * 2 + QbarInputHeight + (rows > 0 ? QbarGap + rows * QbarRowHeight : 0))
     ; The panel never moves, so restating the resting position here is
@@ -246,10 +224,11 @@ QbarResize(rows) {
 ; and one API for every change means identical numbers always land identically.
 
 QbarPlace(x, y, width, height) {
-    global QbarGui
-    if !IsObject(QbarGui)
+    global QbarHost
+    panelGui := PanelHostGui(QbarHost)
+    if !IsObject(panelGui)
         return
-    try QbarGui.Show("x" . x . " y" . y . " w" . width . " h" . height . " NA")
+    try panelGui.Show("x" . x . " y" . y . " w" . width . " h" . height . " NA")
     QbarApplyRegion()
 }
 
@@ -258,11 +237,12 @@ QbarPlace(x, y, width, height) {
 ; Sized from the live client rect so the clip always matches the panel.
 
 QbarApplyRegion() {
-    global QbarGui
-    if !IsObject(QbarGui)
+    global QbarHost
+    panelGui := PanelHostGui(QbarHost)
+    if !IsObject(panelGui)
         return
     clientRect := Buffer(16, 0)
-    DllCall("GetClientRect", "ptr", QbarGui.Hwnd, "ptr", clientRect)
+    DllCall("GetClientRect", "ptr", panelGui.Hwnd, "ptr", clientRect)
     clientWidth := NumGet(clientRect, 8, "int")
     clientHeight := NumGet(clientRect, 12, "int")
     if clientWidth <= 0 || clientHeight <= 0
@@ -274,7 +254,7 @@ QbarApplyRegion() {
     if !region
         return
     ; SetWindowRgn takes ownership of the region when it succeeds.
-    if !DllCall("SetWindowRgn", "ptr", QbarGui.Hwnd, "ptr", region, "int", 1)
+    if !DllCall("SetWindowRgn", "ptr", panelGui.Hwnd, "ptr", region, "int", 1)
         DllCall("DeleteObject", "ptr", region)
 }
 

@@ -4,19 +4,16 @@
 ; and stable entry points; qbar behavior is split into focused modules below.
 
 global QbarHost := 0
-global QbarGui := 0
-global QbarController := 0
-global QbarWebView := 0
-global QbarPageReady := false
 global QbarVisible := false
 global QbarOpen := false            ; re-entrancy guard for QbarShow/QbarHide
-global QbarFocusTimer := false
 global QbarIndexReady := false
 global QbarIndexLoading := false
 global QbarPendingText := ""
 global QbarQuerySeq := 0
 global QbarCurrentRows := 0
 global QbarStartMenuCache := 0      ; 0 = not scanned yet, otherwise an array
+global QbarConfigIndexCache := 0    ; lazily built QSearch/QRun/QWeb index
+global QbarConfigIndexGeneration := 1
 global QbarFolderDir := ""
 global QbarFolderItems := []
 global QbarFutureStack := []        ; forward history for keyFunc_qbar_lowerFolderPath
@@ -26,11 +23,12 @@ global QbarEsMode := false          ; the current query is an Everything search
 global QbarEsPending := ""          ; latest query text waiting for the debounce timer
 global QbarEsSeq := 0               ; bumped per request; a flush that finishes late is dropped
 global QbarEsLastResults := []      ; previous results, kept visible while the next search runs
-global QbarEsPath := ""             ; resolved es.exe path
-global QbarEsEverythingPath := ""   ; resolved bundled everything.exe path
+global QbarEsJob := 0               ; the one qbar-owned es.exe process/retry job
+global QbarEsJobId := 0
 global QbarEsUseBundled := 0        ; 0 undecided, -1 the user's Everything, 1 the bundled copy
-global QbarEsBundledStarted := false
-global QbarEsBundledColdStart := false   ; we just launched it, allow a wait for the index
+global QbarEsBundledStarted := false ; true only when qbar launched the bundled server
+global QbarEsBundledState := "unknown" ; unknown|starting|reachable|failed
+global QbarEsWarmupDeadline := 0
 global QbarEsBundledFailed := false ; start declined; do not prompt again this session
 global QbarEsHintShown := false
 
@@ -63,7 +61,7 @@ QbarToggle(*) {
 }
 
 QbarShow() {
-    global QbarHost, QbarGui, QbarVisible, QbarOpen, QbarFocusTimer, QbarPendingText, QbarCurrentRows, QbarEsHintShown
+    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarEsHintShown
     if QbarOpen
         return
 
@@ -89,11 +87,12 @@ QbarShow() {
     ; centred and then snap to the lower right.
     QbarCurrentRows := 0
     QbarPlace(QbarRestingX(), QbarRestingY(), FixDpi(QbarWidth), QbarCollapsedHeight())
-    QbarHost["visible"] := true
-    WinActivate("ahk_id " . QbarGui.Hwnd)
-    QbarFocusTimer := PanelHostStartFocusMonitor(QbarHost, QbarFocusMonitor)
+    panelGui := PanelHostGui(QbarHost)
+    if IsObject(panelGui)
+        WinActivate("ahk_id " . panelGui.Hwnd)
+    PanelHostStartFocusMonitor(QbarHost, QbarFocusMonitor)
 
-    if QbarPageReady {
+    if PanelHostPageReady(QbarHost) {
         ; The page keeps its state across hide/show while the window starts
         ; collapsed; make its next render re-report the row count.
         QbarExec("window.resetRows();")
@@ -104,8 +103,8 @@ QbarShow() {
 }
 
 QbarHide(*) {
-    global QbarHost, QbarGui, QbarVisible, QbarOpen, QbarFocusTimer, QbarFolderDir, QbarFolderItems, QbarFutureStack
-    global QbarEsMode, QbarEsLastResults, QbarEsSeq, QbarIndexLoading, QbarQuerySeq
+    global QbarHost, QbarVisible, QbarOpen, QbarFolderDir, QbarFolderItems, QbarFutureStack
+    global QbarEsMode, QbarEsLastResults, QbarIndexLoading, QbarQuerySeq
     QbarVisible := false
     QbarOpen := false
     QbarFolderDir := ""
@@ -113,14 +112,12 @@ QbarHide(*) {
     QbarFutureStack := []
     QbarEsMode := false
     QbarEsLastResults := []
-    QbarEsSeq += 1
+    QbarEsCancelJob("panel hidden")
     QbarQuerySeq += 1
-    SetTimer(QbarEsFlush, 0)
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
     PanelHostHide(QbarHost)
     PanelHostStopFocusMonitor(QbarHost)
-    QbarFocusTimer := false
 }
 
 QbarExec(script) {
@@ -147,30 +144,24 @@ QbarFirstToken(text) {
     return RegExReplace(text, "\s.*$")
 }
 
+; Splits a qbar command exactly like the former QbarFirstToken()+SubStr()
+; pairs. Only spaces and tabs are trimmed from the argument so selected text
+; containing a newline keeps the existing behavior.
+
+QbarSplitCommand(text, &firstToken, &rest) {
+    firstToken := QbarFirstToken(text)
+    rest := ""
+    if firstToken = text
+        return false
+    rest := Trim(SubStr(text, StrLen(firstToken) + 1), " `t")
+    return true
+}
+
 ; What was typed after a trigger: "bd 键盘" gives "键盘". Empty when the line is
 ; only the trigger, or does not start with it at all.
 
 QbarSearchArgument(text, trigger) {
-    if QbarFirstToken(text) != trigger
+    if !QbarSplitCommand(text, &firstToken, &rest) || firstToken != trigger
         return ""
-    return Trim(SubStr(text, StrLen(trigger) + 1), " `t")
-}
-
-QbarUrlEncode(text) {
-    static unreserved := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
-    if text = ""
-        return ""
-    byteCount := StrPut(text, "UTF-8") - 1
-    byteBuffer := Buffer(byteCount + 1, 0)
-    StrPut(text, byteBuffer, "UTF-8")
-    result := ""
-    Loop byteCount {
-        byte := NumGet(byteBuffer, A_Index - 1, "UChar")
-        character := Chr(byte)
-        if byte < 0x80 && InStr(unreserved, character)
-            result .= character
-        else
-            result .= Format("%{:02X}", byte)
-    }
-    return result
+    return rest
 }

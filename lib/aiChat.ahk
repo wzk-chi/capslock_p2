@@ -6,12 +6,7 @@
 ; echoed back, and each request sends the system prompt plus recent turns.
 
 global AiChatHost := 0
-global AiChatGui := 0
-global AiChatController := 0
-global AiChatWebView := 0
-global AiChatPageReady := false
 global AiChatVisible := false
-global AiChatFocusTimer := false
 global AiChatPendingQuestion := ""
 global AiChatRequestRunning := false
 global AiChatStreamId := 0
@@ -63,25 +58,6 @@ LLMAiTrimHistory(history) {
 
 ; ---- one chat completion over the shared [LLM] connection ---------------------
 
-; Runs the conversation: system prompt plus the last turns of the history.
-; Returns the assistant's reply; success/errorText report the outcome.
-LLMAiChatComplete(history, &success := false, &errorText := "", overrides := 0) {
-    success := false
-    errorText := ""
-
-    messages := LLMAiBuildMessages(history, overrides)
-    responseText := LLMChatComplete(messages, &success, &errorText, overrides)
-    if !success
-        return ""
-    answer := LLMExtractChatText(responseText)
-    if answer = "" {
-        errorText := LLMText("The LLM response did not contain an answer.", "接口返回内容里没有找到回答。")
-        return ""
-    }
-    success := true
-    return answer
-}
-
 LLMAiStartStream(history, onDelta, onFinished, overrides := 0) {
     messages := LLMAiBuildMessages(history, overrides)
     return LLMChatStream(messages, onDelta, onFinished, overrides)
@@ -123,7 +99,7 @@ LLMAiBuildMessages(history, overrides := 0) {
 ; ---- panel ------------------------------------------------------------------
 
 AiChatShow(question) {
-    global AiChatHost, AiChatGui, AiChatVisible, AiChatPageReady, AiChatFocusTimer, AiChatWindowInitialized
+    global AiChatHost, AiChatVisible, AiChatWindowInitialized
     global AiChatPendingQuestion, AiChatSeenActive
     question := Trim(question)
     if question != ""
@@ -141,13 +117,14 @@ AiChatShow(question) {
         PanelHostShow(AiChatHost, aiChatSize[1], aiChatSize[2], true)
         AiChatWindowInitialized := true
     }
-    AiChatSyncHost()
     AiChatSeenActive := false
-    WinActivate("ahk_id " . AiChatGui.Hwnd)
+    panelGui := PanelHostGui(AiChatHost)
+    if IsObject(panelGui)
+        WinActivate("ahk_id " . panelGui.Hwnd)
     ShowSystemCursor()
     AiChatUpdateFocusBehavior()
 
-    if AiChatPageReady
+    if PanelHostPageReady(AiChatHost)
         AiChatAfterReady()
 }
 
@@ -167,16 +144,15 @@ AiChatAfterReady() {
 }
 
 AiChatEnsureWebView() {
-    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatPageReady
+    global AiChatHost
     pagePath := A_ScriptDir . "\pages\chat.html"
     if IsObject(AiChatHost) {
         try {
             PanelHostEnsure(AiChatHost)
-            AiChatSyncHost()
             return true
         } catch as existingError {
             PanelHostHide(AiChatHost)
-            DebugLog("AI chat webview failed: " . existingError.Message)
+            DebugLog("AI chat webview failed")
             ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
             return false
         }
@@ -193,45 +169,21 @@ AiChatEnsureWebView() {
             "resize", AiChatResize,
             "navigation", AiChatNavigationCompleted,
             "message", AiChatWebMessageReceived)))
-    AiChatSyncHost()
 
     try {
         PanelHostEnsure(AiChatHost)
-        AiChatSyncHost()
         return true
     } catch as webViewError {
-        DebugLog("AI chat webview failed: " . webViewError.Message)
+        DebugLog("AI chat webview failed")
         PanelHostHide(AiChatHost)
-        AiChatSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
-AiChatSyncHost() {
-    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatPageReady
-    if !IsObject(AiChatHost) {
-        AiChatGui := 0
-        AiChatController := 0
-        AiChatWebView := 0
-        AiChatPageReady := false
-        return
-    }
-    AiChatGui := AiChatHost["gui"]
-    AiChatController := AiChatHost["controller"]
-    AiChatWebView := AiChatHost["webView"]
-    AiChatPageReady := AiChatHost["pageReady"]
-}
-
-AiChatNavigationCompleted(sender, args) {
-    global AiChatHost, AiChatPageReady, AiChatVisible
-    try success := args.IsSuccess
-    catch
-        success := false
-    AiChatPageReady := success
-    if IsObject(AiChatHost)
-        AiChatHost["pageReady"] := success
-    if !success {
+AiChatNavigationCompleted(host, sender, args) {
+    global AiChatVisible
+    if !PanelHostPageReady(host) {
         AiChatExec("window.setError(" . LLMJsonQuote(LLMText(
             "WebView2 could not load the AI panel.",
             "WebView2 未能加载 AI 面板。")) . ");")
@@ -346,15 +298,14 @@ AiChatOnSettingsSaved() {
 }
 
 AiChatUpdateFocusBehavior() {
-    global AiChatHost, AiChatVisible, AiChatFocusTimer
+    global AiChatHost, AiChatVisible
     if !AiChatVisible || !IsObject(AiChatHost)
         return
     if !LLMAiHideOnBlur() {
         PanelHostStopFocusMonitor(AiChatHost)
-        AiChatFocusTimer := false
         return
     }
-    AiChatFocusTimer := PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
+    PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
 }
 
 AiChatResize(targetGui, minMax, width, height) {
@@ -363,21 +314,19 @@ AiChatResize(targetGui, minMax, width, height) {
 }
 
 AiChatFocusMonitor(*) {
-    global AiChatHost, AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatSeenActive, SettingsVisible
-    if !AiChatVisible || !IsObject(AiChatGui) {
+    global AiChatHost, AiChatVisible, AiChatSeenActive, SettingsVisible
+    if !AiChatVisible || !IsObject(PanelHostGui(AiChatHost)) {
         PanelHostStopFocusMonitor(AiChatHost)
-        AiChatFocusTimer := false
         return
     }
     if !LLMAiHideOnBlur() {
         PanelHostStopFocusMonitor(AiChatHost)
-        AiChatFocusTimer := false
         return
     }
     if SettingsVisible {
         return
     }
-    if !WinActive("ahk_id " . AiChatGui.Hwnd) {
+    if !PanelHostWindowActive(AiChatHost) {
         ; Grace: WinActivate may not have landed within the first tick, and
         ; hiding then would flash the panel away before it is reachable.
         if AiChatSeenActive
@@ -388,7 +337,7 @@ AiChatFocusMonitor(*) {
 }
 
 AiChatHide(*) {
-    global AiChatHost, AiChatGui, AiChatVisible, AiChatFocusTimer, AiChatPageReady
+    global AiChatHost, AiChatVisible
     global AiChatStreamId, AiChatRequestRunning, AiChatHistory
     if AiChatStreamId {
         LLMAbortChatStream(AiChatStreamId)
@@ -400,23 +349,22 @@ AiChatHide(*) {
     AiChatVisible := false
     PanelHostHide(AiChatHost)
     PanelHostStopFocusMonitor(AiChatHost)
-    AiChatFocusTimer := false
 }
 
 AiChatShutdown(*) {
-    global AiChatHost, AiChatGui, AiChatController, AiChatWebView, AiChatVisible, AiChatPageReady, AiChatFocusTimer, AiChatWindowInitialized
+    global AiChatHost, AiChatVisible, AiChatWindowInitialized
     global AiChatStreamId
     if AiChatStreamId {
         LLMAbortChatStream(AiChatStreamId)
         AiChatStreamId := 0
     }
     AiChatVisible := false
-    AiChatPageReady := false
     PanelHostDestroy(AiChatHost)
     AiChatHost := 0
-    AiChatWebView := 0
-    AiChatController := 0
-    AiChatGui := 0
-    AiChatFocusTimer := false
     AiChatWindowInitialized := false
+}
+
+AiChatIsActive() {
+    global AiChatHost
+    return PanelHostWindowActive(AiChatHost)
 }

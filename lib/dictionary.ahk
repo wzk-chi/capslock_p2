@@ -5,15 +5,14 @@
 ; card, anything else keeps going to the translate panel.
 
 global DictionaryHost := 0
-global DictionaryGui := 0
-global DictionaryController := 0
-global DictionaryWebView := 0
-global DictionaryPageReady := false
 global DictionaryVisible := false
 global DictionaryPendingEntry := 0
 global DictionaryPendingQuery := ""
-global DictionaryFocusTimer := false
 global DictionaryDB := 0
+global DictionarySessionId := 0
+global DictionaryQuerySeq := 0
+global DictionaryLookupTimer := 0
+global DictionarySuggestionTimer := 0
 
 DictionaryDBPath() {
     return A_ScriptDir . "\resources\dictionary.db"
@@ -40,11 +39,11 @@ DictionaryConnect() {
         return 0
     try db := CSQLite(dllFolder)
     catch as loadError {
-        DebugLog("dictionary sqlite load failed: " . loadError.Message)
+        DebugLog("dictionary sqlite load failed")
         return 0
     }
     if !db.OpenDB(DictionaryDBPath(), "R") {
-        DebugLog("dictionary open failed: " . db.ErrorMsg)
+        DebugLog("dictionary open failed")
         return 0
     }
     DictionaryDB := db
@@ -66,7 +65,7 @@ DictionaryLookup(word) {
     gotTable := false
     try gotTable := db.GetTable(sql, &table)
     if !gotTable {
-        DebugLog("dictionary query failed: " . db.ErrorMsg)
+        DebugLog("dictionary query failed")
         return 0
     }
     if table.RowCount < 1
@@ -94,9 +93,18 @@ DictionaryTryShow(text) {
 }
 
 DictionaryShow(entry := 0, query := "") {
-    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryPageReady, DictionaryFocusTimer
+    global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
+    global DictionaryLookupTimer, DictionarySuggestionTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := true
+    DictionarySessionId += 1
+    DictionaryQuerySeq += 1
+    if IsObject(DictionaryLookupTimer)
+        SetTimer(DictionaryLookupTimer, 0)
+    if IsObject(DictionarySuggestionTimer)
+        SetTimer(DictionarySuggestionTimer, 0)
+    DictionaryLookupTimer := 0
+    DictionarySuggestionTimer := 0
     DictionaryPendingEntry := entry
     DictionaryPendingQuery := Trim(query)
     if !DictionaryEnsureWebView() {
@@ -107,13 +115,15 @@ DictionaryShow(entry := 0, query := "") {
     }
     dictionarySize := ScreenFitSize(640, 640, 460, 380)
     PanelHostShow(DictionaryHost, dictionarySize[1], dictionarySize[2], true)
-    DictionarySyncHost()
-    DictionaryRemoveFrameBorder(DictionaryGui.Hwnd)
-    WinActivate("ahk_id " . DictionaryGui.Hwnd)
+    panelGui := PanelHostGui(DictionaryHost)
+    if IsObject(panelGui) {
+        DictionaryRemoveFrameBorder(panelGui.Hwnd)
+        WinActivate("ahk_id " . panelGui.Hwnd)
+    }
     ShowSystemCursor()
-    DictionaryFocusTimer := PanelHostStartFocusMonitor(DictionaryHost, DictionaryFocusMonitor)
+    PanelHostStartFocusMonitor(DictionaryHost, DictionaryFocusMonitor)
 
-    if DictionaryPageReady {
+    if PanelHostPageReady(DictionaryHost) {
         if IsObject(entry)
             DictionaryPushEntry(entry)
         else {
@@ -128,17 +138,15 @@ DictionaryShowQuery(text) {
 }
 
 DictionaryEnsureWebView() {
-    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView
-    global DictionaryPageReady
+    global DictionaryHost
     pagePath := A_ScriptDir . "\pages\dictionary.html"
     if IsObject(DictionaryHost) {
         try {
             PanelHostEnsure(DictionaryHost)
-            DictionarySyncHost()
             return true
         } catch as existingError {
             PanelHostHide(DictionaryHost)
-            DebugLog("dictionary webview failed: " . existingError.Message)
+            DebugLog("dictionary webview failed")
             ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
             return false
         }
@@ -157,48 +165,24 @@ DictionaryEnsureWebView() {
             "message", DictionaryWebMessageReceived,
             "backColor", DictionaryIsDarkTheme() ? "1F2127" : "FBF9F3"),
         "controllerBackColor", DictionaryIsDarkTheme() ? 0x27211FFF : 0xF3F9FBFF))
-    DictionarySyncHost()
 
     try {
         startTick := A_TickCount
         DebugLog("Dictionary webview creating")
         PanelHostEnsure(DictionaryHost)
-        DictionarySyncHost()
         DebugLog("Dictionary webview ready in " . (A_TickCount - startTick) . " ms")
         return true
     } catch as webViewError {
-        DebugLog("Dictionary webview failed: " . webViewError.Message)
+        DebugLog("Dictionary webview failed")
         PanelHostHide(DictionaryHost)
-        DictionarySyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
-DictionarySyncHost() {
-    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView, DictionaryPageReady
-    if !IsObject(DictionaryHost) {
-        DictionaryGui := 0
-        DictionaryController := 0
-        DictionaryWebView := 0
-        DictionaryPageReady := false
-        return
-    }
-    DictionaryGui := DictionaryHost["gui"]
-    DictionaryController := DictionaryHost["controller"]
-    DictionaryWebView := DictionaryHost["webView"]
-    DictionaryPageReady := DictionaryHost["pageReady"]
-}
-
-DictionaryNavigationCompleted(sender, args) {
-    global DictionaryHost, DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryVisible
-    try success := args.IsSuccess
-    catch
-        success := false
-    DictionaryPageReady := success
-    if IsObject(DictionaryHost)
-        DictionaryHost["pageReady"] := success
-    if !success {
+DictionaryNavigationCompleted(host, sender, args) {
+    global DictionaryPendingEntry, DictionaryPendingQuery, DictionaryVisible
+    if !PanelHostPageReady(host) {
         ShowMsg("The dictionary page could not be loaded.", 3500)
         return
     }
@@ -215,6 +199,8 @@ DictionaryNavigationCompleted(sender, args) {
 }
 
 DictionaryWebMessageReceived(sender, args) {
+    global DictionaryHost, DictionarySessionId, DictionaryQuerySeq
+    global DictionaryLookupTimer, DictionarySuggestionTimer
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -224,26 +210,58 @@ DictionaryWebMessageReceived(sender, args) {
         word := DictionaryNormalizeWord(LLMMsgField(msg, "text"))
         if word = ""
             return
-        entry := DictionaryLookup(word)
-        if IsObject(entry)
-            DictionaryPushEntry(entry)
-        else
-            DictionaryPushMiss(word)
+        DictionaryQuerySeq += 1
+        if IsObject(DictionarySuggestionTimer)
+            SetTimer(DictionarySuggestionTimer, 0)
+        DictionarySuggestionTimer := 0
+        if IsObject(DictionaryLookupTimer)
+            SetTimer(DictionaryLookupTimer, 0)
+        DictionaryLookupTimer := DictionaryRunLookup.Bind(word, DictionarySessionId, DictionaryQuerySeq)
+        SetTimer(DictionaryLookupTimer, -1)
     } else if messageType = "openTranslate" {
         text := LLMMsgField(msg, "text")
         SetTimer(() => DictionaryOpenTranslate(text), -1)
     } else if messageType = "suggest" {
-        DictionarySendSuggestions(LLMMsgField(msg, "text"))
+        query := LLMMsgField(msg, "text")
+        DictionaryQuerySeq += 1
+        if IsObject(DictionarySuggestionTimer)
+            SetTimer(DictionarySuggestionTimer, 0)
+        DictionarySuggestionTimer := DictionaryRunSuggestions.Bind(query, DictionarySessionId, DictionaryQuerySeq)
+        SetTimer(DictionarySuggestionTimer, -1)
     } else if messageType = "drag" {
         ; Borderless window: drag from the page topbar by faking a title-bar
         ; hit (WM_NCLBUTTONDOWN with HTCAPTION).
-        PostMessage(0xA1, 2, 0, , "ahk_id " . DictionaryGui.Hwnd)
+        panelGui := PanelHostGui(DictionaryHost)
+        if IsObject(panelGui)
+            PostMessage(0xA1, 2, 0, , "ahk_id " . panelGui.Hwnd)
     } else if messageType = "hide" {
         DictionaryHide()
     } else if messageType = "cursorMove" {
         ; Same mouse-vanish-on-typing recovery as the other panels.
         ShowSystemCursor()
     }
+}
+
+DictionaryRunLookup(word, sessionId, querySeq) {
+    global DictionaryVisible, DictionarySessionId, DictionaryQuerySeq, DictionaryLookupTimer
+    DictionaryLookupTimer := 0
+    if !DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq
+        return
+    entry := DictionaryLookup(word)
+    if !DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq
+        return
+    if IsObject(entry)
+        DictionaryPushEntry(entry)
+    else
+        DictionaryPushMiss(word)
+}
+
+DictionaryRunSuggestions(query, sessionId, querySeq) {
+    global DictionaryVisible, DictionarySessionId, DictionaryQuerySeq, DictionarySuggestionTimer
+    DictionarySuggestionTimer := 0
+    if !DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq
+        return
+    DictionarySendSuggestions(query, sessionId, querySeq)
 }
 
 ; Ship the whole row to the page as JSON; every field is a string so the page
@@ -308,9 +326,11 @@ DictionaryFocusSearch(*) {
 ; query, words containing it, then fuzzy subsequence matches ("helo" → hello;
 ; the regexp scalar function registered by CSQLite does the matching). Capped
 ; at 12 words, deduplicated across tiers.
-DictionarySendSuggestions(query) {
-    global DictionaryHost
+DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
+    global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
     if !IsObject(DictionaryHost)
+        return
+    if sessionId && (!DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq)
         return
     words := [], seen := Map()
     db := DictionaryConnect()
@@ -332,6 +352,8 @@ DictionarySendSuggestions(query) {
                 . "%' AND word REGEXP '" . DictionaryFuzzyPattern(word) . "'" . freqOrder,
                 words, seen, 12)
     }
+    if sessionId && (!DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq)
+        return
     PanelHostExecute(DictionaryHost, "window.setSuggestions(" . JSON.stringify(words, 0) . ");")
 }
 
@@ -396,38 +418,55 @@ DictionaryRemoveFrameBorder(hwnd) {
 }
 
 DictionaryFocusMonitor(*) {
-    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryFocusTimer
-    if !DictionaryVisible || !IsObject(DictionaryGui) {
+    global DictionaryHost, DictionaryVisible
+    if !DictionaryVisible || !IsObject(PanelHostGui(DictionaryHost)) {
         PanelHostStopFocusMonitor(DictionaryHost)
-        DictionaryFocusTimer := false
         return
     }
-    if !WinActive("ahk_id " . DictionaryGui.Hwnd)
+    if !PanelHostWindowActive(DictionaryHost)
         DictionaryHide()
 }
 
 DictionaryHide(*) {
-    global DictionaryHost, DictionaryGui, DictionaryVisible, DictionaryFocusTimer
+    global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
+    global DictionaryLookupTimer, DictionarySuggestionTimer
     global DictionaryPendingEntry, DictionaryPendingQuery
     DictionaryVisible := false
+    DictionarySessionId += 1
+    DictionaryQuerySeq += 1
+    if IsObject(DictionaryLookupTimer)
+        SetTimer(DictionaryLookupTimer, 0)
+    if IsObject(DictionarySuggestionTimer)
+        SetTimer(DictionarySuggestionTimer, 0)
+    DictionaryLookupTimer := 0
+    DictionarySuggestionTimer := 0
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""
     PanelHostHide(DictionaryHost)
     PanelHostStopFocusMonitor(DictionaryHost)
-    DictionaryFocusTimer := false
 }
 
 DictionaryShutdown(*) {
-    global DictionaryHost, DictionaryGui, DictionaryController, DictionaryWebView
-    global DictionaryVisible, DictionaryPageReady, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryDB
+    global DictionaryHost, DictionaryVisible, DictionaryPendingEntry, DictionaryPendingQuery, DictionaryDB
+    global DictionarySessionId, DictionaryQuerySeq
+    global DictionaryLookupTimer, DictionarySuggestionTimer
     DictionaryVisible := false
-    DictionaryPageReady := false
+    DictionarySessionId += 1
+    DictionaryQuerySeq += 1
+    if IsObject(DictionaryLookupTimer)
+        SetTimer(DictionaryLookupTimer, 0)
+    if IsObject(DictionarySuggestionTimer)
+        SetTimer(DictionarySuggestionTimer, 0)
+    DictionaryLookupTimer := 0
+    DictionarySuggestionTimer := 0
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""
     PanelHostDestroy(DictionaryHost)
     DictionaryHost := 0
     try DictionaryDB := 0
-    DictionaryWebView := 0
-    DictionaryController := 0
-    DictionaryGui := 0
+}
+
+DictionaryIsActive() {
+    global DictionaryHost
+    return PanelHostWindowActive(DictionaryHost)
 }

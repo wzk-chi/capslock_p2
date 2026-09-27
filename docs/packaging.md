@@ -65,7 +65,8 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 - `capslock_p2-default.ini`、`capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
 
 设置中心由 CapsLock+F12、托盘菜单「设置」和 qbar `cl set` 打开；翻译和 AI 页面中的设置按钮只发送消息，
-不会再加载独立的设置脚本。仓库中的 `pages\settings.js` 因禁止删除文件而保留，但不属于运行时页面和发布资源。
+不会再加载独立的设置脚本。`pages\settings.js` 与旧的 `loadScript\`、`lib\math.ahk`、
+`lib\jsEval.ahk`、INI 诊断副本已在本轮经用户授权删除，不属于运行时或发布资源。
 
 安装器默认创建当前用户的开始菜单和桌面快捷方式。用户可以在安装向导中改选安装目录，但程序需要对该目录具有写入权限，因为配置、日志和窗口绑定记录位于程序目录旁。
 
@@ -74,6 +75,8 @@ Everything 建立索引时使用独立数据目录：
 ```text
 %LocalAppData%\capslock_p2\Everything\
 ```
+
+qbar 的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。`Qbar.esMaxResults` 仍可在 1–500 范围内调整。
 
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 
@@ -85,10 +88,12 @@ WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsof
 - 用户文件只保存覆盖项，升级时不会覆盖已有的用户配置；
 - 不打包 `capslock_p2-debug.log`；
 - 不打包 `capslock_p2-winsInfosRecorder.ini`；
-- 不打包 `capslock-plus\`、`.claude\`、诊断脚本和 AHK 源码；
+- 不打包 `capslock-plus\`、`.claude\`、已退役诊断脚本和 AHK 源码；
 - 不把个人 API Key 写入 `.iss`、默认配置或任何发布文档。
 
-生成的安装器是一个 EXE，但安装后仍会有 `pages`、`resources` 等运行时文件，这是因为 WebView2、SQLite、词典和 Everything 都必须按磁盘路径访问。不要为了追求“安装后只有一个文件”而把这些文件删除或移动到未被代码支持的位置。
+系统提示词等多行字段由配置层编码为单行 INI 存储值，读取时恢复逻辑换行；TabHotString 继续兼容 `\n` 与 `\\` 约定。配置保存只持久化有效变化，日志不记录 API Key、请求正文、剪贴板或用户输入。
+
+生成的安装器是一个 EXE，但安装后仍会有 `pages`、`resources` 等运行时文件，这是因为 WebView2、SQLite、词典和 Everything 都必须按磁盘路径访问。程序按固定资源布局查找 es.exe 和内置 Everything；不要把它们删除或移动到未被代码支持的位置。
 
 ## 输出与验证
 

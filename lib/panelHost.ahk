@@ -26,10 +26,11 @@ PanelHostCreate(pagePath, title, options := 0) {
         "pageReady", false,
         "visible", false,
         "realized", false,
-        "focusTimer", false,
         "focusMonitor", 0,
         "navigationHandler", 0,
-        "messageHandler", 0)
+        "messageHandler", 0,
+        "navigationToken", 0,
+        "messageToken", 0)
 
     host["gui"] := Gui(guiOptions, title)
     host["gui"].MarginX := 0
@@ -69,17 +70,17 @@ PanelHostEnsure(host) {
             host["gui"].Hwnd, 0, host["dataPath"], "", loaderPath
         ).await2(15000)
         host["controller"].Fill()
-        callbacks := host["callbacks"]
         if IsNumber(host["controllerBackColor"])
             try host["controller"].DefaultBackgroundColor := host["controllerBackColor"]
         host["webView"] := host["controller"].CoreWebView2
         host["navigationHandler"] := PanelHostNavigationCompleted.Bind(host)
         host["messageHandler"] := PanelHostWebMessageReceived.Bind(host)
-        host["webView"].add_NavigationCompleted(host["navigationHandler"])
-        host["webView"].add_WebMessageReceived(host["messageHandler"])
+        host["navigationToken"] := host["webView"].add_NavigationCompleted(host["navigationHandler"])
+        host["messageToken"] := host["webView"].add_WebMessageReceived(host["messageHandler"])
         PanelHostNavigate(host)
         return true
     } catch as webViewError {
+        PanelHostDetachWebViewEvents(host)
         host["pageReady"] := false
         host["webView"] := 0
         host["controller"] := 0
@@ -96,7 +97,7 @@ PanelHostNavigationCompleted(host, sender, args) {
     host["pageReady"] := success
     callbacks := host["callbacks"]
     if callbacks.Has("navigation")
-        callbacks["navigation"].Call(sender, args)
+        callbacks["navigation"].Call(host, sender, args)
 }
 
 PanelHostWebMessageReceived(host, sender, args) {
@@ -176,7 +177,6 @@ PanelHostStartFocusMonitor(host, callback, interval := 100) {
         return false
     PanelHostStopFocusMonitor(host)
     host["focusMonitor"] := callback
-    host["focusTimer"] := true
     SetTimer(callback, interval)
     return true
 }
@@ -186,13 +186,40 @@ PanelHostStopFocusMonitor(host) {
         return
     if IsObject(host["focusMonitor"])
         SetTimer(host["focusMonitor"], 0)
-    host["focusTimer"] := false
+    host["focusMonitor"] := 0
+}
+
+PanelHostDetachWebViewEvents(host) {
+    if !IsObject(host) || !IsObject(host["webView"])
+        return
+    if host["navigationToken"]
+        try host["webView"].remove_NavigationCompleted(host["navigationToken"])
+    if host["messageToken"]
+        try host["webView"].remove_WebMessageReceived(host["messageToken"])
+    host["navigationToken"] := 0
+    host["messageToken"] := 0
+    host["navigationHandler"] := 0
+    host["messageHandler"] := 0
+}
+
+PanelHostGui(host) {
+    return IsObject(host) ? host["gui"] : 0
+}
+
+PanelHostPageReady(host) {
+    return IsObject(host) && host["pageReady"]
+}
+
+PanelHostWindowActive(host) {
+    panelGui := PanelHostGui(host)
+    return IsObject(panelGui) && WinActive("ahk_id " . panelGui.Hwnd)
 }
 
 PanelHostDestroy(host) {
     if !IsObject(host)
         return
     PanelHostStopFocusMonitor(host)
+    PanelHostDetachWebViewEvents(host)
     if IsObject(host["gui"])
         try host["gui"].Destroy()
     host["gui"] := 0

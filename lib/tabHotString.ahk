@@ -4,7 +4,6 @@
 
 TabHotStringAction() {
     global A_Clipboard, ClipboardWatcherSuspended
-    oldClipboard := ClipboardAll()
     replacement := ""
 
     selectedText := GetSelectedText()
@@ -13,25 +12,32 @@ TabHotStringAction() {
         if replacement != "" && replacement != selectedText
             SetClipboardText(replacement)
     } else {
+        oldClipboard := ClipboardAll()
+        previousSuspension := ClipboardWatcherSuspended
+        ownedSequence := 0
         ClipboardWatcherSuspended := true
         try {
             A_Clipboard := ""
+            ownedSequence := ClipboardSequenceNumber()
             SendInput("+{Home}")
             Sleep(10)
             SendInput("^{Insert}")
             if ClipWait(0.15) {
                 lineText := A_Clipboard
+                ownedSequence := ClipboardSequenceNumber()
                 replacement := GetHotStringReplacement(lineText, &matched)
                 if replacement != "" && replacement != lineText {
                     A_Clipboard := replacement
+                    ownedSequence := ClipboardSequenceNumber()
                     SendInput("^v")
                     Sleep(60)
                 }
             }
         } finally {
-            ClipboardWatcherSuspended := false
+            if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+                A_Clipboard := oldClipboard
+            ClipboardWatcherSuspended := previousSuspension
         }
     }
-    A_Clipboard := oldClipboard
     return replacement
 }

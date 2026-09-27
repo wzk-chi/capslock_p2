@@ -42,7 +42,7 @@ Initialize() {
     BuildKeySet()
     ApplyGlobalSettings()
     TrayMenuInitialize()
-    DebugLog("Initialize settings=" . SettingsFile)
+    DebugLog("Initialize settings")
     if ConfigGlobalRead("loadingAnimation") != "0"
         ShowLoading()
 
@@ -57,7 +57,6 @@ Initialize() {
 
     SettingsModifyTime := ConfigFileModifyTime()
     SetTimer(MonitorSettings, 500)
-    SetTimer(HotStringInit, -1)
 
     if ConfigGlobalRead("loadingAnimation") != "0" {
         Sleep(80)
@@ -80,7 +79,7 @@ EnsureConfiguredElevation() {
         Run("*RunAs " . command)
         ExitApp()
     } catch as elevationError {
-        DebugLog("Admin elevation failed: " . elevationError.Message)
+        DebugLog("Admin elevation failed")
         ShowMsg("无法以管理员身份启动，将继续以普通权限运行。", 5000)
         return true
     }
@@ -98,13 +97,13 @@ Shutdown(*) {
     try HideLoading()
 }
 
-ReloadSettings(*) {
+ReloadSettings(notifySettingsPage := true, *) {
+    global SettingsVisible
+    previous := ConfigSnapshot()
     ConfigLoad()
-    BuildKeySet()
-    RegisterCustomHotkeys()
-    ApplyGlobalSettings()
-    InitializeMouseSpeed()
-    RebuildHotStringPattern()
+    ApplyConfigChanges(ConfigEffectiveDiff(previous, Config))
+    if notifySettingsPage && SettingsVisible
+        SetTimer(SettingsPushSnapshot, -1)
     DebugLog("Settings reloaded")
 }
 
@@ -112,7 +111,7 @@ ApplyGlobalSettings() {
     global AllowClipboardWatcher, DebugLogging
     AllowClipboardWatcher := ConfigGlobalRead("allowClipboard") != "0"
     DebugLogging := ConfigGlobalRead("debug") = "1"
-    DebugLog("Global settings applied clipboard=" . AllowClipboardWatcher . " debug=" . DebugLogging)
+    DebugLog("Global settings applied")
     EnsureAutostartShortcut(ConfigGlobalRead("autostart") = "1")
     TrayMenuRefresh()
 }
@@ -145,17 +144,6 @@ SettingInteger(section, key, fallback, minimum, maximum) {
     return Max(minimum, Min(maximum, parsedValue))
 }
 
-SettingNumber(section, key, fallback, minimum, maximum) {
-    global Config
-    value := fallback
-    if Config.Has(section) && Config[section].Has(key)
-        value := Config[section][key]
-    if !RegExMatch(Trim(String(value)), "^-?(?:\d+\.?\d*|\.\d+)$")
-        return fallback
-    parsedValue := value + 0
-    return Max(minimum, Min(maximum, parsedValue))
-}
-
 MonitorSettings() {
     global SettingsModifyTime
     currentTime := ConfigFileModifyTime()
@@ -167,47 +155,97 @@ MonitorSettings() {
 
 ConfigSet(section, key, value) {
     global Config, SettingsFile, SettingsModifyTime
-    value := String(value)
+    normalized := ""
+    if !ConfigValidateValue(section, key, value, &normalized) {
+        ShowMsg("Invalid setting value: " . section . "/" . key, 2500)
+        return false
+    }
     try {
-        ConfigWriteValue(SettingsFile, section, key, value)
+        ConfigWriteValue(SettingsFile, section, key, normalized)
     } catch as writeError {
         ShowMsg("Unable to write settings: " . writeError.Message, 2500)
         return false
     }
     if !Config.Has(section)
         Config[section] := Map()
-    Config[section][key] := value
+    Config[section][key] := normalized
     SettingsModifyTime := ConfigFileModifyTime()
-    ApplySettingChange(section, key, value)
+    ApplySettingChange(section, key, normalized)
     return true
 }
 
 ApplySettingChange(section, key, value) {
-    global AllowClipboardWatcher, DebugLogging, MouseSpeed
-    if section = "Global" {
-        switch key {
-            case "allowClipboard":
-                AllowClipboardWatcher := value != "0"
-            case "debug":
-                DebugLogging := value = "1"
-            case "mouseSpeed":
-                MouseSpeed := SettingInteger("Global", "mouseSpeed", 3, 1, 20)
-            case "autostart":
-                EnsureAutostartShortcut(value = "1")
-                TrayMenuRefresh()
-            case "loadingAnimation", "language":
-                TrayMenuRefresh()
-        }
+    changes := Map()
+    changes[section] := Map(key, value)
+    ApplyConfigChanges(changes)
+}
+
+ApplyConfigChanges(changes) {
+    global AllowClipboardWatcher, DebugLogging, MouseSpeed, Config
+    if !IsObject(changes) || !changes.Count
         return
+
+    rebuildKeys := false
+    rebuildCustomHotkeys := false
+    rebuildHotStrings := false
+    refreshQbarIndex := false
+    refreshTranslation := false
+    refreshAi := false
+
+    for section, values in changes {
+        if !IsObject(values)
+            continue
+        switch section {
+            case "Global":
+                for key, value in values {
+                    switch key {
+                        case "allowClipboard":
+                            AllowClipboardWatcher := value != "0"
+                        case "debug":
+                            DebugLogging := value = "1"
+                        case "mouseSpeed":
+                            MouseSpeed := SettingInteger("Global", "mouseSpeed", 3, 1, 20)
+                        case "autostart":
+                            EnsureAutostartShortcut(value = "1")
+                        case "language":
+                            refreshQbarIndex := true
+                    }
+                }
+                TrayMenuRefresh()
+            case "Keys":
+                rebuildKeys := true
+            case "CustomHotkey":
+                rebuildCustomHotkeys := true
+            case "TabHotString":
+                rebuildHotStrings := true
+            case "QSearch", "QRun", "QWeb":
+                rebuildHotStrings := true
+                refreshQbarIndex := true
+            case "LLM":
+                refreshTranslation := true
+                refreshAi := true
+            case "LLMTranslate", "TTranslate", "TYoudao", "TVolcengine":
+                refreshTranslation := true
+            case "QAI":
+                refreshAi := true
+            case "Qbar":
+                ; esMaxResults is read at query time; no index rebuild is needed.
+        }
     }
 
-    switch section {
-        case "Keys":
-            BuildKeySet()
-        case "CustomHotkey":
-            RegisterCustomHotkeys()
-        case "TabHotString", "QRun", "QWeb":
-            RebuildHotStringPattern()
+    if rebuildKeys
+        BuildKeySet()
+    if rebuildCustomHotkeys
+        RegisterCustomHotkeys()
+    if rebuildHotStrings
+        RebuildHotStringPattern()
+    if refreshQbarIndex
+        QbarInvalidateConfigIndex()
+    if refreshAi {
+        try AiChatOnSettingsSaved()
+    }
+    if refreshTranslation {
+        try LLMTranslateOnSettingsSaved()
     }
 }
 
@@ -336,13 +374,10 @@ TrayToggleLoadingAnimation(*) {
     ConfigSet("Global", "loadingAnimation", enabled ? "0" : "1")
 }
 
-HotStringInit(*) {
-    RebuildHotStringPattern()
-}
-
 RebuildHotStringPattern() {
     global HotStringKeys
     HotStringKeys := []
+    seen := Map()
     ; The CapsLock+Tab tail match draws from all three value sections, like the
     ; reference CLhotString: a configured run or web entry can be expanded in an
     ; editor too. QRun/QWeb keys carry a "<display>" suffix, so they are matched
@@ -350,8 +385,15 @@ RebuildHotStringPattern() {
     for section in ["TabHotString", "QRun", "QWeb"] {
         for key, value in ConfigSection(section) {
             short := QbarShortKey(key)
-            if short != ""
-                HotStringKeys.Push(short)
+            if short = "" || seen.Has(short)
+                continue
+            ; Longer suffixes must win; insertion retains the section/key
+            ; order when two candidates have the same length.
+            insertAt := 1
+            while insertAt <= HotStringKeys.Length && StrLen(HotStringKeys[insertAt]) >= StrLen(short)
+                insertAt += 1
+            HotStringKeys.InsertAt(insertAt, short)
+            seen[short] := true
         }
     }
 }
@@ -371,13 +413,13 @@ GetHotStringReplacement(text, &matchedKey := "") {
     return ""
 }
 
-; The value a hotstring key expands to, searched TabHotString -> QRun -> QWeb
-; like the reference CLhotString. Only TabHotString values take the escapes
-; (see HotStringUnescape). Run and web values are used as written.
+; The value a hotstring key expands to, searched TabHotString -> QRun -> QWeb.
+; TabHotString decoding happens once at the configuration boundary; Run and
+; web values are used as written.
 HotStringValue(key) {
     value := ConfigRead("TabHotString", key, "")
     if value != ""
-        return HotStringUnescape(value)
+        return value
     for section in ["QRun", "QWeb"] {
         for candidate, value in ConfigSection(section) {
             if QbarShortKey(candidate) = key && Trim(value) != ""
@@ -385,34 +427,6 @@ HotStringValue(key) {
         }
     }
     return ""
-}
-
-; TabHotString value escapes, C style: "\n" becomes a real newline and "\\"
-; a single backslash -- so a literal "\n" is written "\\n". Any other
-; backslash pair is kept as written, so values like "D:\docs" need no escape.
-HotStringUnescape(value) {
-    result := ""
-    index := 1
-    length := StrLen(value)
-    while index <= length {
-        character := SubStr(value, index, 1)
-        if character = "\" && index < length {
-            nextCharacter := SubStr(value, index + 1, 1)
-            if nextCharacter = "n" {
-                result .= "`n"
-                index += 2
-                continue
-            }
-            if nextCharacter = "\" {
-                result .= "\"
-                index += 2
-                continue
-            }
-        }
-        result .= character
-        index += 1
-    }
-    return result
 }
 
 CLhotString() {
@@ -446,17 +460,17 @@ RunConfiguredAction(actionText) {
     if !RegExMatch(functionName, "i)^keyFunc_")
         return
 
-    DebugLog("Action function=" . functionName)
+    DebugLog("Action invoked")
 
     try functionObject := %functionName%
     catch as functionError {
-        DebugLog("Unknown key function=" . functionName . " error=" . functionError.Message)
+        DebugLog("Unknown key function")
         ShowMsg("Unknown key function: " . functionName, 2500)
         return
     }
 
     if !HasMethod(functionObject, "Call") {
-        DebugLog("Non-callable key function=" . functionName)
+        DebugLog("Non-callable key function")
         ShowMsg("Unknown key function: " . functionName, 2500)
         return
     }
@@ -464,7 +478,7 @@ RunConfiguredAction(actionText) {
     arguments := SplitActionArguments(argumentText)
     try functionObject.Call(arguments*)
     catch as functionError {
-        DebugLog("Action failed function=" . functionName . " error=" . functionError.Message)
+        DebugLog("Action failed")
         ShowMsg(functionName . ": " . functionError.Message, 3000)
     }
 }
@@ -953,14 +967,20 @@ ExtractSetString(value, &runString := "", &runAsAdmin := false, &parameters := "
 SetClipboardText(text) {
     global A_Clipboard, ClipboardWatcherSuspended
     oldClipboard := ClipboardAll()
+    previousSuspension := ClipboardWatcherSuspended
+    ownedSequence := 0
     ClipboardWatcherSuspended := true
     try {
         A_Clipboard := text
+        ownedSequence := ClipboardSequenceNumber()
         SendInput("^v")
         Sleep(60)
     } finally {
-        A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := false
+        ; Do not put an older snapshot back over clipboard data the user
+        ; supplied while the paste was in flight.
+        if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+            A_Clipboard := oldClipboard
+        ClipboardWatcherSuspended := previousSuspension
     }
 }
 

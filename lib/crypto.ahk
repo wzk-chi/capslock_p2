@@ -11,6 +11,28 @@ CryptoSha256Hex(text) {
     return CryptoDigestHex(CryptoBcryptHash(binary, byteLength, 0, 0))
 }
 
+; Percent-encode a UTF-8 string for query strings and application/x-www-form-
+; urlencoded bodies. RFC 3986 unreserved bytes stay literal and spaces become
+; %20, which both qbar URL substitution and Youdao's form endpoint accept.
+UrlEncodeUtf8(text) {
+    static unreserved := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+    if text = ""
+        return ""
+    byteCount := StrPut(text, "UTF-8") - 1
+    byteBuffer := Buffer(byteCount + 1, 0)
+    StrPut(text, byteBuffer, "UTF-8")
+    result := ""
+    Loop byteCount {
+        byte := NumGet(byteBuffer, A_Index - 1, "UChar")
+        character := Chr(byte)
+        if byte < 0x80 && InStr(unreserved, character)
+            result .= character
+        else
+            result .= Format("%{:02X}", byte)
+    }
+    return result
+}
+
 ; HMAC-SHA-256. key: Buffer with raw bytes, or String (hashed as UTF-8).
 ; Returns a 32-byte Buffer, so chained derivations can feed it straight back
 ; in as the key of the next round.

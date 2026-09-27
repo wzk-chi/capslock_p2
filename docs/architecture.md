@@ -22,7 +22,7 @@
 ```
 capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
-  config.ahk                       INI 解析、默认覆盖层、类型读取与原子写入
+  config.ahk                       schema、字段 codec、INI 解析、默认覆盖层、类型读取与原子写入
   core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
@@ -33,7 +33,7 @@ lib\
   qbar_panel.ahk                   qbar 面板生命周期、消息和尺寸
   qbar_index.ahk                   条目索引、过滤和图标行准备
   qbar_commands.ahk                命令、运行、网址和 AI 调度
-  qbar_everything.ahk              Everything 后端、CSV 与 UTF-8 解析
+  qbar_everything.ahk              Everything 后端、异步可取消作业、CSV 与 UTF-8 解析
   qbar_navigation.ahk              文件夹导航和路径补全
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
@@ -41,7 +41,7 @@ lib\
   youdaoTranslate.ahk              有道智云翻译 API（[TYoudao]，WinHttp + SHA-256 签名）
   volcengineTranslate.ahk          火山引擎翻译 API（[TVolcengine]，V4 签名、TextList 分批）
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
-  dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询）
+  dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
   aiChat.ahk                       AI 聊天面板（使用 [LLM]、[QAI] 仅存行为设置、多轮对话）
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
@@ -56,8 +56,8 @@ tools\                             Inno Setup 打包配置与脱敏 ini（不参
 capslock-plus\                     原版 AHK v1 源码（只读参考，禁止修改）
 ```
 
-`math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 仍留在工作区是因为项目禁止删除文件；
-它们不在入口 include、设置页活动字段或发布资源中，不属于运行时架构。
+`math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 已退出运行路径，并在本轮用户授权的退役清理中删除；
+它们不属于当前运行时架构。旧诊断脚本同样不作为配置行为验证依据。
 
 ## 翻译引擎注册表
 
@@ -108,7 +108,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 ## WebView2 面板
 
-所有 WebView2 面板共用 `lib/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。
+所有 WebView2 面板共用 `lib/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
 设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 是否失焦隐藏由 `[QAI] hideOnBlur` 控制。
 
 页面通信遵循同一套习惯：
@@ -129,8 +129,12 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 - **translate**：`LLMTranslateStartRequest` 是唯一调度点——按 `TranslateResolve` 的结果把
   请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
 - **dictionary**：查询走 `CSQLite` 的只读连接；搜索联想三段式（前缀→包含→模糊子序列，
-  词频排序）。词形、其余音标字段都是可点击的跳转查询。
+  词频排序）。词形、其余音标字段都是可点击的跳转查询；消息回调只记录查询序号，SQLite 工作在可取消队列中执行。
 - **settings**：`settings.html` 是唯一活动设置界面；F12、托盘菜单、qbar `cl set` 和功能页设置按钮都路由到它。
+
+设置写入经过 `config.ahk` 的 schema 与字段 codec；提示词和 Tab 替换在 INI 边界使用单行编码，运行时只暴露逻辑文本。页面只发送相对基线的变更，只有有效变化才触发对应运行时应用；外部修改与未保存草稿冲突时保留草稿并提示用户。
+
+qbar 的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；QSearch/QRun/QWeb 使用 generation 缓存，配置或语言变化时统一失效。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收 qbar 自己启动的客户端或本会话拉起的内置实例。
 
 ## 屏幕自适应与 DPI
 
@@ -168,8 +172,9 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 ## 开发约定与坑
 
-约束（来自 `AGENTS.md`，必须遵守）：**不写测试、不启动运行脚本、不删文件**；优先复用现有
-官方实现，不重复造轮子；`capslock-plus/` 子目录只读参考，禁止修改。
+约束（来自 `AGENTS.md`，必须遵守）：**不写测试、不启动运行脚本**；优先复用现有官方实现，
+不重复造轮子；`capslock-plus/` 子目录只读参考，禁止修改。本轮仅按用户的明确授权删除了已确认
+无活动引用的退役文件，后续删除仍需单独授权。
 
 - **语法校验**：必须用 PowerShell 原生调用并等待退出码（Git Bash 的 MSYS 会把 `/validate`
   改写成 Unix 路径，且管道 `head` 会制造 exit 0 假阳性）：

@@ -38,7 +38,7 @@ IconDataURI(key) {
         return IconCache[key]
     uri := IconDataURIForKey(key)
     IconCache[key] := uri
-    DebugLog("Icon key=" . key . " bytes=" . StrLen(uri))
+    DebugLog("Icon extracted bytes=" . StrLen(uri))
     return uri
 }
 

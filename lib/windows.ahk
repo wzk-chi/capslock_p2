@@ -7,7 +7,6 @@ global PendingBindingCount := 0
 global PendingBindingTime := 0
 global WinTapedX := -1
 global LastActiveWinId := 0
-global GettingWinInfo := false
 global MinimizeWinStack := []
 global WinTransparentActive := false
 global WinTransparentId := 0
@@ -29,8 +28,8 @@ LoadWindowBindings() {
     for sectionName, values in sections {
         if !RegExMatch(sectionName, "^\d+$")
             continue
-        bindingNumber := sectionName + 0
-        if bindingNumber < 1 || bindingNumber > 10
+        bindingNumber := WindowBindingNumber(sectionName, 0)
+        if !bindingNumber
             continue
 
         bindType := values.Has("bindType") ? WindowBindingType(values["bindType"], 0) : 0
@@ -59,25 +58,35 @@ LoadWindowBindings() {
 }
 
 WindowBindingType(value, fallback := 1) {
-    try bindingTypeValue := Integer(value)
-    catch
+    value := Trim(String(value))
+    if !RegExMatch(value, "^[1-3]$")
         return fallback
-    if bindingTypeValue < 1 || bindingTypeValue > 3
+    return Integer(value)
+}
+
+WindowBindingNumber(value, fallback := 0) {
+    value := Trim(String(value))
+    if !RegExMatch(value, "^(?:[1-9]|10)$")
         return fallback
-    return bindingTypeValue
+    return Integer(value)
+}
+
+WindowBindingModes() {
+    return [
+        Map("id", 1, "label", "单个窗口", "description", "只绑定当前激活的窗口"),
+        Map("id", 2, "label", "窗口组", "description", "把当前窗口追加到已有窗口组"),
+        Map("id", 3, "label", "同应用窗口", "description", "自动匹配同一程序的窗口")]
 }
 
 WindowBindingDisplay(bindType) {
-    switch WindowBindingType(bindType, 0) {
-        case 1:
-            return Map("label", "单个窗口", "description", "只绑定当前激活的窗口")
-        case 2:
-            return Map("label", "窗口组", "description", "把当前窗口追加到已有窗口组")
-        case 3:
-            return Map("label", "同应用窗口", "description", "自动匹配同一程序的窗口")
-        default:
-            return Map("label", "未绑定", "description", "尚未捕获窗口")
+    bindType := WindowBindingType(bindType, 0)
+    if !bindType
+        return Map("id", 0, "label", "未绑定", "description", "尚未捕获窗口")
+    for mode in WindowBindingModes() {
+        if mode["id"] = bindType
+            return mode
     }
+    return Map("id", 0, "label", "未绑定", "description", "尚未捕获窗口")
 }
 
 ReadWindowBindingItem(values, index) {
@@ -110,7 +119,8 @@ WindowIsAlive(hwnd) {
 
 SaveWindowBinding(bindingNumber, binding) {
     global WindowBindingFile
-    if !binding
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !binding || !bindingNumber
         return
     try {
         IniWrite(binding.bindType, WindowBindingFile, bindingNumber, "bindType")
@@ -142,7 +152,10 @@ CloneWindowItems(items) {
 }
 
 BindingTap(bindingNumber) {
-    global PendingBindingNumber, PendingBindingCount, PendingBindingTime, GettingWinInfo
+    global PendingBindingNumber, PendingBindingCount, PendingBindingTime
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber
+        return
     now := A_TickCount
     if PendingBindingNumber = bindingNumber && now - PendingBindingTime < 500 {
         PendingBindingCount := Min(PendingBindingCount + 1, 3)
@@ -151,24 +164,27 @@ BindingTap(bindingNumber) {
         PendingBindingCount := 1
     }
     PendingBindingTime := now
-    GettingWinInfo := true
     SetTimer(CompletePendingBinding, -500)
 }
 
 CompletePendingBinding(*) {
-    global PendingBindingNumber, PendingBindingCount, GettingWinInfo
-    pendingNumber := PendingBindingNumber
+    global PendingBindingNumber, PendingBindingCount
+    pendingNumber := WindowBindingNumber(PendingBindingNumber)
     count := PendingBindingCount
     PendingBindingNumber := -1
     PendingBindingCount := 0
-    GettingWinInfo := false
-    if pendingNumber > 0 && count > 0
+    if pendingNumber && count > 0
         BindWindowFromActive(pendingNumber, count)
 }
 
 BindWindowFromActive(bindingNumber, bindType) {
     global WinBindings
-    bindType := WindowBindingType(bindType)
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber
+        return
+    bindType := WindowBindingType(bindType, 0)
+    if !bindType
+        return
     active := GetActiveWindowInfo()
     if !active
         return
@@ -260,6 +276,9 @@ ActivateWinId(hwnd) {
 
 activateWinAction(bindingNumber) {
     global WinBindings, LastActiveWinId, WinTapedX
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber
+        return
     if !WinBindings.Has(bindingNumber)
         return
     binding := WinBindings[bindingNumber]
@@ -314,6 +333,9 @@ activateWinAction(bindingNumber) {
 
 winsSort(bindingNumber) {
     global WinBindings, WinTapedX
+    bindingNumber := WindowBindingNumber(bindingNumber)
+    if !bindingNumber
+        return
     if WinBindings.Has(bindingNumber) {
         binding := WinBindings[bindingNumber]
         activeId := WinExist("A")

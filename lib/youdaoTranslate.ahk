@@ -64,20 +64,20 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
     input := text
     if StrLen(text) > 20
         input := SubStr(text, 1, 10) . StrLen(text) . SubStr(text, -10)
-    sign := BCryptSha256Hex(appID . input . salt . curtime . appKey)
-    DebugLog("youdao request q=" . StrLen(text) . " chars to=" . toLang)
+    sign := CryptoSha256Hex(appID . input . salt . curtime . appKey)
+    DebugLog("youdao request chars=" . StrLen(text))
 
     ; Send the parameters as a urlencoded form body (the reference flow and
     ; the official docs prefer POST; it also keeps long text out of the URL).
     ; Everything is percent-encoded, so the body stays pure ASCII.
-    body := "q=" . YoudaoUrlEncode(text)
+    body := "q=" . UrlEncodeUtf8(text)
         . "&from=auto"
-        . "&to=" . YoudaoUrlEncode(toLang)
-        . "&appKey=" . YoudaoUrlEncode(appID)
-        . "&salt=" . YoudaoUrlEncode(salt)
-        . "&curtime=" . YoudaoUrlEncode(curtime)
+        . "&to=" . UrlEncodeUtf8(toLang)
+        . "&appKey=" . UrlEncodeUtf8(appID)
+        . "&salt=" . UrlEncodeUtf8(salt)
+        . "&curtime=" . UrlEncodeUtf8(curtime)
         . "&signType=v3"
-        . "&sign=" . YoudaoUrlEncode(sign)
+        . "&sign=" . UrlEncodeUtf8(sign)
 
     try {
         request := ComObject("WinHttp.WinHttpRequest.5.1")
@@ -245,60 +245,6 @@ YoudaoErrorText(code) {
         return IsChineseLanguage() ? pair[2] : pair[1]
     }
     return LLMText("Youdao API error " . code, "有道翻译错误 " . code)
-}
-
-BCryptSha256Hex(text) {
-    byteLength := StrPut(text, "UTF-8") - 1
-    binary := Buffer(byteLength + 1)
-    StrPut(text, binary, "UTF-8")
-
-    algorithmHandle := 0
-    if DllCall("bcrypt\BCryptOpenAlgorithmProvider", "ptr*", &algorithmHandle := 0, "ptr", StrPtr("SHA256"), "ptr", 0, "uint", 0)
-        throw Error("BCryptOpenAlgorithmProvider failed")
-    hashHandle := 0
-    try {
-        ; Query the provider's required object size and hash size, as the
-        ; reference implementation (capslock-plus\lib\sha256.ahk) does.
-        objectLength := 0
-        hashLength := 0
-        if DllCall("bcrypt\BCryptGetProperty", "ptr", algorithmHandle, "ptr", StrPtr("ObjectLength"), "uint*", &objectLength := 0, "uint", 4, "uint*", &writtenLength := 0, "uint", 0)
-            throw Error("BCryptGetProperty(ObjectLength) failed")
-        if DllCall("bcrypt\BCryptGetProperty", "ptr", algorithmHandle, "ptr", StrPtr("HashDigestLength"), "uint*", &hashLength := 0, "uint", 4, "uint*", &writtenLength := 0, "uint", 0)
-            throw Error("BCryptGetProperty(HashDigestLength) failed")
-        hashObject := Buffer(objectLength, 0)
-        digest := Buffer(hashLength, 0)
-        if DllCall("bcrypt\BCryptCreateHash", "ptr", algorithmHandle, "ptr*", &hashHandle := 0, "ptr", hashObject, "uint", objectLength, "ptr", 0, "uint", 0, "uint", 0)
-            throw Error("BCryptCreateHash failed")
-        if DllCall("bcrypt\BCryptHashData", "ptr", hashHandle, "ptr", binary, "uint", byteLength, "uint", 0)
-            throw Error("BCryptHashData failed")
-        if DllCall("bcrypt\BCryptFinishHash", "ptr", hashHandle, "ptr", digest, "uint", hashLength, "uint", 0)
-            throw Error("BCryptFinishHash failed")
-    } finally {
-        if hashHandle
-            DllCall("bcrypt\BCryptDestroyHash", "ptr", hashHandle)
-        DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", algorithmHandle, "uint", 0)
-    }
-    hex := ""
-    loop hashLength
-        hex .= Format("{:02x}", NumGet(digest, A_Index - 1, "UChar"))
-    return hex
-}
-
-YoudaoUrlEncode(text) {
-    byteLength := StrPut(text, "UTF-8") - 1
-    binary := Buffer(byteLength + 1)
-    StrPut(text, binary, "UTF-8")
-    encoded := ""
-    loop byteLength {
-        byte := NumGet(binary, A_Index - 1, "UChar")
-        if (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x5A)
-            || (byte >= 0x61 && byte <= 0x7A)
-            || byte = 0x2D || byte = 0x2E || byte = 0x5F || byte = 0x7E
-            encoded .= Chr(byte)
-        else
-            encoded .= "%" . Format("{:02X}", byte)
-    }
-    return encoded
 }
 
 YoudaoSalt() {

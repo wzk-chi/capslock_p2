@@ -9,71 +9,119 @@ QbarAllItems() {
     return items
 }
 
-QbarConfigItems() {
-    items := []
-    ; Trigger rows for the built-in commands, so they are discoverable and
-    ; Tab-completable like the search engines are. Enter with no argument
-    ; arms the trigger and lets the question be typed after it.
-    items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", ""))
-    ; The Everything trigger row, so the alias list in the label makes the file
-    ; search discoverable and Tab-completable like the search engines are.
-    items.Push(Map("short", "e", "label", "e <文件搜索 everything|find|f>", "type", "search", "value", ""))
-    for entry in QbarSearchEntries()
-        items.Push(entry)
-    for key, value in ConfigSection("QRun") {
-            if Trim(value) = ""
-                continue
-            ; Resolve *RunAs / quoting / parameters once: the resolved target
-            ; decides both the row type and its icon key.
-            runString := "", runAsAdmin := false, parameters := ""
-            resolved := ExtractSetString(value, &runString, &runAsAdmin, &parameters)
-            if resolved = ""
-                resolved := Trim(value)
-            isFolder := CheckStringType(resolved) = "folder"
-            items.Push(Map(
-                "short", QbarShortKey(key),
-                "label", key,
-                "type", isFolder ? "folder" : "file",
-                "value", value,
-                "icon", isFolder ? "folder" : IconKeyForPath(resolved)
-            ))
-        }
-    for key, value in ConfigSection("QWeb") {
-            if Trim(value) = ""
-                continue
-            items.Push(Map("short", QbarShortKey(key), "label", key, "type", "web", "value", value))
-        }
-    return items
+QbarInvalidateConfigIndex() {
+    global QbarConfigIndexCache, QbarConfigIndexGeneration
+    QbarConfigIndexGeneration += 1
+    QbarConfigIndexCache := 0
 }
 
-; [QSearch] entries, plus the language-aware built-in `s` trigger when it is
-; not defined. Adding an entry replaces only the trigger it names rather than
-; dropping the whole set. The special key "default" is never listed.
+QbarConfigIndex() {
+    global QbarConfigIndexCache, QbarConfigIndexGeneration
+    if IsObject(QbarConfigIndexCache)
+        && QbarConfigIndexCache["generation"] = QbarConfigIndexGeneration
+        return QbarConfigIndexCache
 
-QbarSearchEntries() {
-    entries := []
-    configured := Map()
+    items := []
+    sections := Map("QSearch", [], "QRun", [], "QWeb", [])
+    byShort := Map()
+    configuredSearch := Map()
+
+    ; Discoverability rows always lead the list. A configured q/e trigger still
+    ; wins at dispatch time because configured presence is indexed separately.
+    items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", ""))
+    items.Push(Map("short", "e", "label", "e <文件搜索 everything|find|f>", "type", "search", "value", ""))
+
+    ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former
+    ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun -> QWeb.
+    for section in ["QRun", "QWeb", "QSearch"]
+        for key, value in ConfigSection(section)
+            QbarConfigIndexRecordPresence(byShort, QbarShortKey(key))
+
     for key, value in ConfigSection("QSearch") {
-            if Trim(value) = "" || QbarShortKey(key) = "default"
-                continue
-            short := QbarShortKey(key)
-            configured[StrLower(short)] := true
-            entries.Push(Map("short", short, "label", key, "type", "search", "value", value))
-        }
-
-    ; "s" is the only dynamic default. Its engine follows the interface
-    ; language, while fixed engines live in capslock_p2-default.ini.
-    defaults := []
-    if IsChineseLanguage()
-        defaults.Push(Map("key", "s", "label", "s <搜索>", "value", "https://www.bing.com/search?q={q}"))
-    else
-        defaults.Push(Map("key", "s", "label", "s <search>", "value", "https://www.google.com/search?q={q}"))
-    for entry in defaults {
-        if configured.Has(StrLower(entry["key"]))
+        short := QbarShortKey(key)
+        if Trim(value) = "" || short = "default"
             continue
-        entries.Push(Map("short", entry["key"], "label", entry["label"], "type", "search", "value", entry["value"]))
+        configuredSearch[StrLower(short)] := true
+        entry := Map("short", short, "label", key, "type", "search", "value", value)
+        sections["QSearch"].Push(entry)
+        QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
     }
-    return entries
+    for key, value in ConfigSection("QRun") {
+        if Trim(value) = ""
+            continue
+        short := QbarShortKey(key)
+        runString := "", runAsAdmin := false, parameters := ""
+        resolved := ExtractSetString(value, &runString, &runAsAdmin, &parameters)
+        if resolved = ""
+            resolved := Trim(value)
+        isFolder := CheckStringType(resolved) = "folder"
+        entry := Map(
+            "short", short,
+            "label", key,
+            "type", isFolder ? "folder" : "file",
+            "value", value,
+            "icon", isFolder ? "folder" : IconKeyForPath(resolved))
+        sections["QRun"].Push(entry)
+        QbarConfigIndexRecordEntry(byShort, "QRun", entry)
+    }
+    for key, value in ConfigSection("QWeb") {
+        if Trim(value) = ""
+            continue
+        entry := Map("short", QbarShortKey(key), "label", key, "type", "web", "value", value)
+        sections["QWeb"].Push(entry)
+        QbarConfigIndexRecordEntry(byShort, "QWeb", entry)
+    }
+
+    ; The dynamic s row follows the configured QSearch rows. A non-empty user
+    ; entry suppresses it; an empty entry retains the previous fallback row.
+    if !configuredSearch.Has("s") {
+        if IsChineseLanguage()
+            entry := Map("short", "s", "label", "s <搜索>", "type", "search", "value", "https://www.bing.com/search?q={q}")
+        else
+            entry := Map("short", "s", "label", "s <search>", "type", "search", "value", "https://www.google.com/search?q={q}")
+        sections["QSearch"].Push(entry)
+        QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
+    }
+
+    for entry in sections["QSearch"]
+        items.Push(entry)
+    for entry in sections["QRun"]
+        items.Push(entry)
+    for entry in sections["QWeb"]
+        items.Push(entry)
+
+    QbarConfigIndexCache := Map(
+        "items", items,
+        "sections", sections,
+        "byShort", byShort,
+        "generation", QbarConfigIndexGeneration)
+    return QbarConfigIndexCache
+}
+
+QbarConfigIndexRecordPresence(byShort, short) {
+    token := short
+    if token = ""
+        return
+    if !byShort.Has(token)
+        byShort[token] := Map("configured", true)
+    else
+        byShort[token]["configured"] := true
+}
+
+QbarConfigIndexRecordEntry(byShort, section, entry) {
+    token := entry["short"]
+    if token = ""
+        return
+    if !byShort.Has(token)
+        byShort[token] := Map("configured", false)
+    ; First entry in a section keeps the same duplicate-trigger behavior as
+    ; the former linear QbarFindByShort() scan.
+    if !byShort[token].Has(section)
+        byShort[token][section] := entry
+}
+
+QbarConfigItems() {
+    return QbarConfigIndex()["items"]
 }
 
 QbarStartMenuItems() {
@@ -132,25 +180,35 @@ QbarQuery(text, querySeq := 0) {
     if !QbarVisible || !QbarIndexReady
         return
     if querySeq && querySeq != QbarQuerySeq {
-        DebugLog("Qbar query stale seq=" . querySeq . " latest=" . QbarQuerySeq)
+        DebugLog("Qbar query stale")
         DebugLogPrivate("Qbar stale query", text)
         return
     }
     text := Trim(text, " `t")
-    DebugLog("Qbar query apply seq=" . querySeq)
+    DebugLog("Qbar query apply")
     DebugLogPrivate("Qbar applied query", text)
     if text = "" {
+        if QbarEsMode
+            QbarEsCancelJob("empty query")
         QbarEsMode := false
         QbarSendResults([], false)
         return
     }
-    firstToken := QbarFirstToken(text)
+    hasArgument := QbarSplitCommand(text, &firstToken, &rest)
     ; "e <query>" (and its aliases) searches files; a configured trigger of the
     ; same name still wins.
-    if firstToken != text && !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
-        QbarEsRequest(text, firstToken)
+    if hasArgument && !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
+        if rest = "" {
+            QbarEsCancelJob("empty Everything argument")
+            QbarEsMode := false
+            QbarSendResults(QbarFilterItems(text), false)
+        } else {
+            QbarEsRequest(rest)
+        }
         return
     }
+    if QbarEsMode
+        QbarEsCancelJob("left Everything mode")
     QbarEsMode := false
     if QbarIsFolderQuery(text) {
         items := QbarFilterFolder(text)
@@ -190,13 +248,14 @@ QbarQuery(text, querySeq := 0) {
 ; implementation's check before it switches into folder-browse mode.
 
 QbarIsFolderQuery(text) {
-    if QbarConfigShortKeyExists(text) || QbarConfigShortKeyExists(QbarFirstToken(text))
+    QbarSplitCommand(text, &firstToken, &rest)
+    if QbarConfigShortKeyExists(text) || QbarConfigShortKeyExists(firstToken)
         return false
     return QbarFolderOf(text) != ""
 }
 
 QbarFilterItems(text) {
-    matchStrLeft := QbarFirstToken(text)
+    QbarSplitCommand(text, &matchStrLeft, &rest)
     glob := QbarGlobToRegEx(text)
     results := []
     for item in QbarAllItems() {
@@ -293,25 +352,21 @@ QbarSendResults(results, folderMode, placeholder := "") {
 ; ---------------------------------------------------------------------------
 
 QbarConfigShortKeyExists(token) {
-    if Trim(token) = ""
+    token := Trim(token)
+    if token = ""
         return false
-    for section in ["QRun", "QWeb", "QSearch"] {
-        for key, value in ConfigSection(section) {
-            if QbarShortKey(key) = token
-                return true
-        }
-    }
-    return false
+    byShort := QbarConfigIndex()["byShort"]
+    return byShort.Has(token) && byShort[token]["configured"]
 }
 
-QbarConfigItemsOf(section) {
-    items := []
-    for key, value in ConfigSection(section) {
-        if Trim(value) = ""
-            continue
-        items.Push(Map("short", QbarShortKey(key), "label", key, "value", value))
-    }
-    return items
+QbarConfigEntry(section, shortKey) {
+    token := Trim(shortKey)
+    if token = ""
+        return 0
+    byShort := QbarConfigIndex()["byShort"]
+    if !byShort.Has(token) || !byShort[token].Has(section)
+        return 0
+    return byShort[token][section]
 }
 
 QbarFindByShort(items, shortKey) {

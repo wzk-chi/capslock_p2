@@ -2,17 +2,13 @@
 ; now; configuration data and save messages will be added in a later pass.
 
 global SettingsHost := 0
-global SettingsGui := 0
-global SettingsController := 0
-global SettingsWebView := 0
-global SettingsPageReady := false
 global SettingsVisible := false
 global SettingsPendingPage := "general"
 global SettingsShortcutHook := 0
 global SettingsShortcutTarget := ""
 
 SettingsShow(initialPage := "general", *) {
-    global SettingsHost, SettingsGui, SettingsVisible, SettingsPendingPage
+    global SettingsHost, SettingsVisible, SettingsPendingPage
     initialPage := StrLower(Trim(initialPage))
     SettingsPendingPage := SettingsPageIsAllowed(initialPage) ? initialPage : "general"
     SettingsVisible := true
@@ -22,24 +18,24 @@ SettingsShow(initialPage := "general", *) {
     }
     ; Keep the native window state (including maximize/minimize) between opens.
     PanelHostShow(SettingsHost, 0, 0, false)
-    SettingsSyncHost()
-    WinActivate("ahk_id " . SettingsGui.Hwnd)
+    panelGui := PanelHostGui(SettingsHost)
+    if IsObject(panelGui)
+        WinActivate("ahk_id " . panelGui.Hwnd)
     ShowSystemCursor()
-    if SettingsPageReady
+    if PanelHostPageReady(SettingsHost)
         SetTimer(SettingsPushSnapshot, -1)
 }
 
 SettingsEnsureWebView() {
-    global SettingsHost, SettingsGui, SettingsController, SettingsWebView, SettingsPageReady
+    global SettingsHost
     pagePath := A_ScriptDir . "\pages\settings.html"
     if IsObject(SettingsHost) {
         try {
             PanelHostEnsure(SettingsHost)
-            SettingsSyncHost()
             return true
         } catch as existingError {
             PanelHostHide(SettingsHost)
-            DebugLog("settings webview failed: " . existingError.Message)
+            DebugLog("settings webview failed")
             ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
             return false
         }
@@ -56,45 +52,20 @@ SettingsEnsureWebView() {
             "navigation", SettingsNavigationCompleted,
             "message", SettingsWebMessageReceived,
             "backColor", SettingsIsDarkTheme() ? "20242B" : "F5F7FB")))
-    SettingsSyncHost()
-
     try {
         PanelHostEnsure(SettingsHost)
-        SettingsSyncHost()
         return true
     } catch as webViewError {
-        DebugLog("settings webview failed: " . webViewError.Message)
+        DebugLog("settings webview failed")
         PanelHostHide(SettingsHost)
-        SettingsSyncHost()
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
     }
 }
 
-SettingsSyncHost() {
-    global SettingsHost, SettingsGui, SettingsController, SettingsWebView, SettingsPageReady
-    if !IsObject(SettingsHost) {
-        SettingsGui := 0
-        SettingsController := 0
-        SettingsWebView := 0
-        SettingsPageReady := false
-        return
-    }
-    SettingsGui := SettingsHost["gui"]
-    SettingsController := SettingsHost["controller"]
-    SettingsWebView := SettingsHost["webView"]
-    SettingsPageReady := SettingsHost["pageReady"]
-}
-
-SettingsNavigationCompleted(sender, args) {
-    global SettingsHost, SettingsPageReady, SettingsVisible
-    try success := args.IsSuccess
-    catch
-        success := false
-    SettingsPageReady := success
-    if IsObject(SettingsHost)
-        SettingsHost["pageReady"] := success
-    if !success
+SettingsNavigationCompleted(host, sender, args) {
+    global SettingsVisible
+    if !PanelHostPageReady(host)
         ShowMsg("The settings page could not be loaded.", 3500)
     else if SettingsVisible
         SetTimer(SettingsPushSnapshot, -1)
@@ -113,15 +84,15 @@ SettingsWebMessageReceived(sender, args) {
     else if messageType = "setSettingsPage"
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     else if messageType = "saveSettings"
-        SetTimer(() => SettingsApplyDraft(message), -1)
+        SetTimer(SettingsApplyDraft.Bind(message), -1)
     else if messageType = "testSettings"
-        SetTimer(() => SettingsRunTest(message), -1)
+        SetTimer(SettingsRunTest.Bind(message), -1)
     else if messageType = "startShortcutRecording"
-        SetTimer(() => SettingsStartShortcutCapture(message), -1)
+        SetTimer(SettingsStartShortcutCapture.Bind(message), -1)
     else if messageType = "stopShortcutRecording"
         SettingsStopShortcutCapture()
     else if messageType = "captureWindow"
-        SetTimer(() => SettingsCaptureWindow(message), -1)
+        SetTimer(SettingsCaptureWindow.Bind(message), -1)
 }
 
 SettingsStartShortcutCapture(message) {
@@ -177,7 +148,7 @@ SettingsShortcutKeyDown(hook, vk, sc) {
     SettingsShortcutHook := 0
     SettingsShortcutTarget := ""
     try hook.Stop()
-    SetTimer(() => SettingsSendShortcutCapture(target, value, label), -1)
+    SetTimer(SettingsSendShortcutCapture.Bind(target, value, label), -1)
 }
 
 SettingsShortcutIsModifier(vk) {
@@ -267,8 +238,7 @@ SettingsSendShortcutCapture(target, value, label) {
 }
 
 SettingsConfigSections() {
-    return ["Global", "LLM", "LLMTranslate", "TTranslate", "TYoudao", "TVolcengine", "QAI",
-        "TabHotString", "Keys", "QSearch", "QRun", "QWeb", "Qbar", "CustomHotkey"]
+    return ConfigSchemaSections()
 }
 
 SettingsSectionSnapshot(section) {
@@ -282,8 +252,7 @@ SettingsSectionSnapshot(section) {
 }
 
 SettingsIsDynamicSection(section) {
-    return section = "TabHotString" || section = "QSearch" || section = "QRun" || section = "QWeb"
-        || section = "CustomHotkey"
+    return ConfigIsDynamicSection(section)
 }
 
 SettingsKeySnapshot() {
@@ -309,9 +278,6 @@ SettingsBindingSnapshot() {
                     "exe", item.exe, "path", item.path))
             row["items"] := items
         }
-        mode := WindowBindingDisplay(row["bindType"])
-        row["modeLabel"] := mode["label"]
-        row["modeDescription"] := mode["description"]
         result.Push(row)
     }
     return result
@@ -329,39 +295,13 @@ SettingsPushSnapshot(*) {
         "page", SettingsPendingPage,
         "sections", sections,
         "keys", SettingsKeySnapshot(),
-        "bindings", SettingsBindingSnapshot())
+        "bindings", SettingsBindingSnapshot(),
+        "bindingModes", WindowBindingModes())
     PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
 }
 
 SettingsAllowedKey(section, key) {
-    if RegExMatch(key, "[=`r`n]") || StrLen(key) > 120
-        return false
-    if section != "CustomHotkey" && RegExMatch(key, "[\[\]]")
-        return false
-    switch section {
-        case "Global":
-            return SettingsKeyIn(["autostart", "mouseSpeed", "allowClipboard", "debug",
-                "loadingAnimation", "language", "runAsAdmin"], key)
-        case "LLM":
-            return SettingsKeyIn(["endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model", "thinking",
-                "temperature", "timeout", "maxInputTokens"], key)
-        case "LLMTranslate":
-            return SettingsKeyIn(["systemPrompt"], key)
-        case "TTranslate":
-            return SettingsKeyIn(["targetLanguage", "engine"], key)
-        case "TYoudao":
-            return SettingsKeyIn(["appPaidID", "appPaidKey"], key)
-        case "TVolcengine":
-            return SettingsKeyIn(["accessKey", "secretKey", "region"], key)
-        case "QAI":
-            return SettingsKeyIn(["systemPrompt", "hideOnBlur"], key)
-        case "Qbar":
-            return SettingsKeyIn(["esPath", "everythingPath", "esInstance", "esMaxResults"], key)
-        case "Keys":
-            return RegExMatch(key, "i)^(press_caps|caps(_lalt)?_[A-Za-z0-9_]+)$")
-        default:
-            return SettingsIsDynamicSection(section)
-    }
+    return ConfigValidateKey(section, key)
 }
 
 SettingsKeyIn(values, target) {
@@ -385,30 +325,67 @@ SettingsCollectSectionChanges(changes, section, values) {
 
 SettingsApplyDraft(message) {
     msg := LLMMessageParse(message)
-    if !msg.Has("draft") || !IsObject(msg["draft"])
-        return
-    draft := msg["draft"]
-    if !draft.Has("sections") || !IsObject(draft["sections"])
+    sections := 0
+    if msg.Has("sections") && IsObject(msg["sections"])
+        sections := msg["sections"]
+    else if msg.Has("draft") && IsObject(msg["draft"])
+        && msg["draft"].Has("sections") && IsObject(msg["draft"]["sections"])
+        sections := msg["draft"]["sections"]
+    if !IsObject(sections)
         return
     if msg.Has("page")
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     try {
         changes := Map()
         for section in SettingsConfigSections() {
-            if draft["sections"].Has(section)
-                SettingsCollectSectionChanges(changes, section, draft["sections"][section])
+            if sections.Has(section)
+                SettingsCollectSectionChanges(changes, section, sections[section])
         }
-        if changes.Count {
-            ConfigWriteUserOverrides(changes)
+        if msg.Has("base") && IsObject(msg["base"]) {
+            conflict := SettingsFindDraftConflict(changes, msg["base"])
+            if conflict != "" {
+                SettingsSendSaved(false, LLMText(
+                    "The setting changed outside the settings page: " . conflict,
+                    "设置页外部已修改该字段：" . conflict))
+                return
+            }
         }
-        ReloadSettings()
-        AiChatOnSettingsSaved()
-        LLMTranslateOnSettingsSaved()
+        fileChanged := false
+        invalidChange := ""
+        effectiveChanges := ConfigWriteUserOverrides(changes, &fileChanged, &invalidChange)
+        if invalidChange != "" {
+            SettingsSendSaved(false, LLMText(
+                "Invalid setting value: " . invalidChange,
+                "设置值无效：" . invalidChange))
+            return
+        }
+        if effectiveChanges.Count {
+            ReloadSettings(false)
+        }
         SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
         SettingsPushSnapshot()
     } catch as saveError {
-        SettingsSendSaved(false, LLMText("Save failed: ", "保存失败：") . saveError.Message)
+        SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
     }
+}
+
+SettingsFindDraftConflict(changes, base) {
+    if !IsObject(changes) || !IsObject(base)
+        return ""
+    for section, values in changes {
+        if !IsObject(values)
+            continue
+        baseValues := base.Has(section) && IsObject(base[section]) ? base[section] : Map()
+        for key, value in values {
+            expected := baseValues.Has(key) ? String(baseValues[key]) : ConfigDefaultRead(section, key, "")
+            current := ConfigRead(section, key, ConfigDefaultRead(section, key, ""))
+            if section = "TabHotString" && baseValues.Has(key)
+                expected := String(expected)
+            if String(current) != expected
+                return section . "/" . key
+        }
+    }
+    return ""
 }
 
 SettingsSendSaved(ok, text) {
@@ -460,15 +437,16 @@ SettingsSendTestResult(ok, text) {
 
 SettingsCaptureWindow(message) {
     msg := LLMMessageParse(message)
-    numberText := LLMMsgField(msg, "number")
-    if !RegExMatch(numberText, "^\d+$")
+    numberValid := false
+    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
+    if !numberValid || bindingNumber < 1 || bindingNumber > 10
         return
-    bindingNumber := Integer(numberText)
-    if bindingNumber < 1 || bindingNumber > 10
+    bindTypeValid := false
+    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true))
+    if !bindTypeValid || bindType < 1 || bindType > 3
         return
-    bindType := WindowBindingType(LLMMsgField(msg, "bindType"))
     SettingsHide()
-    SetTimer(() => SettingsCompleteCapture(bindingNumber, bindType), -180)
+    SetTimer(SettingsCompleteCapture.Bind(bindingNumber, bindType), -180)
 }
 
 SettingsCompleteCapture(bindingNumber, bindType) {
@@ -484,8 +462,8 @@ SettingsResize(targetGui, minMax, width, height) {
 }
 
 SettingsRequestClose(*) {
-    global SettingsHost, SettingsPageReady
-    if !IsObject(SettingsHost) || !SettingsPageReady
+    global SettingsHost
+    if !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
         return true
     PanelHostExecute(SettingsHost, "window.requestCloseSettings();")
     return true
@@ -509,15 +487,10 @@ SettingsHide(*) {
 }
 
 SettingsShutdown(*) {
-    global SettingsHost, SettingsGui, SettingsController, SettingsWebView
-    global SettingsPageReady, SettingsVisible, SettingsPendingPage
+    global SettingsHost, SettingsVisible, SettingsPendingPage
     SettingsStopShortcutCapture()
     SettingsVisible := false
     SettingsPendingPage := "general"
     PanelHostDestroy(SettingsHost)
     SettingsHost := 0
-    SettingsGui := 0
-    SettingsController := 0
-    SettingsWebView := 0
-    SettingsPageReady := false
 }

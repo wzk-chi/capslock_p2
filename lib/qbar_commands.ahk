@@ -35,7 +35,7 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     }
     if text = ""
         return
-    DebugLog("QbarExecute ctrl=" . ctrlHeld . " selectedType=" . selectedType)
+    DebugLog("QbarExecute")
     DebugLogPrivate("Qbar execute", text)
 
     if ctrlHeld {
@@ -51,9 +51,7 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         return
     }
 
-    firstToken := QbarFirstToken(text)
-    if firstToken != text {
-        rest := Trim(SubStr(text, StrLen(firstToken) + 1), " `t")
+    if QbarSplitCommand(text, &firstToken, &rest) {
         ; Everything trigger: refresh the live results right away in case the
         ; debounce timer has not fired yet, and keep the panel open.
         if !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
@@ -76,11 +74,11 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
             return
         }
         ; Search engine trigger: substitute {q} with the URL-encoded argument.
-        search := QbarFindByShort(QbarSearchEntries(), firstToken)
+        search := QbarConfigEntry("QSearch", firstToken)
         if !IsObject(search)
-            search := QbarFindByShort(QbarSearchEntries(), QbarEngineAlias(firstToken))
+            search := QbarConfigEntry("QSearch", QbarEngineAlias(firstToken))
         if IsObject(search) {
-            QbarOpenUrl(StrReplace(search["value"], "{q}", QbarUrlEncode(rest)))
+            QbarOpenUrl(StrReplace(search["value"], "{q}", UrlEncodeUtf8(rest)))
             return
         }
         if QbarRunBy(firstToken, rest)
@@ -89,7 +87,7 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
 
     if QbarRunBy(text)
         return
-    web := QbarFindByShort(QbarConfigItemsOf("QWeb"), text)
+    web := QbarConfigEntry("QWeb", text)
     if IsObject(web) {
         QbarOpenUrl(web["value"])
         return
@@ -124,14 +122,12 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
 ; so the caller stops.
 
 QbarTryInlineConfig(text) {
-    firstToken := QbarFirstToken(text)
-    if firstToken = text
+    if !QbarSplitCommand(text, &firstToken, &rest)
         return false
-    rest := Trim(SubStr(text, StrLen(firstToken) + 1), " `t")
-    arrowWord := QbarFirstToken(rest)
+    if !QbarSplitCommand(rest, &arrowWord, &value)
+        return false
     if !RegExMatch(arrowWord, "^->(.*)$", &match)
         return false
-    value := Trim(SubStr(rest, StrLen(arrowWord) + 1), " `t")
     if value = ""
         return false
     section := QbarInlineSection(match[1], value)
@@ -189,9 +185,6 @@ QbarAddSetting(section, key, value) {
         if MsgBox(prompt, "qbar", "OKCancel") != "OK"
             return
     }
-
-    if section = "TabHotString"
-        value := StrReplace(StrReplace(value, "\n", "`n"), "`n", "\n")
 
     if ConfigSet(section, key, value)
         ShowMsg(QbarText("Added ", "已添加 ") . key, 1500)
@@ -254,17 +247,17 @@ QbarAiAsk(text) {
 }
 
 QbarRunBy(shortKey, params := "") {
-    entry := QbarFindByShort(QbarConfigItemsOf("QRun"), shortKey)
+    entry := QbarConfigEntry("QRun", shortKey)
     if !IsObject(entry)
         return false
 
     if params != "" {
         ; The argument may itself be another entry's trigger (reference qrunBy).
-        replacement := QbarFindByShort(QbarConfigItemsOf("QWeb"), params)
+        replacement := QbarConfigEntry("QWeb", params)
         if IsObject(replacement)
             params := replacement["value"]
         else {
-            replacement := QbarFindByShort(QbarConfigItemsOf("QRun"), params)
+            replacement := QbarConfigEntry("QRun", params)
             if IsObject(replacement)
                 params := replacement["value"]
         }
