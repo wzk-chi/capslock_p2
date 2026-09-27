@@ -34,7 +34,7 @@
 证据：
 
 - [settings.html](../pages/settings.html) 第 282–285 行暴露 `esPath`、`everythingPath`、`esInstance`、`esMaxResults`。
-- [qbar_everything.ahk](../lib/qbar_everything.ahk) 的 `QbarEsExe()`、`QbarEsEverythingExe()` 先返回缓存，再读取配置；路径不会因保存自动刷新。
+- [qbar_everything.ahk](../lib/features/qbar/qbar_everything.ahk) 的 `QbarEsExe()`、`QbarEsEverythingExe()` 先返回缓存，再读取配置；路径不会因保存自动刷新。
 - 设置页实际调用 `ReloadSettings()`，不是 `ApplySettingChange()`。两条路径都未清理路径缓存；上一轮只引用后者，调用链说明不完整。
 - [capslock_p2.iss](../tools/capslock_p2.iss) 已明确分发 `resources/es.exe` 和版本化目录中的 Everything。
 
@@ -57,11 +57,11 @@
 证据链：
 
 - [settings.html](../pages/settings.html) 的提示词和 Tab 替换使用 `textarea`，草稿直接保存 `.value`。
-- [settings.ahk](../lib/settings.ahk) 的 `SettingsCollectSectionChanges()` 只转换字符串，没有处理值中的 CR/LF。
-- [config.ahk](../lib/config.ahk) 的 `ConfigSetIniValue()` 直接拼接 `key=value`；`ConfigParseIni()` 按行解析。
+- [settings.ahk](../lib/features/settings.ahk) 的 `SettingsCollectSectionChanges()` 只转换字符串，没有处理值中的 CR/LF。
+- [config.ahk](../lib/app/config.ahk) 的 `ConfigSetIniValue()` 直接拼接 `key=value`；`ConfigParseIni()` 按行解析。
 - 因此多行内容的后续行可能被忽略，也可能被解释为新的键或节，而不只是显示时少一个换行。
 
-原建议“全部配置统一做 `\n` 解码”过于宽泛。路径、正则和提示词里的字面反斜杠必须保留；[core.ahk](../lib/core.ahk) 的 `HotStringUnescape()` 已对 TabHotString 实现 `\n` 和 `\\`，再解码一次会改变结果。
+原建议“全部配置统一做 `\n` 解码”过于宽泛。路径、正则和提示词里的字面反斜杠必须保留；[core.ahk](../lib/app/core.ahk) 的 `HotStringUnescape()` 已对 TabHotString 实现 `\n` 和 `\\`，再解码一次会改变结果。
 
 修订方案：在配置存储边界集中定义**字段级 codec**，页面使用实际文本，磁盘值始终占一个物理行。
 
@@ -83,9 +83,9 @@
 
 证据：
 
-- [dictionary.ahk](../lib/dictionary.ahk) 第 217 行起的消息回调同步执行查词和联想查询；联想包含前缀、包含和模糊匹配。
+- [dictionary.ahk](../lib/features/dictionary.ahk) 第 217 行起的消息回调同步执行查词和联想查询；联想包含前缀、包含和模糊匹配。
 - [dictionary.html](../pages/dictionary.html) 已有 120 毫秒输入防抖；`DictionarySuggestCollect()` 在候选够用时跳过后续查询。不能把这些已有措施说成缺失。
-- [qbar_everything.ahk](../lib/qbar_everything.ahk) 已由 `SetTimer(QbarEsFlush, -100)` 调度，并在结果回填前校验序号和可见性。
+- [qbar_everything.ahk](../lib/features/qbar/qbar_everything.ahk) 已由 `SetTimer(QbarEsFlush, -100)` 调度，并在结果回填前校验序号和可见性。
 - 历史问题是内部曾使用同步 `RunWait()` 和最多十次 `Sleep(1500)` 重试。15 秒只是显式休眠的合计，未包含进程等待；AHK 的 Sleep/RunWait 期间可以响应部分其他线程事件，不能据此断言整个程序必然冻结 15 秒。当前整改已改为带期限的异步作业。
 
 词典方案：消息回调负责解析和入队；用具名定时器合并最新联想请求，并携带查询序号和面板会话标识。清空输入、隐藏、重新打开、显式查词时使旧联想失效，页面也要校验返回结果是否对应当前查询。保留现有防抖和分层查询。
@@ -102,7 +102,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 ## 4. LLM 校验与日志：缺陷成立，避免借此改变服务兼容性
 
-证据：[llm.ahk](../lib/llm.ahk) 的 `LLMBuildRequest()` 第 280 行在校验前执行 `timeout + 0`；设置页超时输入是普通文本，保存路径不做类型校验。`LLMStreamComplete()` 第 686–687 行把完整 `errorText` 拼入日志，而它可能来自服务端错误正文或 COM 错误描述。
+证据：[llm.ahk](../lib/shared/llm.ahk) 的 `LLMBuildRequest()` 第 280 行在校验前执行 `timeout + 0`；设置页超时输入是普通文本，保存路径不做类型校验。`LLMStreamComplete()` 第 686–687 行把完整 `errorText` 拼入日志，而它可能来自服务端错误正文或 COM 错误描述。
 
 “存在泄露路径”成立；没有证据证明已有日志实际泄露了内容。界面可以显示必要的服务错误信息，文件日志应记录本地定义的错误类别、请求 ID、HTTP 状态、耗时和长度，避免记录原始错误正文或任意异常消息。端点脱敏也不能只去掉查询串而保留可能存在的 URL 用户信息。
 
@@ -125,9 +125,9 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 证据：
 
-- [settings.ahk](../lib/settings.ahk) 的 `SettingsApplyDraft()` 无条件调用完整重载、AI/翻译通知和快照推送。
-- [llmTranslate.ahk](../lib/llmTranslate.ahk) 的 `LLMTranslateOnSettingsSaved()` 在面板可见且有文本时会再次请求翻译，因此保存无关偏好也可能重复请求 API。
-- [config.ahk](../lib/config.ahk) 的 `ConfigSetIniValue()` 用 `StrSplit` 拆行后，为每个元素重新追加换行。已有末尾换行会产生尾部空元素，使相同赋值也可能增加空行。批量写入逐键重复此过程，文本比较会把这些空行当成变化。
+- [settings.ahk](../lib/features/settings.ahk) 的 `SettingsApplyDraft()` 无条件调用完整重载、AI/翻译通知和快照推送。
+- [llmTranslate.ahk](../lib/features/translate/llmTranslate.ahk) 的 `LLMTranslateOnSettingsSaved()` 在面板可见且有文本时会再次请求翻译，因此保存无关偏好也可能重复请求 API。
+- [config.ahk](../lib/app/config.ahk) 的 `ConfigSetIniValue()` 用 `StrSplit` 拆行后，为每个元素重新追加换行。已有末尾换行会产生尾部空元素，使相同赋值也可能增加空行。批量写入逐键重复此过程，文本比较会把这些空行当成变化。
 
 因此，“已有函数能可靠避免无变化写入”不成立，仅添加 `changed` 返回值不够。
 
@@ -146,7 +146,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 **维护成本问题成立，但不必生成整套 UI。**
 
-证据：[config.ahk](../lib/config.ahk) 的 section 补全列表，与 [settings.ahk](../lib/settings.ahk) 的 `SettingsConfigSections()`、`SettingsIsDynamicSection()`、`SettingsAllowedKey()` 重复描述相同配置。`SettingInteger()`、`SettingNumber()` 仍在 core 中直接读取全局配置。
+证据：[config.ahk](../lib/app/config.ahk) 的 section 补全列表，与 [settings.ahk](../lib/features/settings.ahk) 的 `SettingsConfigSections()`、`SettingsIsDynamicSection()`、`SettingsAllowedKey()` 重复描述相同配置。`SettingInteger()`、`SettingNumber()` 仍在 core 中直接读取全局配置。
 
 建议在 `lib/` 的配置边界提供一份轻量字段元数据：section、key、类型、空值含义、范围/枚举、codec、是否可由页面写入、关联的运行时处理组。默认值继续来自 `capslock_p2-default.ini`，不要在 schema 中复制完整默认配置。
 
@@ -160,7 +160,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 **收敛方向合理，应分面板实施。**
 
-证据：[panelHost.ahk](../lib/panelHost.ahk) 已拥有 GUI、controller、WebView、pageReady；AI、翻译、词典、设置和 qbar 又保存对应全局镜像并通过 `*SyncHost()` 复制。导航成功状态也被公共层和功能层重复赋值。
+证据：[panelHost.ahk](../lib/shared/panelHost.ahk) 已拥有 GUI、controller、WebView、pageReady；AI、翻译、词典、设置和 qbar 又保存对应全局镜像并通过 `*SyncHost()` 复制。导航成功状态也被公共层和功能层重复赋值。
 
 其中，`PanelHostEnsure()` 第 72 行的局部 `callbacks` 未使用，`focusTimer` 布尔字段目前只写不读，可清理。`focusMonitor` 保存计时器回调，用于停表，是必要状态；导航和消息回调引用也不能仅因没有普通调用就认定无用。
 
@@ -179,10 +179,10 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 | 项目与证据 | 修订方案 | 边界 |
 | --- | --- | --- |
-| [youdaoTranslate.ahk](../lib/youdaoTranslate.ahk) 第 250 行的 `BCryptSha256Hex()` 与 [crypto.ahk](../lib/crypto.ahk) 的公共 SHA-256 重复 | 有道签名改用 `CryptoSha256Hex()`，移除业务文件中的重复函数体 | 保持 UTF-8 输入、无结尾 NUL、64 字符小写十六进制输出；不改签名拼接规则 |
-| [qbar.ahk](../lib/qbar.ahk) 第 159 行与有道第 287 行分别实现 URL 编码 | 复用一份命名中立的公共编码函数 | 保持 UTF-8、RFC 3986 未保留字符和空格 `%20`；不是对完整 URL 再次编码 |
-| [core.ahk](../lib/core.ahk) 第 51 行直接重建热串，第 60 行又安排相同工作 | 保留一次启动初始化，移除纯转发定时器入口 | 配置变化后的热串重建仍保留 |
-| [tabHotString.ahk](../lib/tabHotString.ahk) 外层保存剪贴板，选区读取和粘贴内部也保存 | 按“读取选区”“粘贴替换”“无选区复制当前行”分别确定唯一恢复责任 | 不能直接删除所有内部快照；每个独立操作都可能改变剪贴板 |
+| [youdaoTranslate.ahk](../lib/features/translate/youdaoTranslate.ahk) 第 250 行的 `BCryptSha256Hex()` 与 [crypto.ahk](../lib/shared/crypto.ahk) 的公共 SHA-256 重复 | 有道签名改用 `CryptoSha256Hex()`，移除业务文件中的重复函数体 | 保持 UTF-8 输入、无结尾 NUL、64 字符小写十六进制输出；不改签名拼接规则 |
+| [qbar.ahk](../lib/features/qbar/qbar.ahk) 第 159 行与有道第 287 行分别实现 URL 编码 | 复用一份命名中立的公共编码函数 | 保持 UTF-8、RFC 3986 未保留字符和空格 `%20`；不是对完整 URL 再次编码 |
+| [core.ahk](../lib/app/core.ahk) 第 51 行直接重建热串，第 60 行又安排相同工作 | 保留一次启动初始化，移除纯转发定时器入口 | 配置变化后的热串重建仍保留 |
+| [tabHotString.ahk](../lib/input/tabHotString.ahk) 外层保存剪贴板，选区读取和粘贴内部也保存 | 按“读取选区”“粘贴替换”“无选区复制当前行”分别确定唯一恢复责任 | 不能直接删除所有内部快照；每个独立操作都可能改变剪贴板 |
 
 剪贴板尤其需要谨慎：无选区分支目前在解除监听挂起之后才恢复，且外层恢复不在 `finally` 中；异常或用户的新复制都可能让结果不符合预期。建议将该分支恢复放入 `finally`，恢复进入前的监听状态，并用剪贴板序号避免覆盖用户的新内容。有选区分支可移除多余的外层快照/恢复，但保留读取和粘贴各自需要的保护。不顺带改变 UIA 优先及 Ctrl+Insert/Ctrl+C 回退策略。
 
@@ -196,7 +196,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 **决定：建议实施，中优先级。**
 
-证据：[qbar_index.ahk](../lib/qbar_index.ahk) 的 `QbarConfigItems()` 每次构造配置条目，并解析运行目标和图标键；`QbarFilterItems()` 经 `QbarAllItems()` 重复执行它。开始菜单已有独立缓存，不需要再重复缓存一份开始菜单列表。
+证据：[qbar_index.ahk](../lib/features/qbar/qbar_index.ahk) 的 `QbarConfigItems()` 每次构造配置条目，并解析运行目标和图标键；`QbarFilterItems()` 经 `QbarAllItems()` 重复执行它。开始菜单已有独立缓存，不需要再重复缓存一份开始菜单列表。
 
 建议维护一个只针对配置的索引，包含展示条目和按短键查找的数据。首次使用时构建；`QRun`、`QWeb`、`QSearch` 或界面语言的有效变化使其失效。重建放在下一次使用时，同一批保存只失效一次；不要缓存每一种用户查询结果，也不增加后台扫描定时器。
 
@@ -210,7 +210,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 **决定：建议实施；消息类型修复优先，文案整理低优先级。**
 
-证据：[windows.ahk](../lib/windows.ahk) 的 `WindowBindingDisplay()` 与 [settings.html](../pages/settings.html) 的 `renderBindings()` 各维护一份模式名称和说明；宿主快照中的 `modeLabel`、`modeDescription` 未被页面消费。
+证据：[windows.ahk](../lib/features/windows.ahk) 的 `WindowBindingDisplay()` 与 [settings.html](../pages/settings.html) 的 `renderBindings()` 各维护一份模式名称和说明；宿主快照中的 `modeLabel`、`modeDescription` 未被页面消费。
 
 撤回“`binding.bindType || 1` 本身就是显示错误”的判定。下拉框可以表示下一次捕获方式，空绑定处页面也已显示“未绑定”。建议在宿主维护完整的模式列表（ID、名称、说明），随快照发送一次，页面用它生成选项和说明。当前绑定状态继续由 `bindType/items` 表达；未绑定时允许捕获选择默认模式 1，但不能据此显示成已经绑定。
 
@@ -239,7 +239,7 @@ Everything 方案：复用已有 `es.exe`，把探测、查询、冷启动等待
 
 **决定：建议实施，低优先级，可与公共函数清理同批进行。**
 
-证据：[qbar.html](../pages/qbar.html) 的 `qbarDebug()` 将输入值及 IME 事件内容发送给宿主；[qbar_panel.ahk](../lib/qbar_panel.ahk) 的 debug 分支只记录固定文字。当前收益很低，即使文件调试日志关闭，页面依然构造并发送消息。没有证据表明该分支把输入文本写入日志。
+证据：[qbar.html](../pages/qbar.html) 的 `qbarDebug()` 将输入值及 IME 事件内容发送给宿主；[qbar_panel.ahk](../lib/features/qbar/qbar_panel.ahk) 的 debug 分支只记录固定文字。当前收益很低，即使文件调试日志关闭，页面依然构造并发送消息。没有证据表明该分支把输入文本写入日志。
 
 移除该函数、调用点及对应宿主分支；`querySerial` 和 `deferredQuery` 当前只服务于诊断内容，可在核对最终引用后同步移除。保留 `composing`、`event.isComposing` 判断、组合输入结束后的查询，以及宿主真正用于过期请求校验的 `QbarQuerySeq`/`QbarEsSeq`。不能将页面诊断计数与宿主请求序号一起清理。
 

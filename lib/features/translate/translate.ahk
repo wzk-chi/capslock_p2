@@ -1,6 +1,6 @@
 ; Translation provider registry. Every translation engine is one client file
-; (lib\*Translate.ahk) plus a registration entry at the bottom of that file;
-; the translate panel (lib\llmTranslate.ahk) talks to engines only through
+; (lib\features\translate\*Translate.ahk) plus a registration entry at the bottom of that file;
+; the translate panel (lib\features\translate\llmTranslate.ahk) talks to engines only through
 ; this registry, so adding an engine means adding one file and one
 ; registration — translation dispatch routes by engine name;
 ; the central settings page writes configuration sections directly.

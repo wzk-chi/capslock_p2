@@ -266,7 +266,7 @@ YoudaoSalt() {
 
 ; ---- "youdao" provider glue ----
 ; One-shot engine: no streaming UI, the formatted result arrives through a
-; single onFinished call (see lib\translate.ahk for the provider contract).
+; single onFinished call (see lib\features\translate\translate.ahk for the provider contract).
 
 TranslateProviderYoudaoTranslate(text, onDelta, onFinished, overrides := 0) {
     translated := YoudaoTranslate(text, &ok, &errorText, overrides)

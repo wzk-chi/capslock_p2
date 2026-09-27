@@ -13,33 +13,33 @@ A_HotkeyInterval := 2000
 ; capslock_p2 AHK v2 entry point.
 ; Qbar and LLM translation are both hosted in WebView2 panels.
 
-#Include lib\config.ahk
-#Include lib\core.ahk
-#Include lib\windows.ahk
-#Include lib\WebView2.ahk
-#Include lib\panelHost.ahk
-#Include lib\JSON.ahk
-#Include lib\crypto.ahk
-#Include lib\CSQLite.ahk
-#Include lib\translate.ahk
-#Include lib\llm.ahk
-#Include lib\llmTranslate.ahk
-#Include lib\settings.ahk
-#Include lib\youdaoTranslate.ahk
-#Include lib\volcengineTranslate.ahk
-#Include lib\dictionary.ahk
-#Include lib\aiChat.ahk
-#Include lib\qbar.ahk
-#Include lib\qbar_panel.ahk
-#Include lib\qbar_index.ahk
-#Include lib\qbar_commands.ahk
-#Include lib\qbar_everything.ahk
-#Include lib\qbar_navigation.ahk
-#Include lib\tabHotString.ahk
-#Include lib\icons.ahk
-#Include lib\keys.ahk
-#Include lib\keymap.ahk
-#Include lib\customHotkeys.ahk
+#Include lib\app\config.ahk
+#Include lib\app\core.ahk
+#Include lib\features\windows.ahk
+#Include lib\vendor\WebView2.ahk
+#Include lib\shared\panelHost.ahk
+#Include lib\vendor\JSON.ahk
+#Include lib\shared\crypto.ahk
+#Include lib\vendor\CSQLite.ahk
+#Include lib\features\translate\translate.ahk
+#Include lib\shared\llm.ahk
+#Include lib\features\translate\llmTranslate.ahk
+#Include lib\features\settings.ahk
+#Include lib\features\translate\youdaoTranslate.ahk
+#Include lib\features\translate\volcengineTranslate.ahk
+#Include lib\features\dictionary.ahk
+#Include lib\features\aiChat.ahk
+#Include lib\features\qbar\qbar.ahk
+#Include lib\features\qbar\qbar_panel.ahk
+#Include lib\features\qbar\qbar_index.ahk
+#Include lib\features\qbar\qbar_commands.ahk
+#Include lib\features\qbar\qbar_everything.ahk
+#Include lib\features\qbar\qbar_navigation.ahk
+#Include lib\input\tabHotString.ahk
+#Include lib\features\qbar\icons.ahk
+#Include lib\input\keys.ahk
+#Include lib\input\keymap.ahk
+#Include lib\input\customHotkeys.ahk
 #Include userAHK\main.ahk
 
 Persistent()

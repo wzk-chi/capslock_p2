@@ -8,7 +8,7 @@
 
 ### PanelHost 生命周期
 
-- `lib/panelHost.ahk` 现在保存导航和 Web 消息事件 token，并在创建失败或销毁前注销事件；移除了只写不读的 `focusTimer` 字段和 `PanelHostEnsure()` 中无用的局部回调变量。
+- `lib/shared/panelHost.ahk` 现在保存导航和 Web 消息事件 token，并在创建失败或销毁前注销事件；移除了只写不读的 `focusTimer` 字段和 `PanelHostEnsure()` 中无用的局部回调变量。
 - 导航完成后由 `PanelHostNavigationCompleted()` 单次写入 `pageReady`，再以 `(host, sender, args)` 调用功能回调。
 - 新增只读入口 `PanelHostGui()`、`PanelHostPageReady()`、`PanelHostWindowActive()`；焦点监视器仅保存用于取消的回调。
 - AI 问答、翻译、词典和 qbar 已移除 GUI/controller/WebView/pageReady/focusTimer 镜像全局状态及 `SyncHost()`，保留各自的显示、请求、历史、焦点与 qbar 开闭状态。`keys.ahk` 改用 `AiChatIsActive()`、`LLMTranslateIsActive()` 和 `DictionaryIsActive()`。
@@ -16,18 +16,18 @@
 
 ### 窗口绑定
 
-- `lib/windows.ahk` 新增严格的 `WindowBindingNumber()`（仅 1–10）和 `WindowBindingModes()`（模式 1–3 的标签及描述）。`WindowBindingDisplay()` 从该元数据读取，并对未绑定返回独立记录。
+- `lib/features/windows.ahk` 新增严格的 `WindowBindingNumber()`（仅 1–10）和 `WindowBindingModes()`（模式 1–3 的标签及描述）。`WindowBindingDisplay()` 从该元数据读取，并对未绑定返回独立记录。
 - `BindingTap()`、`CompletePendingBinding()`、`BindWindowFromActive()`、`SaveWindowBinding()`、`activateWinAction()` 与 `winsSort()` 都先校验编号；键盘动作不再先进行宽松的 `+ 0` 转换。
 - 删除未被读取的 `GettingWinInfo` 状态。现有 type-2 清理、type-3 刷新、持久化字段和 10 号绑定的序列化格式均未改变。
 - 设置快照由主线加入 `bindingModes`；页面以宿主元数据渲染模式，并把持久化编号 10 显示为 `CapsLock + 0`。无绑定记录仍显示“未绑定”，下拉框仍代表下一次捕获的模式。
 
 ### 公共实现与 qbar
 
-- `lib/crypto.ahk` 新增 `UrlEncodeUtf8()`；qbar 搜索 URL 替换和有道表单统一使用它。Youdao 签名改用已有 `CryptoSha256Hex()`，已移除重复 BCrypt SHA-256 和 URL 编码函数。
+- `lib/shared/crypto.ahk` 新增 `UrlEncodeUtf8()`；qbar 搜索 URL 替换和有道表单统一使用它。Youdao 签名改用已有 `CryptoSha256Hex()`，已移除重复 BCrypt SHA-256 和 URL 编码函数。
 - `RebuildHotStringPattern()` 在构建时按短键去重并稳定地按长度倒序排列；初始化中的重复 `HotStringInit` 定时器及包装函数已删除。
 - `TabHotStringAction()` 不再在“已有选区”路径重复持有剪贴板快照。无选区路径和 `SetClipboardText()` 都用 `try/finally` 恢复之前的监听挂起状态，并仅在剪贴板序号仍归本次操作时恢复旧剪贴板，避免覆盖用户在操作期间的新复制内容。
 - TabHotString 解码已由配置层唯一承担，`core.ahk` 中的旧 `HotStringUnescape()` 已删除。
-- `pages/qbar.html` 删除 qbarDebug、querySerial、deferredQuery 和组合输入调试消息；IME 组合期间仍抑制查询，compositionend 后发送一次查询。`lib/qbar_panel.ahk` 同时删除 host `debug` 消息分支。
+- `pages/qbar.html` 删除 qbarDebug、querySerial、deferredQuery 和组合输入调试消息；IME 组合期间仍抑制查询，compositionend 后发送一次查询。`lib/features/qbar/qbar_panel.ahk` 同时删除 host `debug` 消息分支。
 
 ### 退役文件与文档
 

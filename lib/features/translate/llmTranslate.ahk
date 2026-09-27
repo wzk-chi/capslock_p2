@@ -31,7 +31,7 @@ TranslateTargetLanguageName(value) {
 }
 
 ; True when the engine named in [TTranslate] can serve a request. Engines
-; are resolved through the registry in lib\translate.ahk; "auto" prefers the
+; are resolved through the registry in lib\features\translate\translate.ahk; "auto" prefers the
 ; LLM provider and falls back to any other configured one.
 TranslateConfigured() {
     provider := TranslateResolve(GetTranslateProvider())
@@ -276,7 +276,7 @@ LLMTranslateStreamFinished(answer, success, errorText) {
 }
 
 ; Build the translation-specific messages. Request construction and transport
-; are shared by lib\llm.ahk; this module only owns the translation prompt.
+; are shared by lib\shared\llm.ahk; this module only owns the translation prompt.
 TranslateLlmMessages(text, overrides := 0) {
     promptTemplate := ConfigRead("LLMTranslate", "systemPrompt", "")
     targetLanguage := TranslateTargetLanguageName(
@@ -357,7 +357,7 @@ LLMTranslateOnSettingsSaved() {
 
 ; ---- provider registry: the LLM translation engine ----
 ; New engines: add a client file with the same three glue functions and
-; register it at the bottom of that file (contract in lib\translate.ahk).
+; register it at the bottom of that file (contract in lib\features\translate\translate.ahk).
 
 TranslateRegisterProvider("llm", Map(
     "streaming", 1,

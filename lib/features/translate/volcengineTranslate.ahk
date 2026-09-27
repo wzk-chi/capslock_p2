@@ -255,7 +255,7 @@ VolcengineTargetCode(value) {
 
 ; ---- "volcengine" provider glue ----
 ; One-shot engine: no streaming UI, the result arrives through a single
-; onFinished call (contract in lib\translate.ahk).
+; onFinished call (contract in lib\features\translate\translate.ahk).
 
 TranslateProviderVolcengineTranslate(text, onDelta, onFinished, overrides := 0) {
     translated := VolcengineTranslate(text, &ok, &errorText, overrides)

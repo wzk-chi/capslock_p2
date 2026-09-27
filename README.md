@@ -71,7 +71,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+F12 | 打开设置中心 |  |  |
 
 所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
-`keyFunc_moveDown(10)`），完整函数清单见 `lib/keys.ahk`。
+`keyFunc_moveDown(10)`），完整函数清单见 `lib/input/keys.ahk`。
 全局自定义快捷键写在 `[CustomHotkey]` 中，格式为「触发键=发送键」，例如
 `!c=^c` 表示按 `Alt+C` 发送 `Ctrl+C`；设置中心的快捷键页可以直接录制。
 设置中心的快捷键页也支持点「录制」直接录入组合键，例如 Ctrl+Space 会保存为

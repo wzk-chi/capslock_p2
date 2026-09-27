@@ -6,16 +6,16 @@
 
 - 入口 `capslock_p2.ahk` 用 `#include` 引入全部 `lib/*.ahk`；AHK v2 中每个被包含的文件加载时即执行，
   全局变量和函数在所有文件间共享。
-- **键盘层**：按住 CapsLock 进入键层，`lib/keymap.ahk` 做键位方案与层调度，`lib/keys.ahk` 提供
-  `keyFunc_*` 动作函数；`lib/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
-- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/panelHost.ahk` 创建控制器并承载。
+- **键盘层**：按住 CapsLock 进入键层，`lib/input/keymap.ahk` 做键位方案与层调度，`lib/input/keys.ahk` 提供
+  `keyFunc_*` 动作函数；`lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
+- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/shared/panelHost.ahk` 创建控制器并承载。
   AHK ⇄ 页面双向通信通过 thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用
   `window.chrome.webview.postMessage` 发 JSON，宿主统一接收并调用页面函数。
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
-- **LLM 公共层**：`lib/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
+- **LLM 公共层**：`lib/shared/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
   OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
 - **配置分层**：`capslock_p2-default.ini` 保存完整默认值，`capslock_p2-settingsDemo.ini` 只作详细参考，
-  `capslock_p2.ini` 只保存用户覆盖项。`lib/config.ahk` 先加载默认配置，再叠加用户配置；设置页保存时会删除恢复为默认值的覆盖项。
+  `capslock_p2.ini` 只保存用户覆盖项。`lib/app/config.ahk` 先加载默认配置，再叠加用户配置；设置页保存时会删除恢复为默认值的覆盖项。
 
 ## 目录结构与模块职责
 
@@ -61,9 +61,9 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 
 ## 翻译引擎注册表
 
-`lib/translate.ahk` 是所有翻译引擎的编排层。每个引擎 = 一个客户端文件（`lib/*Translate.ahk`）+
+`lib/features/translate/translate.ahk` 是所有翻译引擎的编排层。每个引擎 = 一个客户端文件（`lib/features/translate/*Translate.ahk`）+
 该文件**底部一行 `TranslateRegisterProvider("engine", Map(...))` 自注册**。面板
-（`lib/llmTranslate.ahk`）只通过注册表取 provider：
+（`lib/features/translate/llmTranslate.ahk`）只通过注册表取 provider：
 
 - `TranslateResolve(engine)`：`[TTranslate] engine` 指定 ID 则按指定取（未配置也返回，
   用于显示该引擎的 `notConfigured` 提示）；`auto` 优先第一个已配置的 `llm`，否则按注册顺序
@@ -71,7 +71,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - 调度、设置保存、API 测试和 `LLMTranslatePushSettings` 全部按 engine 查表；`TranslateProviders()`
   返回全部已注册引擎供页面逻辑遍历。
 
-provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核心是：
+provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` 头部注释，核心是：
 
 | 字段 | 用途 |
 |---|---|
@@ -108,7 +108,7 @@ provider 契约（`Map` 的字段）见 `lib/translate.ahk` 头部注释，核�
 
 ## WebView2 面板
 
-所有 WebView2 面板共用 `lib/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
+所有 WebView2 面板共用 `lib/shared/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
 设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 是否失焦隐藏由 `[QAI] hideOnBlur` 控制。
 
 页面通信遵循同一套习惯：
@@ -188,7 +188,7 @@ qbar 的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页�
   注意 `/validate` 不输出 `#Warn` 警告，只有重载脚本才暴露。
 - **命名**：`#Warn` 保持开启（仅关闭 `VarUnset`）；AHK v2 类名占用全局命名空间，局部变量不要
   与内置类名（如 `File`）或库类名（`Core`、`JSON` 等）同名。
-- **翻译引擎扩展入口**：新建 `lib/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
+- **翻译引擎扩展入口**：新建 `lib/features/translate/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
   在中央设置页增加对应字段，完成扩展。
 - **thqby `JSON.stringify` 只序列化 Map/Array/Object**：顶层 String（含 `""`）会抛
   “has no method named OwnProps”。传给页面的标量一律用 `LLMJsonQuote`（内部包一层数组后

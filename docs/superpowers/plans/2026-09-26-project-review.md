@@ -26,15 +26,15 @@
 
 The implementation uses these boundaries:
 
-- `lib/config.ahk`: configuration loading, default migration, typed reads, safe writes, and change application.
-- `lib/core.ahk`: process initialization, clipboard/selection services, language/DPI helpers, tray, and loading UI; it calls `Config*` instead of owning INI parsing.
-- `lib/windowBinding.ahk` (new): binding persistence, capture modes, stale-window maintenance, and activation; `lib/windows.ahk` keeps transparency and mouse-speed behavior.
-- `lib/panelHost.ahk` (new): reusable WebView2 GUI/controller lifecycle, page execution, navigation state, and focus monitor helpers.
-- `lib/tabHotString.ahk` (new): CapsLock+Tab hotstring replacement only.
-- `lib/qbar.ahk`: stable qbar facade and shared state.
-- `lib/qbar_panel.ahk`, `lib/qbar_index.ahk`, `lib/qbar_commands.ahk`, `lib/qbar_everything.ahk`, `lib/qbar_navigation.ahk`: qbar responsibilities split by data source and behavior.
-- `lib/llm.ahk`, `lib/translate.ahk`, `lib/llmTranslate.ahk`, `lib/aiChat.ahk`: retain provider and feature contracts, but use `PanelHost` and central settings.
-- `lib/settings.ahk`: central settings-window host, schema, snapshot/save/test routing, and window-binding capture bridge.
+- `lib/app/config.ahk`: configuration loading, default migration, typed reads, safe writes, and change application.
+- `lib/app/core.ahk`: process initialization, clipboard/selection services, language/DPI helpers, tray, and loading UI; it calls `Config*` instead of owning INI parsing.
+- `lib/windowBinding.ahk` (new): binding persistence, capture modes, stale-window maintenance, and activation; `lib/features/windows.ahk` keeps transparency and mouse-speed behavior.
+- `lib/shared/panelHost.ahk` (new): reusable WebView2 GUI/controller lifecycle, page execution, navigation state, and focus monitor helpers.
+- `lib/input/tabHotString.ahk` (new): CapsLock+Tab hotstring replacement only.
+- `lib/features/qbar/qbar.ahk`: stable qbar facade and shared state.
+- `lib/features/qbar/qbar_panel.ahk`, `lib/features/qbar/qbar_index.ahk`, `lib/features/qbar/qbar_commands.ahk`, `lib/features/qbar/qbar_everything.ahk`, `lib/features/qbar/qbar_navigation.ahk`: qbar responsibilities split by data source and behavior.
+- `lib/shared/llm.ahk`, `lib/features/translate/translate.ahk`, `lib/features/translate/llmTranslate.ahk`, `lib/features/aiChat.ahk`: retain provider and feature contracts, but use `PanelHost` and central settings.
+- `lib/features/settings.ahk`: central settings-window host, schema, snapshot/save/test routing, and window-binding capture bridge.
 - `pages/settings.html`: sole live settings UI, including qbar backend fields and descriptive window binding labels.
 - `pages/chat.html`, `pages/translate.html`: feature panels only; their settings buttons send `openSettings` to AHK and no longer mount the embedded settings component.
 - `pages/settings.js`: left in the repository only because deleting files is forbidden; no live page references it after Task 6.
@@ -56,8 +56,8 @@ The exact `rg` patterns for each task are listed below. A task is not marked com
 
 **Files:**
 
-- Modify: `lib/windows.ahk`
-- Modify: `lib/settings.ahk`
+- Modify: `lib/features/windows.ahk`
+- Modify: `lib/features/settings.ahk`
 - Modify: `pages/settings.html`
 - Modify: `README.md`
 
@@ -78,7 +78,7 @@ The exact `rg` patterns for each task are listed below. A task is not marked com
 - [ ] **Step 8: Commit.**
 
 ```powershell
-git add lib/windows.ahk lib/settings.ahk pages/settings.html README.md
+git add lib/features/windows.ahk lib/features/settings.ahk pages/settings.html README.md
 git commit -m "fix: stabilize window binding lifecycle"
 ```
 
@@ -86,10 +86,10 @@ git commit -m "fix: stabilize window binding lifecycle"
 
 **Files:**
 
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/llm.ahk`
-- Modify: `lib/youdaoTranslate.ahk`
-- Modify: `lib/core.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/shared/llm.ahk`
+- Modify: `lib/features/translate/youdaoTranslate.ahk`
+- Modify: `lib/app/core.ahk`
 - Modify: `docs/architecture.md`
 - Modify: `README.md`
 
@@ -108,7 +108,7 @@ git commit -m "fix: stabilize window binding lifecycle"
 - [ ] **Step 7: Commit.**
 
 ```powershell
-git add lib/qbar.ahk lib/llm.ahk lib/youdaoTranslate.ahk lib/core.ahk docs/architecture.md README.md
+git add lib/features/qbar/qbar.ahk lib/shared/llm.ahk lib/features/translate/youdaoTranslate.ahk lib/app/core.ahk docs/architecture.md README.md
 git commit -m "fix: protect debug logs and decode file results safely"
 ```
 
@@ -116,10 +116,10 @@ git commit -m "fix: protect debug logs and decode file results safely"
 
 **Files:**
 
-- Modify: `lib/core.ahk`
-- Modify: `lib/keys.ahk`
-- Modify: `lib/windows.ahk`
-- Modify: `lib/settings.ahk`
+- Modify: `lib/app/core.ahk`
+- Modify: `lib/input/keys.ahk`
+- Modify: `lib/features/windows.ahk`
+- Modify: `lib/features/settings.ahk`
 
 **Interfaces:**
 
@@ -136,7 +136,7 @@ git commit -m "fix: protect debug logs and decode file results safely"
 - [ ] **Step 7: Commit.**
 
 ```powershell
-git add lib/core.ahk lib/keys.ahk lib/windows.ahk lib/settings.ahk
+git add lib/app/core.ahk lib/input/keys.ahk lib/features/windows.ahk lib/features/settings.ahk
 git commit -m "refactor: apply small settings changes incrementally"
 ```
 
@@ -144,16 +144,16 @@ git commit -m "refactor: apply small settings changes incrementally"
 
 **Files:**
 
-- Create: `lib/config.ahk`
+- Create: `lib/app/config.ahk`
 - Modify: `capslock_p2.ahk`
-- Modify: `lib/core.ahk`
-- Modify: `lib/settings.ahk`
-- Modify: `lib/llm.ahk`
-- Modify: `lib/llmTranslate.ahk`
-- Modify: `lib/aiChat.ahk`
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/youdaoTranslate.ahk`
-- Modify: `lib/volcengineTranslate.ahk`
+- Modify: `lib/app/core.ahk`
+- Modify: `lib/features/settings.ahk`
+- Modify: `lib/shared/llm.ahk`
+- Modify: `lib/features/translate/llmTranslate.ahk`
+- Modify: `lib/features/aiChat.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/features/translate/youdaoTranslate.ahk`
+- Modify: `lib/features/translate/volcengineTranslate.ahk`
 
 **Interfaces:**
 
@@ -166,16 +166,16 @@ git commit -m "refactor: apply small settings changes incrementally"
 - `ConfigApplyDefaults() -> void`
 - `ConfigSectionExists(section) -> Boolean`
 
-- [ ] **Step 1: Move INI parsing/default loading.** Move the INI parser, writer, and load/default flow into `lib/config.ahk`; expose them as `ConfigParseIni`, `ConfigWriteValue`, `ConfigLoad`, and `ConfigApplyDefaults`; make `Config`, `SettingsFile`, and `SettingsModifyTime` owned by that module, with no legacy-key migration.
+- [ ] **Step 1: Move INI parsing/default loading.** Move the INI parser, writer, and load/default flow into `lib/app/config.ahk`; expose them as `ConfigParseIni`, `ConfigWriteValue`, `ConfigLoad`, and `ConfigApplyDefaults`; make `Config`, `SettingsFile`, and `SettingsModifyTime` owned by that module, with no legacy-key migration.
 - [ ] **Step 2: Implement atomic batch writes.** Write a complete new UTF-8-RAW document to a uniquely named sibling temp file, close it, then replace the original with the native file move operation; preserve comments and section ordering from the existing writer.
 - [ ] **Step 3: Rename configuration calls directly.** Update feature modules to call `ConfigLoad`, `ConfigRead`, `ConfigWrite`, and `ConfigWriteBatch`; remove parser/writer aliases from `core.ahk` after all call sites move.
 - [ ] **Step 4: Route feature getters through the boundary.** Replace direct `Config.Has(section)` reads in LLM, translation providers, qbar path options, and settings snapshots with `ConfigRead/ConfigHas` while leaving dynamic sections (`QRun`, `QWeb`, `QSearch`, `TabHotString`) iterable through `ConfigSection`.
 - [ ] **Step 5: Add section metadata.** Define one source of truth for static sections, allowed scalar keys, dynamic sections, and numeric ranges; make `SettingsAllowedKey()` consume it rather than maintaining a second switch list.
-- [ ] **Step 6: Verify include order and references.** Include `lib/config.ahk` before modules that execute initialization; search for direct parser/writer implementations and ensure only `lib/config.ahk` contains them. Do not run AHK.
+- [ ] **Step 6: Verify include order and references.** Include `lib/app/config.ahk` before modules that execute initialization; search for direct parser/writer implementations and ensure only `lib/app/config.ahk` contains them. Do not run AHK.
 - [ ] **Step 7: Commit.**
 
 ```powershell
-git add capslock_p2.ahk lib/config.ahk lib/core.ahk lib/settings.ahk lib/llm.ahk lib/llmTranslate.ahk lib/aiChat.ahk lib/qbar.ahk lib/youdaoTranslate.ahk lib/volcengineTranslate.ahk
+git add capslock_p2.ahk lib/app/config.ahk lib/app/core.ahk lib/features/settings.ahk lib/shared/llm.ahk lib/features/translate/llmTranslate.ahk lib/features/aiChat.ahk lib/features/qbar/qbar.ahk lib/features/translate/youdaoTranslate.ahk lib/features/translate/volcengineTranslate.ahk
 git commit -m "refactor: centralize configuration access"
 ```
 
@@ -183,12 +183,12 @@ git commit -m "refactor: centralize configuration access"
 
 **Files:**
 
-- Create: `lib/tabHotString.ahk`
+- Create: `lib/input/tabHotString.ahk`
 - Modify: `capslock_p2.ahk`
-- Modify: `lib/keymap.ahk`
-- Modify: `lib/keys.ahk`
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/settings.ahk`
+- Modify: `lib/input/keymap.ahk`
+- Modify: `lib/input/keys.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/features/settings.ahk`
 - Modify: `pages/settings.html`
 - Modify: `pages/qbar.html`
 - Modify: `tools/capslock_p2-default.ini`
@@ -211,7 +211,7 @@ git commit -m "refactor: centralize configuration access"
 - [ ] **Step 9: Commit.**
 
 ```powershell
-git add capslock_p2.ahk lib/tabHotString.ahk lib/keymap.ahk lib/keys.ahk lib/qbar.ahk lib/settings.ahk pages/settings.html pages/qbar.html tools/capslock_p2-default.ini capslock_p2-settingsDemo.ini
+git add capslock_p2.ahk lib/input/tabHotString.ahk lib/input/keymap.ahk lib/input/keys.ahk lib/features/qbar/qbar.ahk lib/features/settings.ahk pages/settings.html pages/qbar.html tools/capslock_p2-default.ini capslock_p2-settingsDemo.ini
 git commit -m "refactor: retire calculator and qbar style settings"
 ```
 
@@ -219,9 +219,9 @@ git commit -m "refactor: retire calculator and qbar style settings"
 
 **Files:**
 
-- Modify: `lib/settings.ahk`
-- Modify: `lib/aiChat.ahk`
-- Modify: `lib/llmTranslate.ahk`
+- Modify: `lib/features/settings.ahk`
+- Modify: `lib/features/aiChat.ahk`
+- Modify: `lib/features/translate/llmTranslate.ahk`
 - Modify: `pages/chat.html`
 - Modify: `pages/translate.html`
 - Modify: `pages/settings.html`
@@ -239,11 +239,11 @@ git commit -m "refactor: retire calculator and qbar style settings"
 - [ ] **Step 4: Remove duplicate host-side state.** Delete or bypass `AiChatSettingsOpen`, `LLMTranslateSettingsOpen`, their overlay save/test/push handlers, and use central settings messages instead. Keep stream cancellation and panel focus behavior intact.
 - [ ] **Step 5: Retire `pages/settings.js` as a live surface.** Leave the file untouched on disk because deletion is forbidden; remove all page references and packaging/documentation claims that it is a live settings surface.
 - [ ] **Step 6: Reconcile settings-page drafts.** Ensure central save, cancel, test, and page navigation use one draft snapshot; preserve unsaved changes until explicit cancel/save and show secrets as password fields.
-- [ ] **Step 7: Run static verification.** Search `pages/chat.html`, `pages/translate.html`, `lib/aiChat.ahk`, and `lib/llmTranslate.ahk` for `LLMSettings`, `settings.js`, and overlay save/test handlers; only `openSettings` and central AHK routing should remain. Run `git diff --check`.
+- [ ] **Step 7: Run static verification.** Search `pages/chat.html`, `pages/translate.html`, `lib/features/aiChat.ahk`, and `lib/features/translate/llmTranslate.ahk` for `LLMSettings`, `settings.js`, and overlay save/test handlers; only `openSettings` and central AHK routing should remain. Run `git diff --check`.
 - [ ] **Step 8: Commit.**
 
 ```powershell
-git add lib/settings.ahk lib/aiChat.ahk lib/llmTranslate.ahk pages/chat.html pages/translate.html pages/settings.html pages/settings.js
+git add lib/features/settings.ahk lib/features/aiChat.ahk lib/features/translate/llmTranslate.ahk pages/chat.html pages/translate.html pages/settings.html pages/settings.js
 git commit -m "refactor: use one settings center"
 ```
 
@@ -251,13 +251,13 @@ git commit -m "refactor: use one settings center"
 
 **Files:**
 
-- Create: `lib/panelHost.ahk`
+- Create: `lib/shared/panelHost.ahk`
 - Modify: `capslock_p2.ahk`
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/dictionary.ahk`
-- Modify: `lib/llmTranslate.ahk`
-- Modify: `lib/aiChat.ahk`
-- Modify: `lib/settings.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/features/dictionary.ahk`
+- Modify: `lib/features/translate/llmTranslate.ahk`
+- Modify: `lib/features/aiChat.ahk`
+- Modify: `lib/features/settings.ahk`
 
 **Interfaces:**
 
@@ -281,7 +281,7 @@ Each host map contains `gui`, `controller`, `webView`, `pageReady`, `visible`, `
 - [ ] **Step 7: Commit.**
 
 ```powershell
-git add capslock_p2.ahk lib/panelHost.ahk lib/qbar.ahk lib/dictionary.ahk lib/llmTranslate.ahk lib/aiChat.ahk lib/settings.ahk
+git add capslock_p2.ahk lib/shared/panelHost.ahk lib/features/qbar/qbar.ahk lib/features/dictionary.ahk lib/features/translate/llmTranslate.ahk lib/features/aiChat.ahk lib/features/settings.ahk
 git commit -m "refactor: share WebView2 panel lifecycle"
 ```
 
@@ -289,17 +289,17 @@ git commit -m "refactor: share WebView2 panel lifecycle"
 
 **Files:**
 
-- Create: `lib/qbar_panel.ahk`
-- Create: `lib/qbar_index.ahk`
-- Create: `lib/qbar_commands.ahk`
-- Create: `lib/qbar_everything.ahk`
-- Create: `lib/qbar_navigation.ahk`
+- Create: `lib/features/qbar/qbar_panel.ahk`
+- Create: `lib/features/qbar/qbar_index.ahk`
+- Create: `lib/features/qbar/qbar_commands.ahk`
+- Create: `lib/features/qbar/qbar_everything.ahk`
+- Create: `lib/features/qbar/qbar_navigation.ahk`
 - Modify: `capslock_p2.ahk`
-- Modify: `lib/qbar.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
 
 **Interfaces:**
 
-- `qbar.ahk` retains `QbarToggle`, `QbarShow`, `QbarHide`, `QbarExec`, `QbarSetInput`, and the stable functions used by `lib/keys.ahk`.
+- `qbar.ahk` retains `QbarToggle`, `QbarShow`, `QbarHide`, `QbarExec`, `QbarSetInput`, and the stable functions used by `lib/input/keys.ahk`.
 - `qbar_panel.ahk` owns `QbarEnsureWebView`, navigation/message callbacks, focus and shutdown, and sizing.
 - `qbar_index.ahk` owns `QbarAllItems`, `QbarConfigItems`, `QbarStartMenuItems`, filtering, sorting, and icon row preparation.
 - `qbar_commands.ahk` owns `QbarTryClCommand`, `QbarExecute`, configured run/web/search actions, and safe path launching.
@@ -307,14 +307,14 @@ git commit -m "refactor: share WebView2 panel lifecycle"
 - `qbar_navigation.ahk` owns folder prefix detection, parent/forward stacks, and path completion.
 
 - [ ] **Step 1: Move functions by responsibility without changing signatures.** Copy each function group into its new file, remove the original definition from `qbar.ahk`, and retain the same globals.
-- [ ] **Step 2: Add include order.** Include the five qbar files after shared config/panel/JSON modules and before `lib/keys.ahk`; move any one-time initialization that depends on a global into the existing `Initialize()` path.
+- [ ] **Step 2: Add include order.** Include the five qbar files after shared config/panel/JSON modules and before `lib/input/keys.ahk`; move any one-time initialization that depends on a global into the existing `Initialize()` path.
 - [ ] **Step 3: Keep qbar facade thin.** Leave only shared state declarations, public entry points, and calls between submodules in `qbar.ahk`.
 - [ ] **Step 4: Check private references.** Search every moved function name across `lib`, `pages`, and `userAHK`; update include paths or private helper references while leaving every public qbar entry function unchanged.
 - [ ] **Step 5: Run static verification.** Confirm one definition per qbar function, all `#Include` paths exist, no `capslock-plus/` file changed, and `git diff --check` passes.
 - [ ] **Step 6: Commit.**
 
 ```powershell
-git add capslock_p2.ahk lib/qbar.ahk lib/qbar_panel.ahk lib/qbar_index.ahk lib/qbar_commands.ahk lib/qbar_everything.ahk lib/qbar_navigation.ahk
+git add capslock_p2.ahk lib/features/qbar/qbar.ahk lib/features/qbar/qbar_panel.ahk lib/features/qbar/qbar_index.ahk lib/features/qbar/qbar_commands.ahk lib/features/qbar/qbar_everything.ahk lib/features/qbar/qbar_navigation.ahk
 git commit -m "refactor: split qbar responsibilities"
 ```
 

@@ -39,9 +39,9 @@
 
 ## 变更文件
 
-- `lib/qbar.ahk`
-- `lib/qbar_index.ahk`
-- `lib/qbar_commands.ahk`
-- `lib/qbar_everything.ahk`
-- `lib/qbar_panel.ahk`
-- `lib/core.ahk`（仅使用并保留工作区已有的 `ApplyConfigChanges()` → `QbarInvalidateConfigIndex()` 接口接入，本次未另行扩大修改）
+- `lib/features/qbar/qbar.ahk`
+- `lib/features/qbar/qbar_index.ahk`
+- `lib/features/qbar/qbar_commands.ahk`
+- `lib/features/qbar/qbar_everything.ahk`
+- `lib/features/qbar/qbar_panel.ahk`
+- `lib/app/core.ahk`（仅使用并保留工作区已有的 `ApplyConfigChanges()` → `QbarInvalidateConfigIndex()` 接口接入，本次未另行扩大修改）

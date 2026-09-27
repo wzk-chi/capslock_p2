@@ -4,7 +4,7 @@
 
 **Goal:** 按 `docs/2026-09-27-review-reassessment.md` 修复已确认的配置、消息、调度、日志和生命周期问题，减少重复实现，同时保持现有 CapsLock、qbar、翻译、词典、AI 问答和窗口绑定的用户行为。
 
-**Architecture:** 先把配置 schema、字段 codec、纯值校验和幂等写入集中到 `lib/config.ahk`，再让设置保存和外部重载通过有效配置差异驱动运行时更新。qbar 的资源位置由程序固定，配置索引使用按 generation 失效的轻量缓存；词典和 Everything 消息先快速入队，Everything 使用可取消、带期限的进程作业。PanelHost 最后收敛 WebView2 原生状态，业务模块继续拥有自己的请求、历史、焦点策略和页面业务状态。
+**Architecture:** 先把配置 schema、字段 codec、纯值校验和幂等写入集中到 `lib/app/config.ahk`，再让设置保存和外部重载通过有效配置差异驱动运行时更新。qbar 的资源位置由程序固定，配置索引使用按 generation 失效的轻量缓存；词典和 Everything 消息先快速入队，Everything 使用可取消、带期限的进程作业。PanelHost 最后收敛 WebView2 原生状态，业务模块继续拥有自己的请求、历史、焦点策略和页面业务状态。
 
 **Tech Stack:** AutoHotkey v2、WebView2、WinHTTP、SQLite/CSQLite、现有 JSON/Promise/crypto 实现、HTML/CSS/vanilla JavaScript、PowerShell 静态检查。
 
@@ -29,17 +29,17 @@
 
 | 文件 | 计划后的职责 |
 | --- | --- |
-| `lib/config.ahk` | schema 元数据、逻辑值与存储值 codec、INI 解析/幂等写入、配置快照和有效差异 |
-| `lib/core.ahk` | 全局运行时应用、托盘、选区/剪贴板、语言和公共工具；不维护第二份配置白名单 |
-| `lib/settings.ahk` | 设置窗口、草稿基线/变更集合、消息路由、测试和窗口捕获；不重复定义字段类型 |
-| `lib/llm.ahk` | LLM 候选值校验、消息字段类型读取、请求构建、流式传输和安全日志 |
-| `lib/qbar.ahk` / `qbar_index.ahk` | qbar facade、共享状态、配置索引和查询过滤 |
-| `lib/qbar_everything.ahk` | 固定资源定位、Everything 后端状态、异步进程作业、CSV 解码和结果回填 |
-| `lib/dictionary.ahk` | 词典面板业务、SQLite 查询队列、查询序号和结果有效性 |
-| `lib/panelHost.ahk` | WebView2 GUI/controller/WebView、事件订阅、pageReady、焦点计时器和销毁 |
-| `lib/windows.ahk` / `pages/settings.html` | 窗口绑定生命周期、模式元数据和设置页展示 |
-| `lib/crypto.ahk` / `lib/youdaoTranslate.ahk` / `lib/qbar.ahk` | 一个公共 SHA-256 和一个公共 UTF-8 URL 编码实现 |
-| `pages/qbar.html` / `lib/qbar_panel.ahk` | qbar 输入组合控制和业务消息；移除无效 debug 消息 |
+| `lib/app/config.ahk` | schema 元数据、逻辑值与存储值 codec、INI 解析/幂等写入、配置快照和有效差异 |
+| `lib/app/core.ahk` | 全局运行时应用、托盘、选区/剪贴板、语言和公共工具；不维护第二份配置白名单 |
+| `lib/features/settings.ahk` | 设置窗口、草稿基线/变更集合、消息路由、测试和窗口捕获；不重复定义字段类型 |
+| `lib/shared/llm.ahk` | LLM 候选值校验、消息字段类型读取、请求构建、流式传输和安全日志 |
+| `lib/features/qbar/qbar.ahk` / `qbar_index.ahk` | qbar facade、共享状态、配置索引和查询过滤 |
+| `lib/features/qbar/qbar_everything.ahk` | 固定资源定位、Everything 后端状态、异步进程作业、CSV 解码和结果回填 |
+| `lib/features/dictionary.ahk` | 词典面板业务、SQLite 查询队列、查询序号和结果有效性 |
+| `lib/shared/panelHost.ahk` | WebView2 GUI/controller/WebView、事件订阅、pageReady、焦点计时器和销毁 |
+| `lib/features/windows.ahk` / `pages/settings.html` | 窗口绑定生命周期、模式元数据和设置页展示 |
+| `lib/shared/crypto.ahk` / `lib/features/translate/youdaoTranslate.ahk` / `lib/features/qbar/qbar.ahk` | 一个公共 SHA-256 和一个公共 UTF-8 URL 编码实现 |
+| `pages/qbar.html` / `lib/features/qbar/qbar_panel.ahk` | qbar 输入组合控制和业务消息；移除无效 debug 消息 |
 | `README.md`, `docs/*.md`, `pages/usage.html`, `capslock_p2-default.ini`, `capslock_p2-settingsDemo.ini`, `tools/capslock_p2.iss` | 与实际配置字段、退役文件和发布资源一致的说明与清单 |
 
 ## Dependency graph
@@ -64,9 +64,9 @@ Task 10 final static review
 
 **Files:**
 
-- Modify: `lib/config.ahk`
-- Modify: `lib/core.ahk`
-- Review callers: `lib/settings.ahk`, `lib/qbar_commands.ahk`, `lib/llm.ahk`, `lib/llmTranslate.ahk`, `lib/aiChat.ahk`, `lib/youdaoTranslate.ahk`, `lib/volcengineTranslate.ahk`
+- Modify: `lib/app/config.ahk`
+- Modify: `lib/app/core.ahk`
+- Review callers: `lib/features/settings.ahk`, `lib/features/qbar/qbar_commands.ahk`, `lib/shared/llm.ahk`, `lib/features/translate/llmTranslate.ahk`, `lib/features/aiChat.ahk`, `lib/features/translate/youdaoTranslate.ahk`, `lib/features/translate/volcengineTranslate.ahk`
 - Review inputs: `capslock_p2-default.ini`, `capslock_p2-settingsDemo.ini`
 
 **Interfaces:**
@@ -118,7 +118,7 @@ Map(
 - Do not add `esPath`, `everythingPath`, or user-editable `esInstance` to the live schema; Task 4 removes them from UI and runtime reads.
 
 - [x] **Step 1: Inventory all live configuration fields.** Compared `ConfigLoad()` sections, `SettingsConfigSections()`, the schema, default INI sections and runtime getters; qbar paths are intentionally excluded.
-- [x] **Step 2: Add schema metadata without changing runtime behavior.** Define `ConfigSchema()` and `ConfigField()` in `lib/config.ahk`; make the initial implementation return the current accepted fields and dynamic sections, with qbar paths explicitly absent.
+- [x] **Step 2: Add schema metadata without changing runtime behavior.** Define `ConfigSchema()` and `ConfigField()` in `lib/app/config.ahk`; make the initial implementation return the current accepted fields and dynamic sections, with qbar paths explicitly absent.
 - [x] **Step 3: Implement scalar validation.** Implemented strict integer/number/boolean/enum and key-name validation with canonical logical values.
 - [x] **Step 4: Implement field codecs.** Move or reuse the existing TabHotString escape algorithm so it runs once at the configuration boundary. Add a versioned JSON scalar storage marker for the two system prompts, using the existing JSON library through an array wrapper because bare JSON strings are unsupported by the current serializer. Decode only a valid marker; preserve all unmarked legacy text literally.
 - [x] **Step 5: Apply decode on live settings load.** Keep `ConfigParseIni()` raw for the window-binding INI and other generic documents. During `ConfigLoad()`, decode only fields described by the live schema so `ConfigRead()` and `ConfigSection()` expose logical values. Remove the second TabHotString decode from the hotstring path after all callers are updated.
@@ -134,10 +134,10 @@ Map(
 
 **Files:**
 
-- Modify: `lib/settings.ahk`
-- Modify: `lib/core.ahk`
+- Modify: `lib/features/settings.ahk`
+- Modify: `lib/app/core.ahk`
 - Modify: `pages/settings.html`
-- Modify: `lib/config.ahk` if Task 1 exposes a small diff helper there
+- Modify: `lib/app/config.ahk` if Task 1 exposes a small diff helper there
 
 **Interfaces:**
 
@@ -164,10 +164,10 @@ Map(
 
 **Files:**
 
-- Modify: `lib/llm.ahk`
-- Modify: `lib/settings.ahk`
-- Modify: `lib/qbar_panel.ahk`
-- Modify: `lib/dictionary.ahk` only if its message fields use the generic scalar helper
+- Modify: `lib/shared/llm.ahk`
+- Modify: `lib/features/settings.ahk`
+- Modify: `lib/features/qbar/qbar_panel.ahk`
+- Modify: `lib/features/dictionary.ahk` only if its message fields use the generic scalar helper
 - Review: every `LLMMsgField()` call in `lib/`
 
 **Interfaces:**
@@ -195,9 +195,9 @@ Map(
 
 **Files:**
 
-- Modify: `lib/qbar_everything.ahk`
-- Modify: `lib/config.ahk` schema records from Task 1
-- Modify: `lib/settings.ahk`
+- Modify: `lib/features/qbar/qbar_everything.ahk`
+- Modify: `lib/app/config.ahk` schema records from Task 1
+- Modify: `lib/features/settings.ahk`
 - Modify: `pages/settings.html`
 - Modify: `capslock_p2-default.ini`
 - Modify: `capslock_p2-settingsDemo.ini`
@@ -227,11 +227,11 @@ Map(
 
 **Files:**
 
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/qbar_index.ahk`
-- Modify: `lib/qbar_commands.ahk`
-- Modify: `lib/core.ahk` change application
-- Modify: `lib/config.ahk` only if a generation helper belongs at the config boundary
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/features/qbar/qbar_index.ahk`
+- Modify: `lib/features/qbar/qbar_commands.ahk`
+- Modify: `lib/app/core.ahk` change application
+- Modify: `lib/app/config.ahk` only if a generation helper belongs at the config boundary
 
 **Interfaces:**
 
@@ -255,7 +255,7 @@ Map(
 
 **Files:**
 
-- Modify: `lib/dictionary.ahk`
+- Modify: `lib/features/dictionary.ahk`
 - Modify: `pages/dictionary.html` only if result sequence metadata must be carried in messages
 
 **Interfaces:**
@@ -281,9 +281,9 @@ Map(
 
 **Files:**
 
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/qbar_everything.ahk`
-- Modify: `lib/qbar_panel.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/features/qbar/qbar_everything.ahk`
+- Modify: `lib/features/qbar/qbar_panel.ahk`
 - Review: `tools/capslock_p2.iss` resource paths
 
 **Interfaces:**
@@ -312,13 +312,13 @@ Map(
 
 **Files:**
 
-- Modify: `lib/panelHost.ahk`
-- Modify: `lib/aiChat.ahk`
-- Modify: `lib/llmTranslate.ahk`
-- Modify: `lib/dictionary.ahk`
-- Modify: `lib/settings.ahk`
-- Modify: `lib/qbar_panel.ahk`
-- Modify: `lib/keys.ahk` if panel-activity checks stop using mirrored GUI globals
+- Modify: `lib/shared/panelHost.ahk`
+- Modify: `lib/features/aiChat.ahk`
+- Modify: `lib/features/translate/llmTranslate.ahk`
+- Modify: `lib/features/dictionary.ahk`
+- Modify: `lib/features/settings.ahk`
+- Modify: `lib/features/qbar/qbar_panel.ahk`
+- Modify: `lib/input/keys.ahk` if panel-activity checks stop using mirrored GUI globals
 
 **Interfaces:**
 
@@ -343,10 +343,10 @@ Map(
 
 **Files:**
 
-- Modify: `lib/windows.ahk`
-- Modify: `lib/settings.ahk`
+- Modify: `lib/features/windows.ahk`
+- Modify: `lib/features/settings.ahk`
 - Modify: `pages/settings.html`
-- Modify: `lib/llm.ahk` scalar readers from Task 3
+- Modify: `lib/shared/llm.ahk` scalar readers from Task 3
 - Modify: `README.md`
 
 **Interfaces:**
@@ -371,12 +371,12 @@ Map(
 
 **Files:**
 
-- Modify: `lib/crypto.ahk`
-- Modify: `lib/youdaoTranslate.ahk`
-- Modify: `lib/qbar.ahk`
-- Modify: `lib/core.ahk`
-- Modify: `lib/tabHotString.ahk`
-- Modify: `lib/keys.ahk` only if clipboard helper signatures change
+- Modify: `lib/shared/crypto.ahk`
+- Modify: `lib/features/translate/youdaoTranslate.ahk`
+- Modify: `lib/features/qbar/qbar.ahk`
+- Modify: `lib/app/core.ahk`
+- Modify: `lib/input/tabHotString.ahk`
+- Modify: `lib/input/keys.ahk` only if clipboard helper signatures change
 
 **Interfaces:**
 
@@ -401,11 +401,11 @@ Map(
 **Files:**
 
 - Modify: `pages/qbar.html`
-- Modify: `lib/qbar_panel.ahk`
-- Modify: `lib/aiChat.ahk`
-- Modify: `lib/llmTranslate.ahk`
-- Modify: `lib/config.ahk`
-- Modify: `lib/core.ahk`
+- Modify: `lib/features/qbar/qbar_panel.ahk`
+- Modify: `lib/features/aiChat.ahk`
+- Modify: `lib/features/translate/llmTranslate.ahk`
+- Modify: `lib/app/config.ahk`
+- Modify: `lib/app/core.ahk`
 - Review deletion already authorized: `lib/math.ahk`, `lib/jsEval.ahk`, `loadScript/`, `pages/settings.js`, `tools/ini_parse_check.ahk`, `tools/ini_write_check.ahk`
 
 **Interfaces:**
@@ -477,7 +477,7 @@ git status --short --untracked-files=all
 rg -n "esPath|everythingPath|esInstance" lib pages README.md docs capslock_p2-default.ini capslock_p2-settingsDemo.ini tools
 rg -n "LLMMsgField|LLMMsgNumber|LLMMsgBoolean|\+ 0|Integer\(" lib
 rg -n "DebugLog\(" lib pages
-rg -n "RunWait|Sleep\(|SetTimer\(|QbarEsJob|DictionaryQuerySeq" lib/qbar_everything.ahk lib/dictionary.ahk lib/qbar_panel.ahk
+rg -n "RunWait|Sleep\(|SetTimer\(|QbarEsJob|DictionaryQuerySeq" lib/features/qbar/qbar_everything.ahk lib/features/dictionary.ahk lib/features/qbar/qbar_panel.ahk
 rg -n "CreateControllerAsync|WebView2Loader.dll|SyncHost|pageReady|add_NavigationCompleted|remove_NavigationCompleted" lib --glob '!WebView2.ahk'
 rg -n "settings\.js|math\.ahk|jsEval\.ahk|loadScript|QStyle|EvaluateExpression|keyFunc_tabScript" capslock_p2.ahk lib pages README.md docs tools
 ```

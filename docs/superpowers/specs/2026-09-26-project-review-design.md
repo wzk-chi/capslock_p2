@@ -28,9 +28,9 @@
 
 ### 结构问题
 
-- `lib/qbar.ahk` 同时承载窗口生命周期、输入查询、开始菜单索引、文件夹浏览、命令执行、Everything 子进程和 QStyle；文件超过 1500 行。
-- `lib/core.ahk` 同时承载启动、配置解析/写入、热串、剪贴板、语言、DPI 和启动动画。
-- `lib/aiChat.ahk` 与 `lib/llmTranslate.ahk` 都实现自己的 WebView2 创建、焦点监视、页面执行和关闭流程。
+- `lib/features/qbar/qbar.ahk` 同时承载窗口生命周期、输入查询、开始菜单索引、文件夹浏览、命令执行、Everything 子进程和 QStyle；文件超过 1500 行。
+- `lib/app/core.ahk` 同时承载启动、配置解析/写入、热串、剪贴板、语言、DPI 和启动动画。
+- `lib/features/aiChat.ahk` 与 `lib/features/translate/llmTranslate.ahk` 都实现自己的 WebView2 创建、焦点监视、页面执行和关闭流程。
 - `pages/settings.html` 有完整的设置中心，`pages/settings.js` 又被翻译/AI 页面作为独立设置弹层使用，导致字段、校验和保存路径重复。
 
 ### 已确认的行为问题
