@@ -139,6 +139,9 @@ body {
 .row .text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .row.selected { background: var(--accent-soft); color: var(--accent); }
 .row.selected .glyph { opacity: 1; }
+.row:hover { background: var(--accent-quiet); color: var(--accent-strong); }
+.row:hover .glyph { opacity: 1; }
+.row.selected:hover { background: var(--accent-soft); color: var(--accent); }
 .row.pinned .text { font-weight: 650; }
 
 .empty {
@@ -175,7 +178,7 @@ const MAX_RENDERED = 60; // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
 const TYPE_RANK = { search: -1, everything: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
-const TYPE_GLYPH = { search: '🔍', everything: '🗂', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖' };
+const TYPE_GLYPH = { search: '🔍', everything: '🗂', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖', history: '↻' };
 
 const STRINGS = {
   en: { placeholder: 'Type to search…', loading: 'Loading…' },
@@ -189,10 +192,13 @@ let placeholder = ''; // supplied by AHK, already localized (e.g. "(empty folder
 let selectedIndex = -1;
 let listHidden = false;
 let folderMode = false; // AHK is listing a directory, so completions splice paths
+let resultsMode = 'normal'; // AHK keeps history rows in recent-first order
 let reportedRows = -1;
 let ICONS = {}; // iconKey -> PNG data URI, pushed by AHK once per key
 let loadingVisible = true;
 let composing = false;
+let querySerial = 0;
+let currentQueryId = 0;
 
 /* Messaging and sizing -------------------------------------------------- */
 function t(key) {
@@ -214,22 +220,31 @@ postType('ready', window.innerWidth + 'x' + window.innerHeight);
 
 function requestQuery(reason = 'input') {
   if (composing) return;
-  postType('query', input.value);
+  currentQueryId = ++querySerial;
+  if (resultsMode === 'history') {
+    results = [];
+    selectedIndex = -1;
+    resultsMode = 'normal';
+    render();
+  }
+  post({ type: 'query', text: input.value, queryId: currentQueryId });
 }
 
-// Tell AHK how tall the window should be. Everything is measured in rows so
-// the two sides only have to agree on the row height.
+// Tell AHK how many result rows the native host should reserve below the input.
 function reportRows() {
-  if (reportedRows === visibleRows())
+  const rows = visibleRows();
+  if (reportedRows === rows)
     return;
-  reportedRows = visibleRows();
-  postType('resize', String(reportedRows));
+  reportedRows = rows;
+  postType('resize', String(rows));
 }
 
 function visibleRows() {
   if (loadingVisible)
     return 1;
-  if (listHidden || !hasContent())
+  if (listHidden)
+    return 0;
+  if (!hasContent())
     return 0;
   return Math.min(Math.max(results.length, 1), MAX_VISIBLE_ROWS);
 }
@@ -240,6 +255,8 @@ function hasContent() {
 
 /* Rendering and selection ------------------------------------------------ */
 function sortResults(items) {
+  if (resultsMode === 'history')
+    return items.slice();
   return items.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
     const rankA = TYPE_RANK[a.type] ?? 9;
@@ -320,7 +337,7 @@ function completeSelected() {
   const row = selectedIndex >= 0 ? rows[selectedIndex] : null;
   if (!row)
     return null;
-  input.value = (folderMode ? folderPrefix() : '') + row.short;
+  input.value = (folderMode && resultsMode !== 'history' ? folderPrefix() : '') + row.short;
   input.setSelectionRange(input.value.length, input.value.length);
   return row;
 }
@@ -335,6 +352,14 @@ function folderPrefix() {
 function execute(ctrlHeld) {
   const rows = sortResults(results).slice(0, MAX_RENDERED);
   const row = (!listHidden && selectedIndex >= 0) ? rows[selectedIndex] : null;
+  if (row && row.historyId) {
+    post({
+      type: 'executeHistory',
+      historyId: row.historyId,
+      queryId: currentQueryId
+    });
+    return;
+  }
   post({
     type: 'execute',
     text: input.value,
@@ -390,9 +415,12 @@ window.startSearch = function (shortKey) {
   requestQuery();
 };
 
-window.setResults = function (items, isFolder, placeholderText) {
+window.setResults = function (items, isFolder, placeholderText, mode, queryId) {
+  if (!Number.isInteger(queryId) || queryId !== currentQueryId)
+    return;
   results = Array.isArray(items) ? items : [];
   folderMode = !!isFolder;
+  resultsMode = mode === 'history' ? 'history' : 'normal';
   placeholder = placeholderText || '';
   selectedIndex = results.length ? 0 : -1;
   loadingVisible = false;
@@ -410,6 +438,11 @@ window.addIcons = function (map) {
 
 input.addEventListener('compositionstart', () => {
   composing = true;
+  currentQueryId = ++querySerial;
+  results = [];
+  selectedIndex = -1;
+  resultsMode = 'normal';
+  render();
 });
 
 input.addEventListener('compositionend', () => {
@@ -439,7 +472,7 @@ input.addEventListener('keydown', event => {
     if (completeSelected()) requestQuery();
     return;
   }
-  if ((event.key === '\\' || event.key === '/') && !listHidden) {
+  if ((event.key === '\\' || event.key === '/') && !listHidden && resultsMode !== 'history') {
     // Both keys complete the highlighted row; a folder also drops straight into
     // browsing it, which is what the reference used them for. With nothing to
     // complete they fall through and are typed as ordinary characters.

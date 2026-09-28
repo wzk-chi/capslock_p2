@@ -178,7 +178,7 @@ QbarStartMenuItems() {
 ; Query / filtering
 ; ---------------------------------------------------------------------------
 
-QbarQuery(text, querySeq := 0) {
+QbarQuery(text, querySeq := 0, pageQueryId := 0) {
     global QbarVisible, QbarIndexReady, QbarQuerySeq
     if !QbarVisible || !QbarIndexReady
         return
@@ -191,7 +191,7 @@ QbarQuery(text, querySeq := 0) {
     DebugLog("Qbar query apply")
     DebugLogPrivate("Qbar applied query", text)
     if text = "" {
-        QbarSendResults([], false)
+        QbarSendResults(QbarHistoryRows(), false, "", "history", pageQueryId, querySeq)
         return
     }
     hasArgument := QbarSplitCommand(text, &firstToken, &rest)
@@ -204,7 +204,7 @@ QbarQuery(text, querySeq := 0) {
             results := [Map("short", text,
                 "label", QbarText("Search Everything: ", "在 Everything 中搜索：") . rest,
                 "type", "everything", "pinned", true, "icon", "")]
-        QbarSendResults(results, false)
+        QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
         return
     }
     if QbarIsFolderQuery(text) {
@@ -213,7 +213,7 @@ QbarQuery(text, querySeq := 0) {
         placeholder := (items.Length = 0 && QbarLeafOf(text) = "")
             ? QbarText("(empty folder)", "（空文件夹）")
             : ""
-        QbarSendResults(items, true, placeholder)
+        QbarSendResults(items, true, placeholder, "normal", pageQueryId, querySeq)
         return
     }
     results := QbarFilterItems(text)
@@ -238,7 +238,7 @@ QbarQuery(text, querySeq := 0) {
             "pinned", true,
             "icon", ""
         ))
-    QbarSendResults(results, false)
+    QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
 }
 
 ; A configured trigger always wins over path browsing, matching the reference
@@ -320,14 +320,26 @@ QbarFolderItemsFor(dir) {
     return items
 }
 
-QbarSendResults(results, folderMode, placeholder := "") {
-    global IconSent
+QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQueryId := 0, querySeq := 0) {
+    global IconSent, QbarPageQueryId, QbarQuerySeq
+    if pageQueryId = 0
+        pageQueryId := QbarPageQueryId
+    if querySeq = 0
+        querySeq := QbarQuerySeq
     QbarCancelIconQueue()
+    if mode = "history"
+        QbarHistorySetDisplayed(querySeq, pageQueryId, results)
+    else
+        QbarHistoryClearDisplayed()
     rows := []
     iconKeys := Map()
     for item in results {
         row := Map("short", item["short"], "label", item["label"], "type", item["type"],
             "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false)
+        if item.Has("historyId")
+            row["historyId"] := item["historyId"]
+        if item.Has("history")
+            row["history"] := item["history"]
         iconKey := item.Has("icon") ? item["icon"] : ""
         if iconKey != "" {
             row["icon"] := iconKey
@@ -339,7 +351,7 @@ QbarSendResults(results, folderMode, placeholder := "") {
     ; Publish rows before doing any shell icon extraction. Missing icons use
     ; the page glyph temporarily and arrive in small timer-driven batches.
     QbarExec("window.setResults(" . JSON.stringify(rows, 0) . "," . (folderMode ? "true" : "false")
-        . "," . LLMJsonQuote(placeholder) . ");")
+        . "," . LLMJsonQuote(placeholder) . "," . LLMJsonQuote(mode) . "," . pageQueryId . ");")
     if iconKeys.Count
         QbarQueueIcons(iconKeys)
 }

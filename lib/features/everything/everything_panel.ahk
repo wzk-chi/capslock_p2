@@ -20,7 +20,7 @@ EverythingEnsureWebView() {
         EverythingPanelMinWidth, EverythingPanelMinHeight)
     EverythingHost := PanelHostCreate(
         A_ScriptDir . "\pages\everything.html", "capslock_p2 Everything", Map(
-            "guiOptions", "+Resize +MinSize640x440 +MinimizeBox +MaximizeBox +SysMenu",
+            "guiOptions", "+ToolWindow +Resize +MinSize640x440 +MinimizeBox +MaximizeBox +SysMenu",
             "dataPath", A_Temp . "\CapsLockPlusEverythingWebView2",
             "initialShow", "x-32000 y-32000 w" . size[1] . " h" . size[2] . " NA",
             "callbacks", Map(

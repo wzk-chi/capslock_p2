@@ -31,6 +31,7 @@ A_HotkeyInterval := 2000
 #Include lib\features\dictionary.ahk
 #Include lib\features\aiChat.ahk
 #Include lib\features\qbar\qbar.ahk
+#Include lib\features\qbar\qbar_history.ahk
 #Include lib\features\qbar\qbar_panel.ahk
 #Include lib\features\qbar\qbar_index.ahk
 #Include lib\features\qbar\qbar_commands.ahk

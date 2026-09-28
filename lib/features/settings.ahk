@@ -29,6 +29,7 @@ SettingsShow(initialPage := "general", *) {
     ShowSystemCursor()
     if PanelHostPageReady(SettingsHost)
         SetTimer(SettingsPushSnapshot, -1)
+    return true
 }
 
 SettingsEnsureWebView() {

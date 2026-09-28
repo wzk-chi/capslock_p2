@@ -122,6 +122,7 @@ AiChatShow(question) {
 
     if PanelHostPageReady(AiChatHost)
         AiChatAfterReady()
+    return true
 }
 
 ; Everything that happens once the page is known to be alive.

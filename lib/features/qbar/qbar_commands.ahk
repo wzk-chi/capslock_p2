@@ -9,7 +9,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         return
     if QbarEsAlias(text) && !QbarConfigShortKeyExists(text) {
         QbarHide()
-        EverythingShow("", false)
+        if EverythingShow("", false)
+            QbarHistoryRemember(QbarHistoryEverythingEntry("", false))
         return
     }
     ; Preserve the complete argument from all four built-in aliases before
@@ -18,20 +19,24 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     if QbarSplitCommand(text, &typedToken, &typedRest)
         && !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken) {
         QbarHide()
-        EverythingShow(typedRest, typedRest != "")
+        if EverythingShow(typedRest, typedRest != "")
+            QbarHistoryRemember(QbarHistoryEverythingEntry(typedRest, typedRest != ""))
         return
     }
     if selected != "" {
         if selectedType = "everything" {
             query := QbarEverythingArgument(text)
             QbarHide()
-            EverythingShow(query, query != "")
+            if EverythingShow(query, query != "")
+                QbarHistoryRemember(QbarHistoryEverythingEntry(query, query != ""))
             return
         }
         ; The AI option row asks with the typed text as-is. A bare trigger
         ; word opens the chat with an empty composer (handled inside QbarAiAsk).
         if selectedType = "ai" {
-            QbarAiAsk(selected)
+            question := QbarAiQuestion(selected)
+            if QbarAiAsk(selected)
+                QbarHistoryRemember(QbarHistoryAiEntry(question))
             return
         }
         if selectedType = "search" {
@@ -45,7 +50,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
                 ; A bare q opens the chat; a configured q trigger keeps its
                 ; normal search precedence.
                 if QbarAiAlias(selected) && !QbarConfigShortKeyExists(selected) {
-                    QbarAiAsk(selected)
+                    if QbarAiAsk(selected)
+                        QbarHistoryRemember(QbarHistoryAiEntry(""))
                     return
                 }
                 QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
@@ -70,11 +76,15 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         ; the domain fallback -- mainly for Everything results, but folder
         ; browsing gets it too.
         if selected != "" && (selectedType = "file" || selectedType = "folder") {
-            QbarLocateInExplorer(text)
+            if QbarLocateInExplorer(text)
+                QbarHistoryRemember(QbarHistoryNew("reveal", text, text,
+                    Map("path", Trim(text))))
             return
         }
         ; Ctrl+Enter otherwise treats the typed text as a domain name.
-        QbarOpenUrl("www." . text . ".com")
+        url := QbarNormalizeUrl("www." . text . ".com")
+        if QbarOpenUrl(url)
+            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
         return
     }
 
@@ -84,22 +94,26 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         ; path; configured commands with the same token win above it.
         if !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
             QbarHide()
-            EverythingShow(rest, rest != "")
+            if EverythingShow(rest, rest != "")
+                QbarHistoryRemember(QbarHistoryEverythingEntry(rest, rest != ""))
             return
         }
         ; "ai <question>" / "q <question>" -- the configured LLM answers or
         ; explains; an ini entry named ai/q wins over the built-in command.
         if !QbarConfigShortKeyExists(firstToken) && QbarAiAlias(firstToken) {
-            QbarAiAsk(rest)
+            if QbarAiAsk(rest)
+                QbarHistoryRemember(QbarHistoryAiEntry(rest))
             return
         }
-        ; "cl <sub>" -- version display and a shortcut to the settings files.
+        ; "cl <sub>" -- a shortcut to the settings center.
         if QbarTryClCommand(firstToken, rest)
             return
         ; "web <url>" opens whatever follows as a site, http:// added when it
         ; is missing; a configured "web" trigger wins over the command word.
         if firstToken = "web" && !QbarConfigShortKeyExists("web") {
-            QbarOpenUrl(rest)
+            url := QbarNormalizeUrl(rest)
+            if QbarOpenUrl(url)
+                QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
             return
         }
         ; Search engine trigger: substitute {q} with the URL-encoded argument.
@@ -107,34 +121,53 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         if !IsObject(search)
             search := QbarConfigEntry("QSearch", QbarEngineAlias(firstToken))
         if IsObject(search) {
-            QbarOpenUrl(StrReplace(search["value"], "{q}", UrlEncodeUtf8(rest)))
+            url := QbarNormalizeUrl(StrReplace(search["value"], "{q}", UrlEncodeUtf8(rest)))
+            if QbarOpenUrl(url)
+                QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
             return
         }
-        if QbarRunBy(firstToken, rest)
+        runSucceeded := false
+        runCommand := ""
+        if QbarRunBy(firstToken, rest, &runSucceeded, &runCommand) {
+            if runSucceeded
+                QbarHistoryRemember(QbarHistoryRunEntry(text, runCommand))
             return
+        }
     }
 
-    if QbarRunBy(text)
+    runSucceeded := false
+    runCommand := ""
+    if QbarRunBy(text, "", &runSucceeded, &runCommand) {
+        if runSucceeded
+            QbarHistoryRemember(QbarHistoryRunEntry(text, runCommand))
         return
+    }
     web := QbarConfigEntry("QWeb", text)
     if IsObject(web) {
-        QbarOpenUrl(web["value"])
+        url := QbarNormalizeUrl(web["value"])
+        if QbarOpenUrl(url)
+            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
         return
     }
     app := QbarFindByShort(QbarStartMenuItems(), text)
     if IsObject(app) {
-        QbarRunShortcut(app)
+        if QbarRunShortcut(app)
+            QbarHistoryRemember(QbarHistoryShortcutEntry(app))
         return
     }
 
     ; "type" would shadow the built-in Type() function in the global namespace.
     stringType := CheckStringType(text)
     if stringType = "file" || stringType = "folder" || stringType = "ftp" {
-        QbarOpenPath(text)
+        if QbarOpenPath(text)
+            QbarHistoryRemember(QbarHistoryNew("path", text, text,
+                Map("path", Trim(text))))
         return
     }
     if stringType = "web" {
-        QbarOpenUrl(text)
+        url := QbarNormalizeUrl(text)
+        if QbarOpenUrl(url)
+            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
         return
     }
 
@@ -143,7 +176,78 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     ; the launcher's catch-all instead of doing nothing.
     DebugLog("QbarExecute no match, asking AI")
     DebugLogPrivate("Qbar AI question", text)
-    QbarAiAsk(text)
+    if QbarAiAsk(text)
+        QbarHistoryRemember(QbarHistoryAiEntry(text))
+}
+
+QbarHistoryAiEntry(question) {
+    question := Trim(question)
+    input := "ai" . (question = "" ? "" : " " . question)
+    return QbarHistoryNew("ai", input, input, Map("question", question))
+}
+
+QbarHistoryEverythingEntry(query, runQuery) {
+    query := Trim(query, " `t")
+    input := "e" . (query = "" ? "" : " " . query)
+    return QbarHistoryNew("everything", input, input,
+        Map("query", query, "runQuery", runQuery))
+}
+
+QbarHistoryUrlEntry(input, url) {
+    input := Trim(input, " `t")
+    return QbarHistoryNew("url", input, input, Map("url", url))
+}
+
+QbarHistoryRunEntry(input, command) {
+    input := Trim(input, " `t")
+    return QbarHistoryNew("run", input, input, Map("command", command))
+}
+
+QbarHistoryShortcutEntry(item) {
+    label := item["label"]
+    return QbarHistoryNew("shortcut", label, label, Map(
+        "shortcutPath", item["value"],
+        "exe", item["exe"]))
+}
+
+QbarAiQuestion(text) {
+    text := Trim(text)
+    return QbarAiAlias(text) ? "" : text
+}
+
+; Replay an already-resolved history entry. The caller owns the successful
+; replay's remember/move-to-front step; settings is deferred because its
+; WebView2 creation must happen outside the qbar message callback.
+
+QbarHistoryExecuteEntry(entry) {
+    kind := entry["kind"]
+    payload := entry["payload"]
+    switch kind {
+        case "run":
+            return QbarRunCommandAction(payload["command"], payload["command"])
+        case "shortcut":
+            item := Map(
+                "label", entry["label"],
+                "value", payload["shortcutPath"],
+                "exe", payload["exe"])
+            return QbarRunShortcut(item)
+        case "url":
+            return QbarOpenUrl(payload["url"])
+        case "path":
+            return QbarOpenPath(payload["path"])
+        case "reveal":
+            return QbarLocateInExplorer(payload["path"])
+        case "ai":
+            return QbarAiAsk(payload["question"])
+        case "everything":
+            QbarHide()
+            return EverythingShow(payload["query"], QbarHistoryBoolValue(payload["runQuery"]))
+        case "settings":
+            QbarHide()
+            return QbarScheduleSettingsHistory(entry)
+        default:
+            return false
+    }
 }
 
 ; Handles "键 ->类型 值", which adds one entry to the settings file so qbar can
@@ -229,11 +333,23 @@ QbarTryClCommand(cmd, param) {
         QbarHide()
         ; Qbar commands arrive from a WebView2 callback. Defer creation of the
         ; settings WebView until that callback has returned.
-        SetTimer(SettingsShow, -1)
+        QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",
+            Map("page", "general")))
         return true
     }
     ShowMsg(QbarText("Unknown cl command: ", "未知的 cl 命令：") . param, 2500)
     return true
+}
+
+QbarScheduleSettingsHistory(entry) {
+    SetTimer(QbarSettingsHistoryAction.Bind(entry), -1)
+    return "deferred"
+}
+
+QbarSettingsHistoryAction(entry, *) {
+    page := entry["payload"]["page"]
+    if SettingsShow(page)
+        QbarHistoryRemember(entry)
 }
 
 ; The reference answers to a couple of alternative engine spellings (g/gg,
@@ -263,10 +379,12 @@ QbarAiAsk(text) {
     if QbarAiAlias(text)
         text := ""
     QbarHide()
-    AiChatShow(text)
+    return AiChatShow(text)
 }
 
-QbarRunBy(shortKey, params := "") {
+QbarRunBy(shortKey, params := "", &didRun := false, &commandOut := "") {
+    didRun := false
+    commandOut := ""
     entry := QbarConfigEntry("QRun", shortKey)
     if !IsObject(entry)
         return false
@@ -284,13 +402,8 @@ QbarRunBy(shortKey, params := "") {
     }
 
     command := QbarRunCommand(entry["value"], params)
-    try {
-        Run(command)
-        QbarHide()
-    } catch as runError {
-        DebugLog("Qbar run failed")
-        ShowMsg(QbarText("Cannot run: ", "无法运行：") . entry["value"], 2500)
-    }
+    commandOut := command
+    didRun := QbarRunCommandAction(command, entry["value"])
     return true
 }
 
@@ -316,20 +429,36 @@ QbarRunCommand(value, params := "") {
     return command
 }
 
+QbarRunCommandAction(command, errorText := "") {
+    try {
+        Run(command)
+        QbarHide()
+        return true
+    } catch as runError {
+        DebugLog("Qbar run failed")
+        if errorText = ""
+            errorText := command
+        ShowMsg(QbarText("Cannot run: ", "无法运行：") . errorText, 2500)
+        return false
+    }
+}
+
 QbarRunShortcut(item) {
     try {
         Run(QbarFilesystemTarget(item["value"]))
         QbarHide()
-        return
+        return true
     } catch {
         ; Fall through to the target executable when the .lnk is stale.
     }
     try {
         Run(QbarFilesystemTarget(item["exe"]))
         QbarHide()
+        return true
     } catch as runError {
         DebugLog("Qbar start menu run failed")
         ShowMsg(QbarText("Cannot run: ", "无法运行：") . item["label"], 2500)
+        return false
     }
 }
 
@@ -345,13 +474,20 @@ QbarFilesystemTarget(target) {
 
 ; Values typed as "www.host" or "host" become http:// URLs.
 
-QbarOpenUrl(url) {
+QbarNormalizeUrl(url) {
     url := Trim(url)
     if url = ""
-        return
+        return ""
     if !RegExMatch(url, "i)^(https?|ftp)://")
         url := "http://" . url
-    QbarOpenPath(url)
+    return url
+}
+
+QbarOpenUrl(url) {
+    url := QbarNormalizeUrl(url)
+    if url = ""
+        return false
+    return QbarOpenPath(url)
 }
 
 ; Local files, folders and already-formed URLs go straight to the shell.
@@ -359,14 +495,16 @@ QbarOpenUrl(url) {
 QbarOpenPath(path) {
     path := Trim(path)
     if path = ""
-        return
+        return false
     target := QbarFilesystemTarget(path)
     try {
         Run(target)
         QbarHide()
+        return true
     } catch as runError {
         DebugLog("Qbar open failed")
         ShowMsg(QbarText("Cannot open: ", "无法打开：") . path, 2500)
+        return false
     }
 }
 
@@ -376,22 +514,23 @@ QbarOpenPath(path) {
 QbarLocateInExplorer(path) {
     path := Trim(path)
     if path = ""
-        return
+        return false
     if DirExist(path) {
-        QbarOpenPath(path)
-        return
+        return QbarOpenPath(path)
     }
     parent := ""
     SplitPath(path, , &parent)
     if parent = "" || !DirExist(parent) {
         ShowMsg(QbarText("Not found: ", "找不到：") . path, 2500)
-        return
+        return false
     }
     try {
         Run("explorer.exe /select," . Chr(34) . path . Chr(34))
         QbarHide()
+        return true
     } catch as runError {
         DebugLog("Qbar locate failed")
         ShowMsg(QbarText("Cannot open: ", "无法打开：") . path, 2500)
+        return false
     }
 }

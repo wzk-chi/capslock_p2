@@ -19,7 +19,7 @@ QbarEnsureWebView() {
         "guiOptions", "+AlwaysOnTop +ToolWindow -Caption",
         "dataPath", A_Temp . "\CapsLockPlusQbarWebView2",
         "initialShow", "x" . QbarOffscreen . " y" . QbarOffscreen
-            . " w" . FixDpi(QbarWidth) . " h" . QbarCollapsedHeight() . " NA",
+            . " w" . QbarWidth . " h" . QbarCollapsedHeight() . " NA",
         "callbacks", Map(
             "close", QbarHide,
             "escape", QbarHide,
@@ -83,7 +83,7 @@ QbarShutdown(*) {
 ; parse once and read the fields through LLMMsgField.
 
 QbarWebMessageReceived(sender, args) {
-    global QbarQuerySeq
+    global QbarQuerySeq, QbarPageQueryId
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -93,9 +93,14 @@ QbarWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         QbarQuerySeq += 1
         querySeq := QbarQuerySeq
+        pageQueryIdValid := false
+        pageQueryId := LLMMsgNumber(msg, "queryId", &pageQueryIdValid, 0, true)
+        if !pageQueryIdValid
+            return
+        QbarPageQueryId := pageQueryId
         DebugLog("Qbar query received")
         DebugLogPrivate("Qbar query", text)
-        SetTimer(QbarQuery.Bind(text, querySeq), -1)
+        SetTimer(QbarQuery.Bind(text, querySeq, pageQueryId), -1)
     } else if messageType = "execute" {
         text := LLMMsgField(msg, "text")
         selected := LLMMsgField(msg, "selected")
@@ -105,6 +110,13 @@ QbarWebMessageReceived(sender, args) {
         if !ctrlValid
             ctrl := false
         SetTimer(QbarExecute.Bind(text, selected, ctrl, selectedType), -1)
+    } else if messageType = "executeHistory" {
+        historyId := LLMMsgField(msg, "historyId")
+        pageQueryIdValid := false
+        pageQueryId := LLMMsgNumber(msg, "queryId", &pageQueryIdValid, 0, true)
+        if !pageQueryIdValid || historyId = ""
+            return
+        SetTimer(QbarHistoryReplay.Bind(historyId, QbarQuerySeq, pageQueryId), -1)
     } else if messageType = "resize" {
         ; WebView2 may deliver the row count as a JSON number or numeric text.
         ; Reject fractions and malformed values before converting.
@@ -200,11 +212,12 @@ QbarResize(rows) {
     QbarCurrentRows := rows
     if !IsObject(PanelHostGui(QbarHost))
         return
-    height := FixDpi(QbarPadding * 2 + QbarInputHeight + (rows > 0 ? QbarGap + rows * QbarRowHeight : 0))
+    height := QbarPadding * 2 + QbarInputHeight
+        + (rows > 0 ? QbarGap + rows * QbarRowHeight : 0)
     ; The panel never moves, so restating the resting position here is
     ; deterministic: the results grow the window downward instead of the window
     ; drifting. Reading the position back instead only invites it.
-    QbarPlace(QbarRestingX(), QbarRestingY(), FixDpi(QbarWidth), height)
+    QbarPlace(QbarRestingX(), QbarRestingY(), QbarWidth, height)
     DebugLog("Qbar resize rows=" . rows . " height=" . height)
     PanelHostFill(QbarHost)
 }
@@ -253,21 +266,21 @@ QbarCornerRadius() {
     return QbarCardRadius
 }
 
-; Centre the collapsed bar, so the input sits in the middle of the screen and the
-; list grows downward from it. Centring the expanded panel instead would make the
-; input drift every time the results changed height.
+; Place the collapsed bar around the upper third of the screen and let the list
+; grow downward from it. Gui.Show sizes are logical pixels, while these screen
+; coordinates are physical pixels, so only the position is converted here.
 
 QbarRestingX() {
     return Max(0, Round((A_ScreenWidth - FixDpi(QbarWidth)) / 2))
 }
 
 QbarRestingY() {
-    return Max(0, Round((A_ScreenHeight - QbarCollapsedHeight()) / 2))
+    return Max(0, Round((A_ScreenHeight - FixDpi(QbarCollapsedHeight())) / 3))
 }
 
 QbarCollapsedHeight() {
     global QbarPadding, QbarInputHeight
-    return FixDpi(QbarPadding * 2 + QbarInputHeight)
+    return QbarPadding * 2 + QbarInputHeight
 }
 
 ; ---------------------------------------------------------------------------

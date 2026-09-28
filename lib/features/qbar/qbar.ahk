@@ -10,6 +10,7 @@ global QbarIndexReady := false
 global QbarIndexLoading := false
 global QbarPendingText := ""
 global QbarQuerySeq := 0
+global QbarPageQueryId := 0
 global QbarCurrentRows := 0
 global QbarStartMenuCache := 0      ; 0 = not scanned yet, otherwise an array
 global QbarConfigIndexCache := 0    ; lazily built QSearch/QRun/QWeb index
@@ -83,7 +84,7 @@ QbarShow() {
     ; restating the rectangle in a second call, is what let the panel appear
     ; centred and then snap to the lower right.
     QbarCurrentRows := 0
-    QbarPlace(QbarRestingX(), QbarRestingY(), FixDpi(QbarWidth), QbarCollapsedHeight())
+    QbarPlace(QbarRestingX(), QbarRestingY(), QbarWidth, QbarCollapsedHeight())
     panelGui := PanelHostGui(QbarHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
@@ -101,13 +102,15 @@ QbarShow() {
 
 QbarHide(*) {
     global QbarHost, QbarVisible, QbarOpen, QbarFolderDir, QbarFolderItems, QbarFutureStack
-    global QbarIndexLoading, QbarQuerySeq
+    global QbarIndexLoading, QbarQuerySeq, QbarPageQueryId
     QbarVisible := false
     QbarOpen := false
     QbarFolderDir := ""
     QbarFolderItems := []
     QbarFutureStack := []
     QbarQuerySeq += 1
+    QbarPageQueryId := 0
+    QbarHistoryClearDisplayed()
     QbarCancelIconQueue()
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
