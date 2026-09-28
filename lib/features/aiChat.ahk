@@ -165,7 +165,7 @@ AiChatEnsureWebView() {
 
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
     AiChatHost := PanelHostCreate(pagePath, "capslock_p2 AI", Map(
-        "guiOptions", "+Resize +MinSize520x400 +MinimizeBox +MaximizeBox +SysMenu",
+        "guiOptions", "+Resize +MinSize520x400 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow",
         "dataPath", A_Temp . "\CapsLockPlusAiChatWebView2",
         "initialShow", "x-32000 y-32000 w" . aiChatSize[1] . " h" . aiChatSize[2] . " NA",
         "callbacks", Map(

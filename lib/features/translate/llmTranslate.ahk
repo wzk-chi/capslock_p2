@@ -99,7 +99,7 @@ LLMTranslateEnsureWebView() {
 
     translateSize := ScreenFitSize(720, 500, 520, 360)
     LLMTranslateHost := PanelHostCreate(pagePath, "capslock_p2 Translate", Map(
-        "guiOptions", "+Caption +Resize +MinSize520x360",
+        "guiOptions", "+Caption +Resize +MinSize520x360 +ToolWindow",
         "dataPath", A_Temp . "\CapsLockPlusWebView2",
         "initialShow", "x-32000 y-32000 w" . translateSize[1] . " h" . translateSize[2] . " NA",
         "callbacks", Map(
