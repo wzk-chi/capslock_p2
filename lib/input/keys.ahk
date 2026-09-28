@@ -223,6 +223,8 @@ keyFunc_qbar(*) {
         return
     if DictionaryIsActive()
         return
+    if EverythingIsActive()
+        return
     QbarToggle()
 }
 

@@ -174,8 +174,8 @@ const MAX_VISIBLE_ROWS = 12;
 const MAX_RENDERED = 60; // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
-const TYPE_RANK = { search: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
-const TYPE_GLYPH = { search: '🔍', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖' };
+const TYPE_RANK = { search: -1, everything: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
+const TYPE_GLYPH = { search: '🔍', everything: '🗂', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖' };
 
 const STRINGS = {
   en: { placeholder: 'Type to search…', loading: 'Loading…' },
@@ -400,8 +400,7 @@ window.setResults = function (items, isFolder, placeholderText) {
   render();
 };
 
-// Merge a batch of iconKey -> data URI pushed by AHK and redraw. Normally it
-// arrives before setResults, so this render is just a safety net.
+// Merge icon batches pushed by AHK after rows are already visible.
 window.addIcons = function (map) {
   Object.assign(ICONS, map || {});
   render();

@@ -17,20 +17,18 @@ global QbarConfigIndexGeneration := 1
 global QbarFolderDir := ""
 global QbarFolderItems := []
 global QbarFutureStack := []        ; forward history for keyFunc_qbar_lowerFolderPath
+global QbarIconQueue := []          ; icon keys waiting for incremental extraction
+global QbarIconQueued := Map()      ; de-duplicates the pending icon queue
+global QbarIconTimer := false       ; one-shot icon extraction timer is armed
 
-; Everything file search state (triggered by "e <query>" and its aliases).
-global QbarEsMode := false          ; the current query is an Everything search
-global QbarEsPending := ""          ; latest query text waiting for the debounce timer
-global QbarEsSeq := 0               ; bumped per request; a flush that finishes late is dropped
-global QbarEsLastResults := []      ; previous results, kept visible while the next search runs
-global QbarEsJob := 0               ; the one qbar-owned es.exe process/retry job
+global QbarEsSeq := 0               ; bumped per request; late jobs are dropped
+global QbarEsJob := 0               ; the one shared es.exe process/retry job
 global QbarEsJobId := 0
 global QbarEsUseBundled := 0        ; 0 undecided, -1 the user's Everything, 1 the bundled copy
-global QbarEsBundledStarted := false ; true only when qbar launched the bundled server
+global QbarEsBundledStarted := false ; true only when this session launched the bundled server
 global QbarEsBundledState := "unknown" ; unknown|starting|reachable|failed
 global QbarEsWarmupDeadline := 0
 global QbarEsBundledFailed := false ; start declined; do not prompt again this session
-global QbarEsHintShown := false
 
 ; Panel geometry in logical pixels, mirrored by qbar.html's CSS variables.
 ; Screen-relative: 420 logical px at 1920x1080, wider on bigger screens and
@@ -61,7 +59,7 @@ QbarToggle(*) {
 }
 
 QbarShow() {
-    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarEsHintShown
+    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows
     if QbarOpen
         return
 
@@ -70,7 +68,6 @@ QbarShow() {
     ; line-copy. A wrong guess here just shows up in the input, one clear
     ; keystroke away from gone.
     QbarPendingText := GetSelectedText("any")
-    QbarEsHintShown := false
     ; The reference implementation prefixes the selection with a space and puts
     ; the caret in front of it, so a command can be typed ahead of the text.
     if QbarPendingText != ""
@@ -104,16 +101,14 @@ QbarShow() {
 
 QbarHide(*) {
     global QbarHost, QbarVisible, QbarOpen, QbarFolderDir, QbarFolderItems, QbarFutureStack
-    global QbarEsMode, QbarEsLastResults, QbarIndexLoading, QbarQuerySeq
+    global QbarIndexLoading, QbarQuerySeq
     QbarVisible := false
     QbarOpen := false
     QbarFolderDir := ""
     QbarFolderItems := []
     QbarFutureStack := []
-    QbarEsMode := false
-    QbarEsLastResults := []
-    QbarEsCancelJob("panel hidden")
     QbarQuerySeq += 1
+    QbarCancelIconQueue()
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
     PanelHostHide(QbarHost)

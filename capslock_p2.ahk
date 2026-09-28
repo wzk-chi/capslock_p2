@@ -35,6 +35,9 @@ A_HotkeyInterval := 2000
 #Include lib\features\qbar\qbar_index.ahk
 #Include lib\features\qbar\qbar_commands.ahk
 #Include lib\features\qbar\qbar_everything.ahk
+#Include lib\features\everything\everything.ahk
+#Include lib\features\everything\everything_panel.ahk
+#Include lib\features\everything\everything_actions.ahk
 #Include lib\features\qbar\qbar_navigation.ahk
 #Include lib\input\tabHotString.ahk
 #Include lib\features\qbar\icons.ahk

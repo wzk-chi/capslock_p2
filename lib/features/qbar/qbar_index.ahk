@@ -26,10 +26,13 @@ QbarConfigIndex() {
     byShort := Map()
     configuredSearch := Map()
 
-    ; Discoverability rows always lead the list. A configured q/e trigger still
+    ; Discoverability rows always lead the list. A configured trigger still
     ; wins at dispatch time because configured presence is indexed separately.
     items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", ""))
-    items.Push(Map("short", "e", "label", "e <文件搜索 everything|find|f>", "type", "search", "value", ""))
+    items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", ""))
+    items.Push(Map("short", "everything", "label", "everything <文件搜索>", "type", "everything", "value", ""))
+    items.Push(Map("short", "find", "label", "find <文件搜索>", "type", "everything", "value", ""))
+    items.Push(Map("short", "f", "label", "f <文件搜索>", "type", "everything", "value", ""))
 
     ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former
     ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun -> QWeb.
@@ -176,7 +179,7 @@ QbarStartMenuItems() {
 ; ---------------------------------------------------------------------------
 
 QbarQuery(text, querySeq := 0) {
-    global QbarVisible, QbarEsMode, QbarIndexReady, QbarQuerySeq
+    global QbarVisible, QbarIndexReady, QbarQuerySeq
     if !QbarVisible || !QbarIndexReady
         return
     if querySeq && querySeq != QbarQuerySeq {
@@ -188,28 +191,22 @@ QbarQuery(text, querySeq := 0) {
     DebugLog("Qbar query apply")
     DebugLogPrivate("Qbar applied query", text)
     if text = "" {
-        if QbarEsMode
-            QbarEsCancelJob("empty query")
-        QbarEsMode := false
         QbarSendResults([], false)
         return
     }
     hasArgument := QbarSplitCommand(text, &firstToken, &rest)
-    ; "e <query>" (and its aliases) searches files; a configured trigger of the
-    ; same name still wins.
+    ; The four built-in Everything aliases only produce a launch row. Actual
+    ; file queries happen in the independent Everything page.
     if hasArgument && !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
-        if rest = "" {
-            QbarEsCancelJob("empty Everything argument")
-            QbarEsMode := false
-            QbarSendResults(QbarFilterItems(text), false)
-        } else {
-            QbarEsRequest(rest)
-        }
+        if rest = ""
+            results := QbarFilterItems(firstToken)
+        else
+            results := [Map("short", text,
+                "label", QbarText("Search Everything: ", "在 Everything 中搜索：") . rest,
+                "type", "everything", "pinned", true, "icon", "")]
+        QbarSendResults(results, false)
         return
     }
-    if QbarEsMode
-        QbarEsCancelJob("left Everything mode")
-    QbarEsMode := false
     if QbarIsFolderQuery(text) {
         items := QbarFilterFolder(text)
         ; An empty folder still shows one row, like the reference does.
@@ -260,6 +257,10 @@ QbarFilterItems(text) {
     results := []
     for item in QbarAllItems() {
         short := item["short"]
+        ; A configured command with one of the built-in Everything names wins;
+        ; hide only the discoverability row for that same token.
+        if item["type"] = "everything" && QbarConfigShortKeyExists(short)
+            continue
         if !(RegExMatch(item["label"], glob) || short = matchStrLeft)
             continue
         ; An exact trigger match floats to the top (reference: column 3 pinning).
@@ -321,30 +322,73 @@ QbarFolderItemsFor(dir) {
 
 QbarSendResults(results, folderMode, placeholder := "") {
     global IconSent
+    QbarCancelIconQueue()
     rows := []
-    icons := Map()
+    iconKeys := Map()
     for item in results {
         row := Map("short", item["short"], "label", item["label"], "type", item["type"],
             "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false)
         iconKey := item.Has("icon") ? item["icon"] : ""
         if iconKey != "" {
             row["icon"] := iconKey
-            ; First use of a key extracts and caches the data URI right here;
-            ; the page only ever receives each key once.
-            uri := IconDataURI(iconKey)
-            if uri != "" && !IconSent.Has(iconKey) {
-                IconSent[iconKey] := true
-                icons[iconKey] := uri
-            }
+            if !IconSent.Has(iconKey)
+                iconKeys[iconKey] := true
         }
         rows.Push(row)
     }
-    ; Icons go first so the rows that reference them render with them in
-    ; place; PanelHostExecute runs submitted scripts in order.
-    if icons.Count
-        QbarExec("window.addIcons(" . JSON.stringify(icons, 0) . ");")
+    ; Publish rows before doing any shell icon extraction. Missing icons use
+    ; the page glyph temporarily and arrive in small timer-driven batches.
     QbarExec("window.setResults(" . JSON.stringify(rows, 0) . "," . (folderMode ? "true" : "false")
         . "," . LLMJsonQuote(placeholder) . ");")
+    if iconKeys.Count
+        QbarQueueIcons(iconKeys)
+}
+
+QbarCancelIconQueue() {
+    global QbarIconQueue, QbarIconQueued, QbarIconTimer
+    SetTimer(QbarFlushIconQueue, 0)
+    QbarIconQueue := []
+    QbarIconQueued := Map()
+    QbarIconTimer := false
+}
+
+QbarQueueIcons(keys) {
+    global QbarIconQueue, QbarIconQueued, QbarIconTimer, IconSent
+    for key, pending in keys {
+        if !pending || key = "" || IconSent.Has(key) || QbarIconQueued.Has(key)
+            continue
+        QbarIconQueued[key] := true
+        QbarIconQueue.Push(key)
+    }
+    if QbarIconQueue.Length && !QbarIconTimer {
+        QbarIconTimer := true
+        SetTimer(QbarFlushIconQueue, -1)
+    }
+}
+
+QbarFlushIconQueue(*) {
+    global QbarIconQueue, QbarIconQueued, QbarIconTimer, IconSent
+    icons := Map()
+    extracted := 0
+    while QbarIconQueue.Length && extracted < 8 {
+        key := QbarIconQueue.RemoveAt(1)
+        if QbarIconQueued.Has(key)
+            QbarIconQueued.Delete(key)
+        if IconSent.Has(key)
+            continue
+        extracted += 1
+        uri := IconDataURI(key)
+        if uri != "" {
+            IconSent[key] := true
+            icons[key] := uri
+        }
+    }
+    if icons.Count
+        QbarExec("window.addIcons(" . JSON.stringify(icons, 0) . ");")
+    if QbarIconQueue.Length
+        SetTimer(QbarFlushIconQueue, -1)
+    else
+        QbarIconTimer := false
 }
 
 ; ---------------------------------------------------------------------------

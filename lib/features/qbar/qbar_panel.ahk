@@ -63,23 +63,13 @@ QbarFocusMonitor(*) {
 QbarShutdown(*) {
     global QbarHost, QbarVisible, QbarOpen
     global QbarIndexReady, QbarIndexLoading
-    global QbarEsBundledStarted
     QbarVisible := false
     QbarOpen := false
     QbarIndexReady := false
-    QbarEsCancelJob("shutdown")
     PanelHostStopFocusMonitor(QbarHost)
+    QbarCancelIconQueue()
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
-    ; Stop only the bundled instance this script brought up; the user's own
-    ; Everything is never touched. Best effort: an elevated instance may refuse
-    ; the exit message from a non-elevated script and stay in the tray, where it
-    ; can be exited by hand.
-    if QbarEsBundledStarted {
-        everythingExe := QbarEsEverythingExe()
-        if everythingExe != ""
-            try Run(QbarEsQuoteArg(everythingExe) . " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) . " -exit")
-    }
     PanelHostDestroy(QbarHost)
     QbarHost := 0
     try IconGdiplusStop()

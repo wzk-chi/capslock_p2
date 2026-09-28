@@ -7,7 +7,27 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     ; trigger would otherwise replace the command with just the trigger.
     if QbarTryInlineConfig(text)
         return
+    if QbarEsAlias(text) && !QbarConfigShortKeyExists(text) {
+        QbarHide()
+        EverythingShow("", false)
+        return
+    }
+    ; Preserve the complete argument from all four built-in aliases before
+    ; considering whichever row the page last highlighted. This makes Enter
+    ; reliable even when the debounce result has not reached WebView2 yet.
+    if QbarSplitCommand(text, &typedToken, &typedRest)
+        && !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken) {
+        QbarHide()
+        EverythingShow(typedRest, typedRest != "")
+        return
+    }
     if selected != "" {
+        if selectedType = "everything" {
+            query := QbarEverythingArgument(text)
+            QbarHide()
+            EverythingShow(query, query != "")
+            return
+        }
         ; The AI option row asks with the typed text as-is. A bare trigger
         ; word opens the chat with an empty composer (handled inside QbarAiAsk).
         if selectedType = "ai" {
@@ -59,10 +79,12 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     }
 
     if QbarSplitCommand(text, &firstToken, &rest) {
-        ; Everything trigger: refresh the live results right away in case the
-        ; debounce timer has not fired yet, and keep the panel open.
+        ; Everything trigger: close qbar and hand the complete remainder to the
+        ; independent Everything panel. All four built-in aliases share this
+        ; path; configured commands with the same token win above it.
         if !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
-            QbarEsFlushNow(rest)
+            QbarHide()
+            EverythingShow(rest, rest != "")
             return
         }
         ; "ai <question>" / "q <question>" -- the configured LLM answers or

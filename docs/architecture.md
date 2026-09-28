@@ -33,7 +33,10 @@ lib\
   qbar_panel.ahk                   qbar 面板生命周期、消息和尺寸
   qbar_index.ahk                   条目索引、过滤和图标行准备
   qbar_commands.ahk                命令、运行、网址和 AI 调度
-  qbar_everything.ahk              Everything 后端、异步可取消作业、CSV 与 UTF-8 解析
+  qbar_everything.ahk              Everything 共用后端、异步可取消作业、CSV 与 UTF-8 解析
+  everything.ahk                   独立 Everything 页状态、分类查询、结果序号与序列化
+  everything_panel.ahk             Everything WebView2 面板生命周期和消息协议
+  everything_actions.ahk           打开、定位、文件剪贴板和路径复制
   qbar_navigation.ahk              文件夹导航和路径补全
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   languageDetect.ahk               互译模式的本地原文语言识别与候选状态
@@ -47,7 +50,7 @@ lib\
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
-  qbar.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
+  qbar.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
   resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
@@ -115,7 +118,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 ## WebView2 面板
 
 所有 WebView2 面板共用 `lib/shared/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
-设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 失去焦点后仍保持显示。
+设置页、AI 页和 Everything 页是普通可调整大小的窗口；qbar、翻译、词典和 Everything 默认失焦隐藏。
 
 页面通信遵循同一套习惯：
 
@@ -141,7 +144,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 设置写入经过 `config.ahk` 的 schema 与字段 codec；提示词和 Tab 替换在 INI 边界使用单行编码，运行时只暴露逻辑文本。页面只发送相对基线的变更，只有有效变化才触发对应运行时应用；外部修改与未保存草稿冲突时保留草稿并提示用户。
 
-qbar 的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；QSearch/QRun/QWeb 使用 generation 缓存，配置或语言变化时统一失效。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收 qbar 自己启动的客户端或本会话拉起的内置实例。
+Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；QSearch/QRun/QWeb 使用 generation 缓存，配置或语言变化时统一失效。Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
 
 ## 屏幕自适应与 DPI
 

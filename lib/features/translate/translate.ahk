@@ -73,6 +73,16 @@ TranslateSystemLanguageCode() {
     return code = "" ? "en" : code
 }
 
+TranslateLanguageSupported(value) {
+    code := TranslateNormalizeLanguage(value)
+    if code = ""
+        return false
+    for candidate in TranslateLanguageCodes()
+        if candidate = code
+            return true
+    return false
+}
+
 TranslateOptionsSnapshot() {
     return Map(
         "mode", Trim(GetTranslateSetting("mode", "")),
@@ -163,9 +173,9 @@ TranslateResolveDirection(text, options, sourceOverride := "", targetOverride :=
         source := TranslateNormalizeLanguage(sourceOverride)
         target := TranslateNormalizeLanguage(targetOverride)
         if source = "" || target = "" || source = target
-            || (source != languageA && source != languageB)
-            || (target != languageA && target != languageB) {
-            result["message"] := LLMText("Choose two different languages from the configured pair.", "请选择语言对中的两种不同语言。")
+            || !TranslateLanguageSupported(source)
+            || !TranslateLanguageSupported(target) {
+            result["message"] := LLMText("Choose two different supported languages.", "请选择两种不同的支持语言。")
             return result
         }
         result["status"] := "ready"

@@ -1,49 +1,19 @@
-; qbar Everything backend and CSV decoding.
+; Shared Everything backend and CSV decoding for the independent Everything page.
 
-QbarEsRequest(arg) {
-    global QbarEsMode, QbarEsPending, QbarEsSeq, QbarEsLastResults
-    QbarEsCancelJob("new query")
-    QbarEsSeq += 1
-    if arg = "" {
-        ; Only the trigger so far: back to the normal list, which pins the
-        ; trigger row itself.
-        QbarEsMode := false
-        return
-    }
-    QbarEsMode := true
-    QbarEsPending := arg
-    QbarSendResults(QbarEsLastResults, false)
-    SetTimer(QbarEsFlush, -100)
-}
-
-QbarEsFlush() {
-    global QbarEsPending, QbarEsSeq, QbarEsMode, QbarVisible
-    if !QbarEsMode || !QbarVisible
-        return
-    seq := QbarEsSeq
-    arg := QbarEsPending
-    QbarEsResolveBackend(arg, seq)
-}
-
-; Enter on a typed "e <query>" line: flush the pending search immediately so a
-; race with the debounce cannot leave the list stale.
-
-QbarEsFlushNow(arg) {
-    global QbarEsMode, QbarEsPending, QbarEsSeq
-    if arg = ""
-        return
-    QbarEsCancelJob("immediate query")
-    QbarEsSeq += 1
-    QbarEsMode := true
-    QbarEsPending := arg
-    QbarEsResolveBackend(arg, QbarEsSeq)
-}
-
-; Triggers that switch qbar into Everything file search, all equivalent.
+; Built-in Everything aliases accepted by the qbar adapter, all equivalent.
 
 QbarEsAlias(token) {
     static aliases := Map("e", true, "everything", true, "find", true, "f", true)
     return aliases.Has(StrLower(token))
+}
+
+; Return only the text after the first built-in alias. A second alias is data,
+; so "e find" searches for "find" in the independent page.
+QbarEverythingArgument(text) {
+    QbarSplitCommand(text, &firstToken, &rest)
+    if QbarEsAlias(firstToken) && !QbarConfigShortKeyExists(firstToken)
+        return rest
+    return ""
 }
 
 QbarEsResolveBackend(arg, seq) {
@@ -65,7 +35,7 @@ QbarEsResolveBackend(arg, seq) {
 
 ; Starts the bundled copy under its own instance name with its own config and
 ; database. A probe is always attempted first, so shutdown only exits a server
-; this qbar session actually launched.
+; this session actually launched.
 
 QbarEsEnsureBundled(arg, seq) {
     global QbarEsBundledState, QbarEsBundledFailed
@@ -146,7 +116,7 @@ QbarEsStartSearch(arg, useBundled, seq) {
 }
 
 QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
-    global QbarEsJob, QbarEsJobId
+    global QbarEsJob, QbarEsJobId, EverythingEsMode
     exe := QbarEsExe()
     if exe = ""
         return false
@@ -155,11 +125,16 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
     jobId := QbarEsJobId
     tmp := QbarEsTempPath(seq, jobId)
     instance := useBundled = 1 ? " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) : ""
-    limit := SubStr(kind, 1, 6) = "probe-" ? 1 : QbarEsMaxResults()
+    limit := SubStr(kind, 1, 6) = "probe-"
+        ? 1
+        : (EverythingEsMode ? Min(501, QbarEsMaxResults() + 1) : QbarEsMaxResults())
     query := SubStr(kind, 1, 6) = "probe-" ? "1" : arg
+    queryArg := SubStr(kind, 1, 6) = "probe-"
+        ? " " . QbarEsQuoteArg(query)
+        : (query = "" ? " " . QbarEsQuoteArg("") : " " . query)
     command := QbarEsQuoteArg(exe) . instance . " -csv -no-header -n " . limit
         . " -full-path-and-name -export-csv " . QbarEsQuoteArg(tmp)
-        . " " . QbarEsQuoteArg(query)
+        . queryArg
     pid := 0
     try Run(command, "", "Hide", &pid)
     catch as launchError {
@@ -311,16 +286,17 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
 }
 
 QbarEsPublishResults(results, seq) {
-    global QbarEsLastResults
+    global EverythingEsMode
     if !QbarEsRequestIsCurrent(seq)
         return
-    QbarEsLastResults := results
-    QbarSendResults(results, false)
+    if EverythingEsMode
+        EverythingPublishResults(results, seq)
+    else
+        QbarSendResults(results, false)
 }
 
 QbarEsCancelJob(reason := "") {
     global QbarEsSeq
-    SetTimer(QbarEsFlush, 0)
     QbarEsSeq += 1
     QbarEsClearJob(true)
     if reason != ""
@@ -361,8 +337,10 @@ QbarEsJobIsCurrent(job) {
 }
 
 QbarEsRequestIsCurrent(seq) {
-    global QbarEsSeq, QbarEsMode, QbarVisible
-    return seq = QbarEsSeq && QbarEsMode && QbarVisible
+    global QbarEsSeq, EverythingEsMode, EverythingVisible
+    if seq != QbarEsSeq
+        return false
+    return EverythingEsMode && EverythingVisible
 }
 
 QbarEsExitCode(job) {
@@ -376,7 +354,7 @@ QbarEsExitCode(job) {
 
 QbarEsTempPath(seq, jobId) {
     processId := DllCall("GetCurrentProcessId", "uint")
-    return A_Temp . "\capslock-p2-qbar-es-" . processId . "-" . seq . "-" . A_TickCount . "-" . jobId . ".csv"
+    return A_Temp . "\capslock-p2-everything-es-" . processId . "-" . seq . "-" . A_TickCount . "-" . jobId . ".csv"
 }
 
 ; Quote one argv element according to the standard Windows backslash/quote
@@ -541,9 +519,9 @@ QbarEsMaxResults() {
 ; every keystroke.
 
 QbarEsHint(text) {
-    global QbarEsHintShown
-    if QbarEsHintShown
+    global EverythingEsHintShown
+    if EverythingEsHintShown
         return
-    QbarEsHintShown := true
-    ShowMsg(text, 3000)
+    EverythingEsHintShown := true
+    EverythingSetError(text)
 }

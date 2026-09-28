@@ -13,7 +13,8 @@ Everything 文件搜索、屏幕自适应等。
 | 功能 | 入口 |
 |---|---|
 | CapsLock 键层（移动 / 选择 / 编辑 / 翻页 / 删行） | 按住 CapsLock + 字母区 |
-| qbar 启动器（搜索、启动、文件搜索、路径浏览） | CapsLock+Q |
+| qbar 启动器（搜索、启动、路径浏览） | CapsLock+Q |
+| Everything 独立文件搜索页 | CapsLock+Q → `e` / `everything` / `find` / `f` |
 | 文本替换（热串） | CapsLock+Tab |
 | 翻译面板（LLM / 有道 / 火山） | CapsLock+T 或 CapsLock+F3 |
 | 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
@@ -139,9 +140,13 @@ gh<GitHub>=https://github.com
 
 ### 文件搜索（Everything)
 
-输入 `e 关键词` 回车即搜文件，别名 `e` / `everything` / `find` / `f`。**边输入边出结果**
-（100ms 防抖），支持 Everything 原生查询语法：`*.pdf`、`ext:pdf`、`size:>100mb`、`dm:today`、
-多关键词空格相与等。回车打开，**Ctrl+回车**在资源管理器中定位（对普通文件/文件夹行同样有效）。
+在 qbar 输入 `e`、`everything`、`find` 或 `f`，回车打开独立 Everything 页面。四个别名完全等价；
+输入 `<别名> 关键词` 会把关键词带入页面并立即搜索。页面输入框支持 Everything 原生查询语法：
+`*.pdf`、`ext:pdf`、`size:>100mb`、`dm:today`、多关键词空格相与等，输入变化会以 100ms 防抖查询。
+
+页面左侧可以按全部、文件夹、EXCEL、WORD、PPT、PDF、图片、视频、音频和压缩文件筛选；结果支持
+双击/回车打开，Ctrl+回车在文件夹中显示。右键提供“文件夹中显示”“复制”“复制路径”“复制所在路径”。
+窗口使用原生标题栏，进入时自动聚焦输入框，失去焦点后自动隐藏；再次打开时保留输入和分类。
 
 后端自动选择：本机 Everything 在运行就直接用它；没在运行则自动启动 `resources/` 里的内置实例
 （首次需要一次管理员确认建立 NTFS 索引，之后随程序启停）。二者都没有时给出提示。

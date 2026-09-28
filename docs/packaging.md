@@ -53,7 +53,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`theme.css`、`qbar.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
+- `pages\`：`theme.css`、`qbar.html`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`
 - `resources\dictionary.db`：ECDICT 本地词典
 - `resources\SQLite3.dll`：词典的 SQLite 引擎
@@ -76,7 +76,7 @@ Everything 建立索引时使用独立数据目录：
 %LocalAppData%\capslock_p2\Everything\
 ```
 
-qbar 的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。`Qbar.esMaxResults` 仍可在 1–500 范围内调整。
+Everything 页的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。`Qbar.esMaxResults` 仍可在 1–500 范围内调整。
 
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 

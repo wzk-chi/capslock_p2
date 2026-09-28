@@ -232,12 +232,11 @@ function applyTranslationSettings(settings) {
   };
   languageBar.hidden = false;
   if (translationSettings.mode === 'bidirectional') {
-    const pair = [translationSettings.languageA, translationSettings.languageB];
-    fillLanguageSelect(sourceLanguageSelect, pair);
-    fillLanguageSelect(targetLanguageSelect, pair);
-    if (!pair.includes(sourceLanguageSelect.value)) sourceLanguageSelect.value = pair[0];
-    if (!pair.includes(targetLanguageSelect.value) || sourceLanguageSelect.value === targetLanguageSelect.value)
-      targetLanguageSelect.value = pair[1];
+    fillLanguageSelect(sourceLanguageSelect, LANGUAGE_CODES);
+    fillLanguageSelect(targetLanguageSelect, LANGUAGE_CODES);
+    if (!LANGUAGE_CODES.includes(sourceLanguageSelect.value)) sourceLanguageSelect.value = translationSettings.languageA;
+    if (!LANGUAGE_CODES.includes(targetLanguageSelect.value) || sourceLanguageSelect.value === targetLanguageSelect.value)
+      targetLanguageSelect.value = translationSettings.languageB;
     sourceLanguageField.hidden = false;
     swapLanguagesBtn.hidden = false;
     targetLanguageSelect.disabled = false;
@@ -472,8 +471,8 @@ window.setNeedsDirection = function (text) {
 
 window.setDirection = function (sourceLanguage, targetLanguage, manual) {
   if (translationSettings.mode !== 'bidirectional') return;
-  const pair = [translationSettings.languageA, translationSettings.languageB];
-  if (!pair.includes(sourceLanguage) || !pair.includes(targetLanguage) || sourceLanguage === targetLanguage)
+  if (!LANGUAGE_CODES.includes(sourceLanguage) || !LANGUAGE_CODES.includes(targetLanguage)
+      || sourceLanguage === targetLanguage)
     return;
   sourceLanguageSelect.value = sourceLanguage;
   targetLanguageSelect.value = targetLanguage;
