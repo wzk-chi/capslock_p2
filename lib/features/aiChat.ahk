@@ -11,6 +11,10 @@ global AiChatPendingQuestion := ""
 global AiChatRequestRunning := false
 global AiChatStreamId := 0
 global AiChatStreamAnswer := ""
+global AiChatRequestSerial := 0
+global AiChatActiveRequest := 0
+global AiChatStreamDeltaSerial := 0
+global AiChatPinned := false
 global AiChatSeenActive := false  ; the focus monitor grants a grace period
                                   ; until the first activation, so a slow
                                   ; WinActivate cannot flash-hide the panel
@@ -121,8 +125,8 @@ AiChatShow(question) {
     panelGui := PanelHostGui(AiChatHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
+    AiChatApplyWindowState()
     ShowSystemCursor()
-    AiChatUpdateFocusBehavior()
 
     if PanelHostPageReady(AiChatHost)
         AiChatAfterReady()
@@ -132,6 +136,7 @@ AiChatShow(question) {
 AiChatAfterReady() {
     global AiChatPendingQuestion
     AiChatPushLanguage()
+    AiChatSetPinned()
     if !LLMSettingsConfigured() {
         SetTimer(() => SettingsShow("llm"), -1)
         return
@@ -194,7 +199,7 @@ AiChatNavigationCompleted(host, sender, args) {
 }
 
 AiChatWebMessageReceived(sender, args) {
-    global AiChatHistory
+    global AiChatHistory, AiChatPinned
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -206,10 +211,15 @@ AiChatWebMessageReceived(sender, args) {
             return
         SetTimer(() => AiChatAsk(text), -1)
     } else if messageType = "newSession" {
+        AiChatInvalidateRequest()
         AiChatHistory := []
         AiChatExec("window.newSession();")
     } else if messageType = "openSettings" {
         SetTimer(() => SettingsShow("llm"), -1)
+    } else if messageType = "togglePinned" {
+        AiChatPinned := !AiChatPinned
+        AiChatApplyWindowState()
+        AiChatSetPinned()
     } else if messageType = "hide" {
         AiChatHide()
     } else if messageType = "openUrl" {
@@ -218,12 +228,37 @@ AiChatWebMessageReceived(sender, args) {
         url := LLMMsgField(msg, "text")
         if url != ""
             SetTimer(() => QbarOpenUrl(url), -1)
+    } else if messageType = "streamDebug" {
+        rawValid := false
+        rawLength := LLMMsgNumber(msg, "rawLength", &rawValid, -1, true)
+        renderedValid := false
+        renderedLength := LLMMsgNumber(msg, "renderedLength", &renderedValid, -1, true)
+        rawText := rawValid ? String(rawLength) : "invalid"
+        renderedText := renderedValid ? String(renderedLength) : "invalid"
+        DebugLog("AI page stream request=" . LLMMsgField(msg, "requestId")
+            . " phase=" . LLMMsgField(msg, "phase")
+            . " rawChars=" . rawText . " renderedChars=" . renderedText)
     } else if messageType = "cursorMove" {
         ; WebView2 does not always replay the native cursor after Windows'
         ; mouse-vanish-on-typing behavior. Restore it on an actual page mouse
         ; move, matching the behavior of native edit controls.
         ShowSystemCursor()
     }
+}
+
+AiChatInvalidateRequest(removeLastUser := false) {
+    global AiChatRequestSerial, AiChatActiveRequest, AiChatStreamId
+    global AiChatRequestRunning, AiChatStreamAnswer, AiChatHistory
+    AiChatRequestSerial += 1
+    AiChatActiveRequest := 0
+    if AiChatStreamId {
+        LLMAbortChatStream(AiChatStreamId)
+        AiChatStreamId := 0
+    }
+    if removeLastUser && AiChatHistory.Length && AiChatHistory[AiChatHistory.Length]["role"] = "user"
+        AiChatHistory.Pop()
+    AiChatRequestRunning := false
+    AiChatStreamAnswer := ""
 }
 
 ; Adds the question to the history, mirrors it into the page and starts the
@@ -243,43 +278,79 @@ AiChatAsk(text) {
 
 AiChatStartRequest(*) {
     global AiChatHistory, AiChatRequestRunning, AiChatStreamId, AiChatStreamAnswer
+    global AiChatRequestSerial, AiChatActiveRequest, AiChatStreamDeltaSerial
     if AiChatRequestRunning || !AiChatHistory.Length
         return
     AiChatRequestRunning := true
+    AiChatRequestSerial += 1
+    requestId := AiChatRequestSerial
+    AiChatActiveRequest := requestId
+    AiChatStreamDeltaSerial := 0
     AiChatStreamAnswer := ""
-    AiChatExec("window.startStreamingMessage();")
-    try AiChatStreamId := LLMAiStartStream(AiChatHistory, AiChatStreamDelta, AiChatStreamFinished)
+    AiChatExec("window.startStreamingMessage(" . LLMJsonQuote(requestId) . ");")
+    try AiChatStreamId := LLMAiStartStream(AiChatHistory,
+        AiChatStreamDelta.Bind(requestId), AiChatStreamFinished.Bind(requestId))
     catch as streamError {
-        AiChatStreamFinished("", false, streamError.Message)
+        AiChatStreamFinished(requestId, "", false, streamError.Message)
     }
 }
 
-AiChatStreamDelta(delta) {
-    global AiChatStreamAnswer
+AiChatStreamDelta(requestId, delta) {
+    global AiChatActiveRequest, AiChatStreamAnswer, AiChatStreamDeltaSerial
+    if requestId != AiChatActiveRequest
+        return
     AiChatStreamAnswer .= delta
-    AiChatExec("window.appendStreaming(" . LLMJsonQuote(delta) . ");")
+    AiChatStreamDeltaSerial += 1
+    if !AiChatExec("window.appendStreaming(" . LLMJsonQuote(requestId) . ","
+        . AiChatStreamDeltaSerial . "," . LLMJsonQuote(delta) . ");")
+        DebugLog("AI page stream append rejected request=" . requestId
+            . " sequence=" . AiChatStreamDeltaSerial
+            . " totalChars=" . StrLen(AiChatStreamAnswer))
 }
 
-AiChatStreamFinished(answer, success, errorText) {
+AiChatStreamFinished(requestId, answer, success, errorText) {
     global AiChatHistory, AiChatRequestRunning, AiChatStreamId, AiChatStreamAnswer
+    global AiChatActiveRequest
+    if requestId != AiChatActiveRequest
+        return
     AiChatStreamId := 0
+    AiChatActiveRequest := 0
+    DebugLog("AI stream finished request=" . requestId . " success=" . success
+        . " answerChars=" . StrLen(String(answer))
+        . " accumulatedChars=" . StrLen(AiChatStreamAnswer))
     if success {
         if answer = ""
             answer := AiChatStreamAnswer
         AiChatHistory.Push(Map("role", "assistant", "content", answer))
         LLMAiTrimHistory(AiChatHistory)
-        AiChatExec("window.finishStreamingMessage();window.trimMessages(" . LLMAiHistoryMessageLimit() . ");")
+        AiChatExec("window.finishStreamingMessage(" . LLMJsonQuote(requestId) . ","
+            . LLMJsonQuote(answer) . ");window.trimMessages(" . LLMAiHistoryMessageLimit() . ");")
     } else {
         if AiChatHistory.Length && AiChatHistory[AiChatHistory.Length]["role"] = "user"
             AiChatHistory.Pop()
-        AiChatExec("window.removeStreamingMessage();window.setError(" . LLMJsonQuote(LLMContextLimitHint(errorText)) . ");")
+        AiChatExec("window.removeStreamingMessage(" . LLMJsonQuote(requestId) . ");window.setError("
+            . LLMJsonQuote(LLMContextLimitHint(errorText)) . ");")
     }
     AiChatRequestRunning := false
 }
 
 AiChatExec(script) {
     global AiChatHost
-    PanelHostExecute(AiChatHost, script)
+    return PanelHostExecute(AiChatHost, script)
+}
+
+AiChatSetPinned() {
+    global AiChatPinned
+    AiChatExec("window.setPinned(" . (AiChatPinned ? "true" : "false") . ");")
+}
+
+AiChatApplyWindowState() {
+    global AiChatHost, AiChatPinned
+    panelGui := PanelHostGui(AiChatHost)
+    if !IsObject(panelGui)
+        return
+    WinSetAlwaysOnTop(AiChatPinned, "ahk_id " . panelGui.Hwnd)
+    AiChatUpdateFocusBehavior()
 }
 
 AiChatPushLanguage() {
@@ -298,9 +369,13 @@ AiChatOnSettingsSaved() {
 }
 
 AiChatUpdateFocusBehavior() {
-    global AiChatHost, AiChatVisible
+    global AiChatHost, AiChatVisible, AiChatPinned
     if !AiChatVisible || !IsObject(AiChatHost)
         return
+    if AiChatPinned {
+        PanelHostStopFocusMonitor(AiChatHost)
+        return
+    }
     if !LLMAiHideOnBlur() {
         PanelHostStopFocusMonitor(AiChatHost)
         return
@@ -314,8 +389,12 @@ AiChatResize(targetGui, minMax, width, height) {
 }
 
 AiChatFocusMonitor(*) {
-    global AiChatHost, AiChatVisible, AiChatSeenActive, SettingsVisible
+    global AiChatHost, AiChatVisible, AiChatSeenActive, SettingsVisible, AiChatPinned
     if !AiChatVisible || !IsObject(PanelHostGui(AiChatHost)) {
+        PanelHostStopFocusMonitor(AiChatHost)
+        return
+    }
+    if AiChatPinned {
         PanelHostStopFocusMonitor(AiChatHost)
         return
     }
@@ -338,14 +417,9 @@ AiChatFocusMonitor(*) {
 
 AiChatHide(*) {
     global AiChatHost, AiChatVisible
-    global AiChatStreamId, AiChatRequestRunning, AiChatHistory
-    if AiChatStreamId {
-        LLMAbortChatStream(AiChatStreamId)
-        AiChatStreamId := 0
-        if AiChatHistory.Length && AiChatHistory[AiChatHistory.Length]["role"] = "user"
-            AiChatHistory.Pop()
-    }
-    AiChatRequestRunning := false
+    global AiChatStreamId, AiChatRequestRunning
+    hadRequest := AiChatStreamId || AiChatRequestRunning
+    AiChatInvalidateRequest(hadRequest)
     AiChatVisible := false
     PanelHostHide(AiChatHost)
     PanelHostStopFocusMonitor(AiChatHost)
@@ -353,11 +427,7 @@ AiChatHide(*) {
 
 AiChatShutdown(*) {
     global AiChatHost, AiChatVisible, AiChatWindowInitialized
-    global AiChatStreamId
-    if AiChatStreamId {
-        LLMAbortChatStream(AiChatStreamId)
-        AiChatStreamId := 0
-    }
+    AiChatInvalidateRequest(false)
     AiChatVisible := false
     PanelHostDestroy(AiChatHost)
     AiChatHost := 0

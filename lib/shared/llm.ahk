@@ -245,8 +245,11 @@ LLMErrorMessageFrom(body) {
 }
 
 LLMStreamDeltaText(data) {
-    parsed := LLMResponseParse(data)
-    if parsed = 0
+    return LLMStreamDeltaTextParsed(LLMResponseParse(data))
+}
+
+LLMStreamDeltaTextParsed(parsed) {
+    if !IsObject(parsed)
         return ""
     choices := parsed.Has("choices") && IsObject(parsed["choices"]) ? parsed["choices"] : []
     for choice in choices {
@@ -276,6 +279,67 @@ LLMStreamDeltaText(data) {
             if value != ""
                 return value
         }
+    }
+    return ""
+}
+
+; Describe a JSON payload without recording any field values. This is used only
+; when a gateway returns a successful HTTP response that contains no recognized
+; content field, so the debug log can distinguish a schema mismatch from an
+; empty stream without exposing the prompt or answer.
+LLMStreamPayloadShape(data) {
+    data := Trim(String(data))
+    if data = ""
+        return "empty"
+    parsed := LLMResponseParse(data)
+    if !IsObject(parsed)
+        return "nonjson chars=" . StrLen(data)
+    shape := "top=" . LLMStreamObjectKeys(parsed)
+    if parsed.Has("choices") && IsObject(parsed["choices"]) {
+        choiceCount := 0
+        for choice in parsed["choices"] {
+            choiceCount += 1
+            if choiceCount > 1 || !IsObject(choice)
+                continue
+            shape .= " choice=" . LLMStreamObjectKeys(choice)
+            for section in ["delta", "message"] {
+                if !choice.Has(section)
+                    continue
+                part := choice[section]
+                shape .= " " . section . "Type=" . Type(part)
+                if IsObject(part)
+                    shape .= "[" . LLMStreamObjectKeys(part) . "]"
+            }
+        }
+        shape .= " choices=" . choiceCount
+    }
+    return shape
+}
+
+LLMStreamObjectKeys(value) {
+    if !IsObject(value)
+        return ""
+    result := ""
+    count := 0
+    for key, item in value {
+        if count >= 12
+            break
+        result .= (result = "" ? "" : ",") . String(key) . ":" . Type(item)
+        count += 1
+    }
+    return result
+}
+
+LLMStreamFinishReason(parsed) {
+    if !IsObject(parsed)
+        return ""
+    choices := parsed.Has("choices") && IsObject(parsed["choices"]) ? parsed["choices"] : []
+    for choice in choices {
+        if !IsObject(choice)
+            continue
+        reason := LLMMsgField(choice, "finish_reason")
+        if reason != ""
+            return reason
     }
     return ""
 }
@@ -459,11 +523,29 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
         "id", id,
         "onDelta", onDelta,
         "onFinished", onFinished,
+        "eventQueue", [],
+        "draining", false,
+        "drainScheduled", false,
+        "finalizeScheduled", false,
+        "dispatchEvents", 0,
+        "transportFinished", false,
+        "transportError", "",
         "lineBytes", [],
         "eventData", "",
         "rawBody", "",
         "errorBody", "",
         "text", "",
+        "responseBytes", 0,
+        "dataCallbacks", 0,
+        "decodedLines", 0,
+        "lineErrors", 0,
+        "skippedBytes", 0,
+        "sseEvents", 0,
+        "deltaEvents", 0,
+        "emptyDeltaEvents", 0,
+        "parseErrors", 0,
+        "finishReason", "",
+        "fallbackUsed", false,
         "status", 0,
         "done", false,
         "finished", false,
@@ -506,7 +588,7 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
     } catch as streamError {
         errorText := "LLM stream " . stage . " failed."
         DebugLog("LLM stream failed")
-        LLMStreamComplete(state, false, errorText)
+        LLMStreamQueueEvent(state, Map("kind", "error", "text", errorText))
         return 0
     }
 }
@@ -518,6 +600,7 @@ LLMAbortChatStream(id) {
     state := LLMStreamStates[id]
     state["cancelled"] := true
     state["finished"] := true
+    state["eventQueue"] := []
     try state["request"].Abort()
     LLMStreamRelease(state)
 }
@@ -570,19 +653,19 @@ class LLMWinHttpEventSink extends Buffer {
 
         OnResponseStart(interface, status, contentType) {
             sink := ObjFromPtrAddRef(pThis)
-            LLMStreamOnResponseStart(sink.State, status + 0)
+            LLMStreamQueueEvent(sink.State, Map("kind", "start", "status", status + 0))
         }
 
         OnResponseDataAvailable(interface, data) {
             sink := ObjFromPtrAddRef(pThis)
             bytes := LLMStreamSafeArrayBytes(data)
             if bytes.Length
-                LLMStreamOnData(sink.State, bytes)
+                LLMStreamQueueEvent(sink.State, Map("kind", "data", "bytes", bytes))
         }
 
         OnResponseFinished(interface) {
             sink := ObjFromPtrAddRef(pThis)
-            LLMStreamOnFinished(sink.State)
+            LLMStreamQueueEvent(sink.State, Map("kind", "finished"))
         }
 
         OnError(interface, errorNumber, errorDescription) {
@@ -594,7 +677,7 @@ class LLMWinHttpEventSink extends Buffer {
             if errorNumber
                 errorText := "WinHTTP " . (errorNumber + 0) . ": " . errorText
             DebugLog("LLM stream event error id=" . sink.State["id"])
-            LLMStreamComplete(sink.State, false, errorText)
+            LLMStreamQueueEvent(sink.State, Map("kind", "error", "text", errorText))
         }
     }
 
@@ -663,6 +746,81 @@ LLMStreamSafeArrayBytes(data) {
     return bytes
 }
 
+LLMStreamQueueEvent(state, event) {
+    if !IsObject(state) || state["finished"] || state["cancelled"]
+        return
+    if state["finalizeScheduled"]
+        state["finalizeScheduled"] := false
+    state["eventQueue"].Push(event)
+    LLMStreamScheduleDrain(state)
+}
+
+LLMStreamScheduleDrain(state) {
+    if state["finished"] || state["cancelled"] || state["draining"] || state["drainScheduled"]
+        return
+    state["drainScheduled"] := true
+    SetTimer(LLMStreamDrain.Bind(state), -1)
+}
+
+LLMStreamDrain(state, *) {
+    if state["finished"] || state["cancelled"] {
+        state["drainScheduled"] := false
+        state["eventQueue"] := []
+        return
+    }
+    if state["draining"]
+        return
+    state["drainScheduled"] := false
+    state["draining"] := true
+    while state["eventQueue"].Length && !state["finished"] && !state["cancelled"] {
+        event := state["eventQueue"].RemoveAt(1)
+        state["dispatchEvents"] += 1
+        try {
+            kind := event["kind"]
+            if kind = "start"
+                LLMStreamOnResponseStart(state, event["status"])
+            else if kind = "data"
+                LLMStreamOnData(state, event["bytes"])
+            else if kind = "finished" {
+                state["transportFinished"] := true
+                DebugLog("LLM stream transport finished id=" . state["id"]
+                    . " dispatch=" . state["dispatchEvents"])
+            } else if kind = "error" {
+                state["transportError"] := event["text"]
+                LLMStreamComplete(state, false, event["text"])
+            }
+        } catch as dispatchError {
+            DebugLog("LLM stream dispatch failed id=" . state["id"]
+                . " dispatch=" . state["dispatchEvents"]
+                . " error=" . StrReplace(StrReplace(dispatchError.Message, "`r", " "), "`n", " "))
+        }
+    }
+    state["draining"] := false
+    if state["finished"] || state["cancelled"]
+        return
+    if state["eventQueue"].Length {
+        LLMStreamScheduleDrain(state)
+        return
+    }
+    if state["transportFinished"] && !state["finalizeScheduled"] {
+        state["finalizeScheduled"] := true
+        SetTimer(LLMStreamFinalize.Bind(state), -1)
+    }
+}
+
+LLMStreamFinalize(state, *) {
+    if state["finished"] || state["cancelled"]
+        return
+    state["finalizeScheduled"] := false
+    if state["draining"] || state["eventQueue"].Length {
+        LLMStreamScheduleDrain(state)
+        return
+    }
+    if !state["transportFinished"]
+        return
+    LLMStreamFinalizeResponse(state)
+}
+
 LLMStreamOnResponseStart(state, status) {
     if !state["finished"] {
         state["status"] := status
@@ -673,18 +831,29 @@ LLMStreamOnResponseStart(state, status) {
 LLMStreamOnData(state, data) {
     if state["finished"] || state["cancelled"]
         return
+    state["responseBytes"] += data.Length
+    state["dataCallbacks"] += 1
     ; data is the plain byte array produced by LLMStreamSafeArrayBytes; its
     ; elements are always plain integers 0-255. Raw ComValues or strings must
     ; never reach lineBytes — NumPut in LLMStreamDecode rejects them with
     ; "Invalid parameter(s)", killing the stream mid-response.
     for byte in data {
+        if Type(byte) != "Integer" || byte < 0 || byte > 255 {
+            state["skippedBytes"] += 1
+            continue
+        }
         if byte = 10 {
             line := LLMStreamDecode(state["lineBytes"])
             state["lineBytes"] := []
-            LLMStreamLine(state, line)
+            state["decodedLines"] += 1
+            try LLMStreamLine(state, line)
+            catch as lineError {
+                state["lineErrors"] += 1
+                DebugLog("LLM stream line failed id=" . state["id"]
+                    . " lineChars=" . StrLen(line)
+                    . " error=" . StrReplace(StrReplace(lineError.Message, "`r", " "), "`n", " "))
+            }
         } else if byte != 13 {
-            if Type(byte) != "Integer" || byte < 0 || byte > 255
-                continue
             state["lineBytes"].Push(byte)
         }
     }
@@ -734,6 +903,7 @@ LLMStreamLine(state, line) {
 
 LLMStreamEvent(state, data) {
     data := Trim(data)
+    state["sseEvents"] += 1
     state["rawBody"] .= data . "`n"
     if data = "[DONE]" {
         state["done"] := true
@@ -743,25 +913,72 @@ LLMStreamEvent(state, data) {
         state["errorBody"] .= data
         return
     }
-    delta := LLMStreamDeltaText(data)
+    parsed := LLMResponseParse(data)
+    if !IsObject(parsed) {
+        state["parseErrors"] += 1
+        DebugLog("LLM stream SSE JSON parse failed id=" . state["id"]
+            . " event=" . state["sseEvents"] . " chars=" . StrLen(data))
+        return
+    }
+    finishReason := LLMStreamFinishReason(parsed)
+    if finishReason != ""
+        state["finishReason"] := finishReason
+    delta := LLMStreamDeltaTextParsed(parsed)
     if delta != "" {
+        state["deltaEvents"] += 1
         state["text"] .= delta
         try state["onDelta"].Call(delta)
         catch
             return
+    } else {
+        state["emptyDeltaEvents"] += 1
+        DebugLog("LLM stream empty event id=" . state["id"]
+            . " event=" . state["sseEvents"]
+            . " shape=" . LLMStreamPayloadShape(data))
     }
 }
 
-LLMStreamOnFinished(state) {
+LLMStreamFinalizeResponse(state) {
     if state["finished"] || state["cancelled"]
         return
-    if state["lineBytes"].Length
-        LLMStreamLine(state, LLMStreamDecode(state["lineBytes"]))
+    if state["lineBytes"].Length {
+        line := LLMStreamDecode(state["lineBytes"])
+        state["lineBytes"] := []
+        state["decodedLines"] += 1
+        try LLMStreamLine(state, line)
+        catch as lineError {
+            state["lineErrors"] += 1
+            DebugLog("LLM stream final line failed id=" . state["id"]
+                . " lineChars=" . StrLen(line)
+                . " error=" . StrReplace(StrReplace(lineError.Message, "`r", " "), "`n", " "))
+        }
+    }
     if state["eventData"] != "" {
         data := state["eventData"]
         state["eventData"] := ""
-        LLMStreamEvent(state, data)
+        try LLMStreamEvent(state, data)
+        catch as eventError {
+            state["lineErrors"] += 1
+            DebugLog("LLM stream final event failed id=" . state["id"]
+                . " eventChars=" . StrLen(data)
+                . " error=" . StrReplace(StrReplace(eventError.Message, "`r", " "), "`n", " "))
+        }
     }
+    DebugLog("LLM stream payload id=" . state["id"]
+        . " dispatch=" . state["dispatchEvents"]
+        . " callbacks=" . state["dataCallbacks"]
+        . " bytes=" . state["responseBytes"]
+        . " lines=" . state["decodedLines"]
+        . " lineErrors=" . state["lineErrors"]
+        . " skippedBytes=" . state["skippedBytes"]
+        . " events=" . state["sseEvents"]
+        . " deltaEvents=" . state["deltaEvents"]
+        . " emptyDelta=" . state["emptyDeltaEvents"]
+        . " parseErrors=" . state["parseErrors"]
+        . " rawChars=" . StrLen(state["rawBody"])
+        . " parsedChars=" . StrLen(state["text"])
+        . " done=" . state["done"]
+        . " finishReason=" . state["finishReason"])
     if state["status"] < 200 || state["status"] >= 300 {
         errorText := LLMErrorMessageFrom(state["errorBody"] . "`n" . state["rawBody"])
         if errorText = ""
@@ -774,13 +991,22 @@ LLMStreamOnFinished(state) {
         ; from the raw response.
         fallback := LLMStreamDeltaText(state["rawBody"])
         if fallback != "" {
+            state["fallbackUsed"] := true
             state["text"] := fallback
             try state["onDelta"].Call(fallback)
         }
     }
-    if state["text"] = ""
+    if state["text"] = "" {
+        DebugLog("LLM stream no content id=" . state["id"]
+            . " bodyShape=" . LLMStreamPayloadShape(state["rawBody"]))
         LLMStreamComplete(state, false, "The streaming response did not contain content.")
-    else
+    } else if !state["done"] && state["finishReason"] = "" && !state["fallbackUsed"] {
+        DebugLog("LLM stream incomplete id=" . state["id"]
+            . " chars=" . StrLen(state["text"]))
+        LLMStreamComplete(state, false, LLMText(
+            "The streaming response ended before a completion marker.",
+            "流式响应在收到完成标记前结束。"))
+    } else
         LLMStreamComplete(state, true, "")
 }
 
@@ -788,10 +1014,13 @@ LLMStreamComplete(state, success, errorText) {
     if state["finished"]
         return
     state["finished"] := true
+    state["eventQueue"] := []
+    state["finalizeScheduled"] := false
     text := state["text"]
     callback := state["onFinished"]
     DebugLog("LLM stream completed id=" . state["id"] . " success=" . success
-        . " chars=" . StrLen(text) . " errorKind=" . LLMLogErrorKind(errorText, state["status"])
+        . " chars=" . StrLen(text) . " finishReason=" . state["finishReason"]
+        . " errorKind=" . LLMLogErrorKind(errorText, state["status"])
         . " errorLength=" . StrLen(String(errorText)))
     LLMStreamRelease(state)
     try callback.Call(text, success, errorText)

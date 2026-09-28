@@ -9,7 +9,7 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         return
     if selected != "" {
         ; The AI option row asks with the typed text as-is. A bare trigger
-        ; word only shows the hint (handled inside QbarAiAsk).
+        ; word opens the chat with an empty composer (handled inside QbarAiAsk).
         if selectedType = "ai" {
             QbarAiAsk(selected)
             return
@@ -21,6 +21,13 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
             ; match for its own trigger, so fall through and search with it
             ; rather than clearing what was typed.
             if QbarSearchArgument(text, selected) = "" {
+                ; The built-in q row is also the short form of the AI command.
+                ; A bare q opens the chat; a configured q trigger keeps its
+                ; normal search precedence.
+                if QbarAiAlias(selected) && !QbarConfigShortKeyExists(selected) {
+                    QbarAiAsk(selected)
+                    return
+                }
                 QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
                 return
             }
@@ -231,17 +238,14 @@ QbarAiAlias(token) {
 }
 
 ; Closes the launcher and opens the AI chat with the text as the question;
-; when the API is not configured yet the chat opens its settings view first,
-; and asks the question once settings are saved.
+; a bare trigger or empty text opens an empty composer. When the API is not
+; configured yet the chat opens its settings view first.
 
 QbarAiAsk(text) {
     text := Trim(text)
-    ; A bare trigger word ("ai"/"q" with nothing after it) is not a question;
-    ; neither is an empty line. Both only ask for input.
-    if text = "" || QbarAiAlias(text) {
-        ShowMsg(QbarText("Type a question after the trigger, e.g.: q what is MFT", "输入要问的内容，例如：q 什么是 MFT"), 3000)
-        return
-    }
+    ; A bare trigger opens the chat so the question can be entered there.
+    if QbarAiAlias(text)
+        text := ""
     QbarHide()
     AiChatShow(text)
 }

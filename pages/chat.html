@@ -17,6 +17,8 @@ button:hover { background: var(--ui-button-hover); }
 button:disabled { background: var(--ui-surface-muted); color: var(--ui-subtle); cursor: wait; }
 button.secondary { background: transparent; color: var(--ui-accent); border: 1px solid var(--ui-line-strong); font-weight: 500; }
 button.secondary:hover { background: var(--ui-accent-soft); }
+button#pinPanel.pinned { background: var(--ui-accent-soft); color: var(--ui-accent-strong); border-color: var(--ui-accent); }
+button#pinPanel.pinned:hover { background: var(--ui-accent-quiet); }
 #messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
 .msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; background: var(--ui-button-bg); color: var(--ui-button-text); border-bottom-right-radius: 4px; }
@@ -36,6 +38,15 @@ button.secondary:hover { background: var(--ui-accent-soft); }
 .msg.assistant th, .msg.assistant td { border: 1px solid var(--ui-line-strong); padding: 4px 8px; font-size: 13px; }
 .msg.assistant a { color: var(--ui-accent); }
 .msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 { margin: 10px 0 6px; font-size: 15px; }
+.message-row { display: flex; align-items: flex-end; gap: 6px; width: 100%; }
+.message-row.user-row { justify-content: flex-end; }
+.message-row.assistant-row { justify-content: flex-start; }
+.copy-message { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 0; background: transparent; color: var(--ui-muted); opacity: .8; }
+.copy-message[hidden] { display: none !important; }
+.copy-message:hover { background: transparent; color: var(--ui-accent); }
+.copy-message:disabled { opacity: .35; cursor: default; }
+.copy-message.copied { color: var(--ui-success); }
+.copy-message svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .composer { display: flex; gap: 10px; align-items: stretch; }
 textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--ui-line-strong); border-radius: 10px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
 textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
@@ -48,6 +59,7 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
   <div class="topbar">
     <h1 id="appTitle">capslock_p2 AI</h1>
     <span id="status"></span>
+    <button id="pinPanel" class="secondary" aria-pressed="false"></button>
     <button id="newChat" class="secondary"></button>
     <button id="openSettings" class="secondary"></button>
   </div>
@@ -66,6 +78,7 @@ const input = document.getElementById('input');
 const messages = document.getElementById('messages');
 const status = document.getElementById('status');
 const sendBtn = document.getElementById('send');
+const pinBtn = document.getElementById('pinPanel');
 const newChatBtn = document.getElementById('newChat');
 const settingsBtn = document.getElementById('openSettings');
 const appTitle = document.getElementById('appTitle');
@@ -76,6 +89,11 @@ const STRINGS = {
     newChat: 'New chat',
     settings: 'Settings',
     send: 'Send',
+    pin: 'Pin',
+    unpin: 'Unpin',
+    copy: 'Copy',
+    copied: 'Copied',
+    copyFailed: 'Copy failed',
     thinking: 'Thinking…',
     inputPlaceholder: 'Ask anything. Enter to send, Shift+Enter for a new line.'
   },
@@ -84,6 +102,11 @@ const STRINGS = {
     newChat: '新会话',
     settings: '设置',
     send: '发送',
+    pin: '固定',
+    unpin: '取消固定',
+    copy: '复制',
+    copied: '已复制',
+    copyFailed: '复制失败',
     thinking: '思考中…',
     inputPlaceholder: '输入问题：Enter 发送，Shift+Enter 换行'
   }
@@ -99,6 +122,9 @@ function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
   appTitle.textContent = t('appTitle');
+  pinBtn.textContent = pinBtn.classList.contains('pinned') ? t('unpin') : t('pin');
+  pinBtn.title = pinBtn.textContent;
+  pinBtn.setAttribute('aria-label', pinBtn.textContent);
   newChatBtn.textContent = t('newChat');
   settingsBtn.textContent = t('settings');
   sendBtn.textContent = t('send');
@@ -114,6 +140,79 @@ function postType(type, text) {
   post({ type: type, text: text || '' });
 }
 
+function applyPinnedState(value) {
+  const pinned = !!value;
+  pinBtn.classList.toggle('pinned', pinned);
+  pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+  pinBtn.textContent = pinned ? t('unpin') : t('pin');
+  pinBtn.title = pinBtn.textContent;
+  pinBtn.setAttribute('aria-label', pinBtn.textContent);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    helper.setAttribute('readonly', '');
+    helper.style.position = 'fixed';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch {}
+    helper.remove();
+    return copied;
+  }
+}
+
+function createCopyButton(bubble, visible = false) {
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'copy-message';
+  copyButton.hidden = !visible;
+  copyButton.disabled = !visible;
+  copyButton.title = t('copy');
+  copyButton.setAttribute('aria-label', t('copy'));
+  copyButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"></rect><path d="M5 16V6a2 2 0 0 1 2-2h9"></path></svg>';
+  copyButton.addEventListener('click', async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const text = bubble.dataset.raw || '';
+    if (!text) return;
+    const copied = await copyText(text);
+    copyButton.classList.toggle('copied', copied);
+    copyButton.title = copied ? t('copied') : t('copyFailed');
+    copyButton.setAttribute('aria-label', copyButton.title);
+    if (copied) {
+      setTimeout(() => {
+        copyButton.classList.remove('copied');
+        copyButton.title = t('copy');
+        copyButton.setAttribute('aria-label', t('copy'));
+      }, 1200);
+    }
+  });
+  return copyButton;
+}
+
+function createAssistantRow() {
+  const row = document.createElement('div');
+  row.className = 'message-row assistant-row';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg assistant';
+  const copyButton = createCopyButton(bubble);
+  row.appendChild(bubble);
+  row.appendChild(copyButton);
+  return { row, bubble, copyButton };
+}
+
+function assistantCopyButton(bubble) {
+  return bubble && bubble.parentElement
+    ? bubble.parentElement.querySelector('.copy-message') : null;
+}
+
 // Windows hides the pointer while typing when that system option is enabled.
 // Native edit controls show it again on mouse movement; report that movement
 // so the WebView2 host can restore the same behavior without polling.
@@ -127,6 +226,17 @@ document.addEventListener('mousemove', () => {
 
 function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
+}
+
+// Diagnostic telemetry contains lengths only, never message content. It lets
+// the host compare the accumulated stream with what the page held at finish.
+function postStreamDebug(phase, bubble) {
+  const raw = bubble ? (bubble.dataset.raw || '') : '';
+  const rendered = bubble ? (bubble.textContent || '') : '';
+  const requestId = bubble ? (bubble.dataset.streamId || '') : '';
+  post({ type: 'streamDebug', phase: phase,
+    requestId: requestId,
+    rawLength: String(raw.length), renderedLength: String(rendered.length) });
 }
 
 function escapeHtml(text) {
@@ -154,42 +264,113 @@ function renderMarkdown(text) {
 // The AHK side owns the conversation history and echoes every message back,
 // so rendering is purely a mirror of that history.
 window.appendMessage = function (role, text) {
-  const bubble = document.createElement('div');
   const isUser = role === 'user';
-  bubble.className = 'msg ' + (isUser ? 'user' : 'assistant');
-  if (isUser)
+  if (isUser) {
+    const row = document.createElement('div');
+    row.className = 'message-row user-row';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg user';
+    bubble.dataset.raw = text || '';
     bubble.textContent = text || '';
-  else
-    bubble.innerHTML = renderMarkdown(text);
-  messages.appendChild(bubble);
+    row.appendChild(createCopyButton(bubble, true));
+    row.appendChild(bubble);
+    messages.appendChild(row);
+  } else {
+    const entry = createAssistantRow();
+    entry.bubble.dataset.raw = text || '';
+    entry.bubble.innerHTML = renderMarkdown(text);
+    entry.copyButton.hidden = !String(text || '');
+    entry.copyButton.disabled = !String(text || '');
+    messages.appendChild(entry.row);
+  }
   scrollToBottom();
 };
 
-window.startStreamingMessage = function () {
+window.startStreamingMessage = function (requestId) {
   let bubble = messages.querySelector('.msg.assistant.thinking');
+  let copyButton = assistantCopyButton(bubble);
   if (!bubble) {
-    bubble = document.createElement('div');
-    messages.appendChild(bubble);
+    const entry = createAssistantRow();
+    bubble = entry.bubble;
+    copyButton = entry.copyButton;
+    messages.appendChild(entry.row);
   }
   bubble.className = 'msg assistant streaming thinking';
   bubble.dataset.raw = '';
+  bubble.dataset.streamId = String(requestId ?? '');
+  bubble.dataset.nextDelta = '1';
+  bubble._pendingDeltas = new Map();
+  if (copyButton) {
+    copyButton.hidden = true;
+    copyButton.disabled = true;
+    copyButton.classList.remove('copied');
+    copyButton.title = t('copy');
+    copyButton.setAttribute('aria-label', t('copy'));
+  }
   bubble.textContent = t('thinking');
   input.disabled = true;
   sendBtn.disabled = true;
   scrollToBottom();
 };
 
-window.appendStreaming = function (text) {
+window.appendStreaming = function (requestId, sequence, text) {
   const bubble = messages.querySelector('.msg.assistant.streaming');
-  if (!bubble) return;
-  bubble.dataset.raw += text || '';
+  if (!bubble) {
+    postStreamDebug('append-missing', null);
+    return;
+  }
+  if (bubble.dataset.streamId !== String(requestId ?? '')) {
+    postStreamDebug('append-stale', bubble);
+    return;
+  }
+  if (!(bubble._pendingDeltas instanceof Map))
+    bubble._pendingDeltas = new Map();
+  const sequenceNumber = Number(sequence);
+  if (!Number.isInteger(sequenceNumber) || sequenceNumber < 1)
+    return;
+  const expected = Number(bubble.dataset.nextDelta || '1');
+  if (sequenceNumber < expected)
+    return;
+  if (sequenceNumber > expected) {
+    bubble._pendingDeltas.set(sequenceNumber, text || '');
+    return;
+  }
+  const applyDelta = delta => {
+    bubble.dataset.raw += delta || '';
+    bubble.dataset.nextDelta = String(Number(bubble.dataset.nextDelta) + 1);
+  };
+  applyDelta(text);
+  while (bubble._pendingDeltas.has(Number(bubble.dataset.nextDelta))) {
+    const next = Number(bubble.dataset.nextDelta);
+    const delta = bubble._pendingDeltas.get(next);
+    bubble._pendingDeltas.delete(next);
+    applyDelta(delta);
+  }
   bubble.classList.remove('thinking');
   bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
+  const copyButton = assistantCopyButton(bubble);
+  if (copyButton) {
+    copyButton.hidden = true;
+    copyButton.disabled = true;
+  }
   scrollToBottom();
 };
 
-window.finishStreamingMessage = function () {
+window.finishStreamingMessage = function (requestId, answer) {
   const bubble = messages.querySelector('.msg.assistant.streaming');
+  if (!bubble || bubble.dataset.streamId !== String(requestId ?? '')) {
+    postStreamDebug('finish-stale', bubble);
+    return;
+  }
+  bubble.dataset.raw = String(answer ?? '');
+  bubble._pendingDeltas = new Map();
+  bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
+  const copyButton = assistantCopyButton(bubble);
+  if (copyButton) {
+    copyButton.hidden = !bubble.dataset.raw;
+    copyButton.disabled = !bubble.dataset.raw;
+  }
+  postStreamDebug('finish', bubble);
   if (bubble) bubble.classList.remove('streaming', 'thinking');
   status.textContent = '';
   input.disabled = false;
@@ -197,9 +378,16 @@ window.finishStreamingMessage = function () {
   input.focus();
 };
 
-window.removeStreamingMessage = function () {
+window.removeStreamingMessage = function (requestId) {
   const bubble = messages.querySelector('.msg.assistant.streaming');
-  if (bubble) bubble.remove();
+  if (!bubble || bubble.dataset.streamId !== String(requestId ?? '')) {
+    postStreamDebug('remove-stale', bubble);
+    return;
+  }
+  if (bubble.parentElement && bubble.parentElement.classList.contains('message-row'))
+    bubble.parentElement.remove();
+  else
+    bubble.remove();
   input.disabled = false;
   sendBtn.disabled = false;
   input.focus();
@@ -209,13 +397,23 @@ window.setThinking = function (on) {
   let bubble = messages.querySelector('.msg.assistant.thinking');
   if (on) {
     if (!bubble) {
-      bubble = document.createElement('div');
-      bubble.className = 'msg assistant thinking';
-      messages.appendChild(bubble);
+      const entry = createAssistantRow();
+      bubble = entry.bubble;
+      messages.appendChild(entry.row);
+    }
+    bubble.className = 'msg assistant thinking';
+    const copyButton = assistantCopyButton(bubble);
+    if (copyButton) {
+      copyButton.hidden = true;
+      copyButton.disabled = true;
     }
     bubble.textContent = t('thinking');
-  } else if (bubble)
-    bubble.remove();
+  } else if (bubble) {
+    if (bubble.parentElement && bubble.parentElement.classList.contains('message-row'))
+      bubble.parentElement.remove();
+    else
+      bubble.remove();
+  }
   scrollToBottom();
 };
 
@@ -292,6 +490,7 @@ messages.addEventListener('click', event => {
 });
 
 newChatBtn.addEventListener('click', () => postType('newSession'));
+pinBtn.addEventListener('click', () => postType('togglePinned'));
 settingsBtn.addEventListener('click', () => {
   postType('openSettings');
 });
@@ -300,6 +499,10 @@ settingsBtn.addEventListener('click', () => {
 window.onHostSettings = function (s) {
   lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
   applyLanguage();
+};
+
+window.setPinned = function (value) {
+  applyPinnedState(value);
 };
 
 applyLanguage();
