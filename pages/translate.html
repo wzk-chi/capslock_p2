@@ -74,6 +74,7 @@ button.copied:hover { background: var(--ui-success-soft); }
     <section class="pane">
       <div class="pane-head">
         <label for="source" data-i18n="source">Source</label>
+        <button id="convertIdentifier" class="secondary small" data-i18n="identifierConvert" disabled>Convert identifier</button>
         <button id="copySource" class="secondary small" data-i18n="copySource" disabled>Copy source</button>
       </div>
       <textarea id="source" spellcheck="false" autofocus></textarea>
@@ -98,6 +99,7 @@ const settingsBtn = document.getElementById('openSettings');
 const dictionaryBtn = document.getElementById('openDictionary');
 const copySourceBtn = document.getElementById('copySource');
 const copyResultBtn = document.getElementById('copyResult');
+const identifierConvertBtn = document.getElementById('convertIdentifier');
 const languageBar = document.getElementById('languageBar');
 const sourceLanguageField = document.getElementById('sourceLanguageField');
 const sourceLanguageSelect = document.getElementById('sourceLanguage');
@@ -121,6 +123,7 @@ const STRINGS = {
     settings: 'Settings',
     dictionary: 'Dictionary',
     translate: 'Translate',
+    identifierConvert: 'Convert identifier',
     copySource: 'Copy source',
     copyResult: 'Copy translation',
     copied: 'Copied',
@@ -143,6 +146,7 @@ const STRINGS = {
     settings: '设置',
     dictionary: '词典',
     translate: '翻译',
+    identifierConvert: '标识符转换',
     copySource: '复制原文',
     copyResult: '复制译文',
     copied: '已复制',
@@ -186,6 +190,7 @@ function applyLanguage() {
   targetLanguageSelect.setAttribute('aria-label', t('targetLanguage'));
   swapLanguagesBtn.title = t('swap');
   swapLanguagesBtn.setAttribute('aria-label', t('swap'));
+  identifierConvertBtn.title = t('identifierConvert');
   if (!translateBtn.disabled && ['', 'ready', 'done'].includes(status.dataset.state))
     status.textContent = status.dataset.state === 'done' ? t('done') : t('ready');
   applyPinnedState(pinned);
@@ -290,6 +295,7 @@ document.addEventListener('mousemove', () => {
 function updateCopyButtons() {
   copySourceBtn.disabled = !source.value.trim();
   copyResultBtn.disabled = !result.value.trim();
+  identifierConvertBtn.disabled = !source.value.trim();
 }
 
 async function writeClipboard(text) {
@@ -331,8 +337,37 @@ async function copyFrom(textarea, button) {
   flashCopyButton(button, await writeClipboard(textarea.value));
 }
 
+function identifierTokenToWords(token) {
+  return token
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function convertIdentifierText(text) {
+  const identifierPattern = /\b(?:[A-Za-z][A-Za-z0-9]*(?:[_\-.]+[A-Za-z0-9]+)+|[A-Za-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*|[A-Z]{2,})\b/g;
+  return text.replace(identifierPattern, identifierTokenToWords);
+}
+
+function convertSourceIdentifiers() {
+  const text = source.value;
+  if (!text.trim()) return;
+  const converted = convertIdentifierText(text);
+  if (converted === text) return;
+  source.value = converted;
+  source.dispatchEvent(new Event('input', { bubbles: true }));
+  source.focus();
+  source.select();
+}
+
 copySourceBtn.addEventListener('click', () => copyFrom(source, copySourceBtn));
 copyResultBtn.addEventListener('click', () => copyFrom(result, copyResultBtn));
+identifierConvertBtn.addEventListener('click', convertSourceIdentifiers);
 source.addEventListener('input', updateCopyButtons);
 result.addEventListener('input', updateCopyButtons);
 

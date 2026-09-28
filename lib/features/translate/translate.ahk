@@ -176,14 +176,23 @@ TranslateResolveDirection(text, options, sourceOverride := "", targetOverride :=
 
     detected := TranslateDetectLanguage(text)
     if !IsObject(detected) || detected["status"] != "recognized" {
-        result["status"] := "needsDirection"
-        result["message"] := LLMText("Choose the source and target languages.", "请选择原语言和目标语言。")
+        ; Short identifiers, code, and mixed text may not contain enough
+        ; evidence for the local detector. Fall back to B -> A so the
+        ; configured first language remains the default target.
+        result["status"] := "ready"
+        result["sourceLanguage"] := languageB
+        result["targetLanguage"] := languageA
+        result["manual"] := false
         return result
     }
     source := TranslateMatchLanguage(detected["language"], languageA, languageB)
     if source = "" {
-        result["status"] := "needsDirection"
-        result["message"] := LLMText("The source language is outside the configured pair.", "识别出的原语言不在当前语言对中，请手动选择。")
+        ; A recognized language outside the configured pair cannot select a
+        ; valid automatic direction. Use the same safe default target A.
+        result["status"] := "ready"
+        result["sourceLanguage"] := languageB
+        result["targetLanguage"] := languageA
+        result["manual"] := false
         return result
     }
     target := source = languageA ? languageB : languageA
