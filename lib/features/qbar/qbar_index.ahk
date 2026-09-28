@@ -13,6 +13,7 @@ QbarInvalidateConfigIndex() {
     global QbarConfigIndexCache, QbarConfigIndexGeneration
     QbarConfigIndexGeneration += 1
     QbarConfigIndexCache := 0
+    QbarSearchOnConfigInvalidated()
 }
 
 QbarConfigIndex() {
@@ -217,27 +218,6 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
         return
     }
     results := QbarFilterItems(text)
-    ; The AI option is the default first row whenever the line is not an
-    ; explicit command -- that is, nothing matched a trigger exactly (no
-    ; pinned row). Enter then asks the assistant with the line as-is, while
-    ; partial matches stay right below for arrow-down selection. The row
-    ; carries the typed text as its short key, so executing it asks exactly
-    ; that.
-    explicitCommand := false
-    for item in results {
-        if item.Has("pinned") && item["pinned"] {
-            explicitCommand := true
-            break
-        }
-    }
-    if !explicitCommand && Trim(text) != ""
-        results.InsertAt(1, Map(
-            "short", text,
-            "label", QbarText("Ask AI  ⏎  ", "AI 问答  ⏎  ") . text,
-            "type", "ai",
-            "pinned", true,
-            "icon", ""
-        ))
     QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
 }
 
@@ -255,13 +235,15 @@ QbarFilterItems(text) {
     QbarSplitCommand(text, &matchStrLeft, &rest)
     glob := QbarGlobToRegEx(text)
     results := []
-    for item in QbarAllItems() {
+    for entry in QbarSearchCurrentEntries() {
+        item := entry["item"]
         short := item["short"]
         ; A configured command with one of the built-in Everything names wins;
         ; hide only the discoverability row for that same token.
         if item["type"] = "everything" && QbarConfigShortKeyExists(short)
             continue
-        if !(RegExMatch(item["label"], glob) || short = matchStrLeft)
+        matchRank := 60
+        if !QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank)
             continue
         ; An exact trigger match floats to the top (reference: column 3 pinning).
         pinned := short = matchStrLeft
@@ -270,7 +252,9 @@ QbarFilterItems(text) {
             "label", item["label"],
             "type", item["type"],
             "pinned", pinned,
-            "icon", item.Has("icon") ? item["icon"] : ""
+            "icon", item.Has("icon") ? item["icon"] : "",
+            "matchRank", matchRank,
+            "searchOrder", entry["order"]
         ))
     }
     return results
@@ -336,6 +320,10 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
     for item in results {
         row := Map("short", item["short"], "label", item["label"], "type", item["type"],
             "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false)
+        if item.Has("matchRank")
+            row["matchRank"] := item["matchRank"]
+        if item.Has("searchOrder")
+            row["searchOrder"] := item["searchOrder"]
         if item.Has("historyId")
             row["historyId"] := item["historyId"]
         if item.Has("history")

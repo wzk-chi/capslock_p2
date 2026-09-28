@@ -66,6 +66,7 @@ QbarShutdown(*) {
     QbarVisible := false
     QbarOpen := false
     QbarIndexReady := false
+    QbarSearchCancel()
     PanelHostStopFocusMonitor(QbarHost)
     QbarCancelIconQueue()
     SetTimer(QbarWarmIndex, 0)
@@ -136,6 +137,10 @@ QbarWebMessageReceived(sender, args) {
         ; tells a blank panel apart from a zero-sized one.
         DebugLog("Qbar page script ready")
         QbarRefit()
+    } else if messageType = "searchKeysReady" {
+        ; Key conversion is performed in a deferred turn so the WebView2
+        ; callback never owns the potentially large response validation work.
+        SetTimer(QbarSearchKeysReady.Bind(msg), -1)
     } else if messageType = "hide" {
         QbarHide()
     }
@@ -147,11 +152,14 @@ QbarWebMessageReceived(sender, args) {
 ; Warm the index before enabling the input instead, with a visible loading row.
 
 QbarStartIndexLoad() {
-    global QbarHost, QbarVisible, QbarIndexReady, QbarIndexLoading
+    global QbarHost, QbarVisible, QbarIndexReady, QbarIndexLoading, QbarSearchState
     if !QbarVisible || !PanelHostPageReady(QbarHost)
         return
     if QbarIndexReady {
-        QbarFinishIndexLoad()
+        if QbarSearchState = "ready" || QbarSearchState = "degraded"
+            QbarFinishIndexLoad()
+        else
+            QbarSearchStartBuild()
         return
     }
     if QbarIndexLoading
@@ -179,12 +187,14 @@ QbarWarmIndex(*) {
     QbarIndexLoading := false
     QbarIndexReady := true
     DebugLog("Qbar index ready")
-    QbarFinishIndexLoad()
+    QbarSearchStartBuild()
 }
 
 QbarFinishIndexLoad() {
-    global QbarHost, QbarVisible, QbarPendingText
+    global QbarHost, QbarVisible, QbarPendingText, QbarSearchState
     if !QbarVisible || !PanelHostPageReady(QbarHost)
+        return
+    if QbarSearchState = "building" || QbarSearchState = "idle"
         return
     QbarExec("window.setLoading(false);window.setInput(" . LLMJsonQuote(QbarPendingText)
         . ");window.focusInput();")

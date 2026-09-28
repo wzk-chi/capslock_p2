@@ -5,6 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <title>qbar</title>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/pinyin-pro/pinyin-pro.js"></script>
+<script src="qbar-search.js"></script>
 <style>
 /* Keep these values in sync with lib/features/qbar/qbar.ahk. The card radius
    also matches the host window's rounded region. */
@@ -196,9 +198,12 @@ let resultsMode = 'normal'; // AHK keeps history rows in recent-first order
 let reportedRows = -1;
 let ICONS = {}; // iconKey -> PNG data URI, pushed by AHK once per key
 let loadingVisible = true;
+let loadingInputSnapshot = '';
+let loadingInputSnapshotSet = false;
 let composing = false;
 let querySerial = 0;
 let currentQueryId = 0;
+let queryPending = false;
 
 /* Messaging and sizing -------------------------------------------------- */
 function t(key) {
@@ -215,12 +220,16 @@ function postType(type, text = '') {
 }
 
 // Tell AHK the page script is alive and how big its viewport is, so a blank
-// panel can be told apart from a zero-sized one.
-postType('ready', window.innerWidth + 'x' + window.innerHeight);
+// panel can be told apart from a zero-sized one. Defer this one turn so every
+// page entry point, including the search-key builder below, is installed
+// before AHK starts the index handshake.
+setTimeout(() => postType('ready', window.innerWidth + 'x' + window.innerHeight), 0);
 
 function requestQuery(reason = 'input') {
   if (composing) return;
   currentQueryId = ++querySerial;
+  queryPending = true;
+  selectedIndex = -1;
   if (resultsMode === 'history') {
     results = [];
     selectedIndex = -1;
@@ -259,10 +268,17 @@ function sortResults(items) {
     return items.slice();
   return items.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    const matchA = Number.isFinite(a.matchRank) ? a.matchRank : 60;
+    const matchB = Number.isFinite(b.matchRank) ? b.matchRank : 60;
+    if (matchA !== matchB) return matchA - matchB;
     const rankA = TYPE_RANK[a.type] ?? 9;
     const rankB = TYPE_RANK[b.type] ?? 9;
     if (rankA !== rankB) return rankA - rankB;
-    return a.label.localeCompare(b.label);
+    const labelOrder = a.label.localeCompare(b.label);
+    if (labelOrder !== 0) return labelOrder;
+    const orderA = Number.isFinite(a.searchOrder) ? a.searchOrder : Number.MAX_SAFE_INTEGER;
+    const orderB = Number.isFinite(b.searchOrder) ? b.searchOrder : Number.MAX_SAFE_INTEGER;
+    return orderA - orderB;
   });
 }
 
@@ -317,6 +333,8 @@ function render() {
 }
 
 function select(index) {
+  if (queryPending)
+    return;
   const rows = sortResults(results).slice(0, MAX_RENDERED);
   if (!rows.length)
     return;
@@ -333,6 +351,8 @@ function select(index) {
 // directory is being browsed, and replaces the whole line everywhere else.
 // Returns the row that was used.
 function completeSelected() {
+  if (queryPending)
+    return null;
   const rows = sortResults(results).slice(0, MAX_RENDERED);
   const row = selectedIndex >= 0 ? rows[selectedIndex] : null;
   if (!row)
@@ -351,7 +371,9 @@ function folderPrefix() {
 
 function execute(ctrlHeld) {
   const rows = sortResults(results).slice(0, MAX_RENDERED);
-  const row = (!listHidden && selectedIndex >= 0) ? rows[selectedIndex] : null;
+  const row = (!queryPending && !listHidden && selectedIndex >= 0) ? rows[selectedIndex] : null;
+  if (queryPending)
+    return;
   if (row && row.historyId) {
     post({
       type: 'executeHistory',
@@ -379,7 +401,10 @@ window.setLanguage = function (language) {
 };
 
 window.setInput = function (text) {
-  input.value = text || '';
+  const nextText = loadingInputSnapshotSet ? loadingInputSnapshot : (text || '');
+  loadingInputSnapshot = '';
+  loadingInputSnapshotSet = false;
+  input.value = nextText;
   // The reference implementation puts the caret in front of the prefilled
   // selection so a command can be typed ahead of it.
   input.setSelectionRange(0, 0);
@@ -387,11 +412,23 @@ window.setInput = function (text) {
 };
 
 window.setLoading = function (on, text) {
+  const wasLoading = loadingVisible;
   loadingVisible = !!on;
   input.disabled = loadingVisible;
+  if (loadingVisible && !wasLoading) {
+    loadingInputSnapshot = input.value;
+    loadingInputSnapshotSet = true;
+    queryPending = true;
+    selectedIndex = -1;
+  }
   if (loadingVisible)
     loadingText.textContent = text || t('loading');
   render();
+};
+
+window.resetLoadingSnapshot = function () {
+  loadingInputSnapshot = '';
+  loadingInputSnapshotSet = false;
 };
 
 window.focusInput = function () {
@@ -423,6 +460,7 @@ window.setResults = function (items, isFolder, placeholderText, mode, queryId) {
   resultsMode = mode === 'history' ? 'history' : 'normal';
   placeholder = placeholderText || '';
   selectedIndex = results.length ? 0 : -1;
+  queryPending = false;
   loadingVisible = false;
   input.disabled = false;
   render();
@@ -432,6 +470,20 @@ window.setResults = function (items, isFolder, placeholderText, mode, queryId) {
 window.addIcons = function (map) {
   Object.assign(ICONS, map || {});
   render();
+};
+
+window.buildQbarSearchKeys = function (payload) {
+  if (!window.QbarSearchKeys || typeof window.QbarSearchKeys.start !== 'function') {
+    post({
+      type: 'searchKeysReady',
+      generation: payload && payload.generation,
+      ok: false,
+      items: [],
+      error: 'module_missing'
+    });
+    return;
+  }
+  window.QbarSearchKeys.start(payload, message => post(message));
 };
 
 /* Input and keyboard handling ------------------------------------------- */

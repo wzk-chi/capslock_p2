@@ -31,8 +31,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
                 QbarHistoryRemember(QbarHistoryEverythingEntry(query, query != ""))
             return
         }
-        ; The AI option row asks with the typed text as-is. A bare trigger
-        ; word opens the chat with an empty composer (handled inside QbarAiAsk).
+        ; An explicit AI result row asks with the typed text as-is. A bare
+        ; trigger word opens the chat with an empty composer.
         if selectedType = "ai" {
             question := QbarAiQuestion(selected)
             if QbarAiAsk(selected)
@@ -68,6 +68,14 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     }
     if text = ""
         return
+    ; AI is an explicit command. A bare q is normally handled by the built-in
+    ; search row above; this branch covers bare ai and a q/ai input when the
+    ; page has no selectable row yet.
+    if !QbarConfigShortKeyExists(text) && QbarAiAlias(text) {
+        if QbarAiAsk(text)
+            QbarHistoryRemember(QbarHistoryAiEntry(""))
+        return
+    }
     DebugLog("QbarExecute")
     DebugLogPrivate("Qbar execute", text)
 
@@ -171,13 +179,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         return
     }
 
-    ; Searching stays deliberate: only a [QSearch] trigger searches. A line
-    ; that matched nothing at all becomes a question for the configured LLM --
-    ; the launcher's catch-all instead of doing nothing.
-    DebugLog("QbarExecute no match, asking AI")
-    DebugLogPrivate("Qbar AI question", text)
-    if QbarAiAsk(text)
-        QbarHistoryRemember(QbarHistoryAiEntry(text))
+    ; Unmatched text has no action. AI requires an explicit q/ai prefix.
+    DebugLog("QbarExecute no match")
 }
 
 QbarHistoryAiEntry(question) {

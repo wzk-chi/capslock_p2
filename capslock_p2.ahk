@@ -33,6 +33,7 @@ A_HotkeyInterval := 2000
 #Include lib\features\qbar\qbar.ahk
 #Include lib\features\qbar\qbar_history.ahk
 #Include lib\features\qbar\qbar_panel.ahk
+#Include lib\features\qbar\qbar_search.ahk
 #Include lib\features\qbar\qbar_index.ahk
 #Include lib\features\qbar\qbar_commands.ahk
 #Include lib\features\qbar\qbar_everything.ahk

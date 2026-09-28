@@ -21,6 +21,14 @@ global QbarFutureStack := []        ; forward history for keyFunc_qbar_lowerFold
 global QbarIconQueue := []          ; icon keys waiting for incremental extraction
 global QbarIconQueued := Map()      ; de-duplicates the pending icon queue
 global QbarIconTimer := false       ; one-shot icon extraction timer is armed
+global QbarSearchState := "idle"   ; idle|building|ready|degraded
+global QbarSearchGeneration := 0
+global QbarSearchConfigGeneration := 0
+global QbarSearchEntries := []
+global QbarSearchEntryById := Map()
+global QbarSearchKeys := Map()
+global QbarSearchExpectedCount := 0
+global QbarSearchTimeoutTimer := 0
 
 global QbarEsSeq := 0               ; bumped per request; late jobs are dropped
 global QbarEsJob := 0               ; the one shared es.exe process/retry job
@@ -102,7 +110,7 @@ QbarShow() {
 
 QbarHide(*) {
     global QbarHost, QbarVisible, QbarOpen, QbarFolderDir, QbarFolderItems, QbarFutureStack
-    global QbarIndexLoading, QbarQuerySeq, QbarPageQueryId
+    global QbarIndexLoading, QbarQuerySeq, QbarPageQueryId, QbarSearchState
     QbarVisible := false
     QbarOpen := false
     QbarFolderDir := ""
@@ -112,6 +120,12 @@ QbarHide(*) {
     QbarPageQueryId := 0
     QbarHistoryClearDisplayed()
     QbarCancelIconQueue()
+    ; Keep a completed search-key cache across ordinary hide/show cycles. A
+    ; build that is still in flight must be cancelled so its late response
+    ; cannot install data for a hidden session.
+    if QbarSearchState = "building"
+        QbarSearchCancel()
+    QbarExec("window.resetLoadingSnapshot && window.resetLoadingSnapshot();")
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
     PanelHostHide(QbarHost)
@@ -120,7 +134,7 @@ QbarHide(*) {
 
 QbarExec(script) {
     global QbarHost
-    PanelHostExecute(QbarHost, script)
+    return PanelHostExecute(QbarHost, script)
 }
 
 QbarSetInput(text) {
