@@ -166,7 +166,6 @@ gh<GitHub>=https://github.com
 |---|---|
 | `ai` / `q` | 打开空白 AI 聊天面板；追加问题可直接提问（使用共用 `[LLM]` 配置） |
 | `cl set` | 打开设置中心 |
-| `cl version` / `cl about` | 显示版本号 |
 | `web 网址` | 强制按网址打开，缺 `http://` 时自动补 |
 | `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目 |
 

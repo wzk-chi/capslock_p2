@@ -219,18 +219,12 @@ QbarAddSetting(section, key, value) {
         ShowMsg(QbarText("Added ", "已添加 ") . key, 1500)
 }
 
-; "cl <sub>" -- the built-in command surface of the reference bar: version
-; display and a shortcut to the settings center. Its pay/donate entries point
-; at the original author and stay out. Returns true when the line was a cl command.
+; "cl <sub>" -- the built-in shortcut to the settings center. Returns true
+; when the line was a cl command.
 
 QbarTryClCommand(cmd, param) {
-    global AppName, AppVersion
     if cmd != "cl"
         return false
-    if param = "version" || param = "about" {
-        ShowMsg(AppName . "  " . AppVersion, 4000)
-        return true
-    }
     if param = "set" || param = "settings" {
         QbarHide()
         ; Qbar commands arrive from a WebView2 callback. Defer creation of the
