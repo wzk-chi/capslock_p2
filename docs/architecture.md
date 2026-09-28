@@ -36,6 +36,7 @@ lib\
   qbar_everything.ahk              Everything 后端、异步可取消作业、CSV 与 UTF-8 解析
   qbar_navigation.ahk              文件夹导航和路径补全
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
+  languageDetect.ahk               互译模式的本地原文语言识别与候选状态
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
   llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
   youdaoTranslate.ahk              有道智云翻译 API（[TYoudao]，WinHttp + SHA-256 签名）
@@ -68,8 +69,13 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - `TranslateResolve(engine)`：`[TTranslate] engine` 指定 ID 则按指定取（未配置也返回，
   用于显示该引擎的 `notConfigured` 提示）；`auto` 优先第一个已配置的 `llm`，否则按注册顺序
   找第一个 `configured()` 为真的引擎。
-- 调度、设置保存、API 测试和 `LLMTranslatePushSettings` 全部按 engine 查表；`TranslateProviders()`
+- 调度、设置保存和 API 测试全部按 engine 查表；`TranslateProviders()`
   返回全部已注册引擎供页面逻辑遍历。
+- `[TTranslate]` 的 `mode=fixed` 使用 `targetLanguage`；`mode=bidirectional` 使用 `languageA` 和
+  `languageB`。`TranslateResolveDirection()` 在 provider 调用前生成一次请求快照，固定模式直接解析目标，
+  互译模式根据 `languageDetect.ahk` 或面板的原／目标语言选择生成方向。三个 provider 只消费快照中的目标语言。
+- `languageDetect.ahk` 对中日韩、阿拉伯文、俄文等脚本做本地识别，对拉丁文字使用常见词评分；证据不足时返回
+  `ambiguous`，面板要求用户选择原语言和目标语言，不发起 API 请求。
 
 provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` 头部注释，核心是：
 
@@ -89,11 +95,11 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 - **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。翻译和 AI
   问答共用 `[LLM]`，问答的专用系统提示词和 `hideOnBlur` 保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
-- **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言读取 `[TTranslate]`。同步 WinHttp 请求放到
+- **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言使用调度快照并映射到有道代码。同步 WinHttp 请求放到
   `SetTimer(fn, -1)` 回调外执行；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
   `input` 按 ≤20 字符规则截取，`salt` 用 `UuidCreate`。多行文本按行提交、结果按行拼回。
-- **volcengine**：火山引擎机器翻译，`[TVolcengine] accessKey/secretKey/region`，目标语言读取
-  `[TTranslate]`（region 默认 `cn-north-1`）。V4 签名与地区相关的部分用 `crypto.ahk` 的 `CryptoSha256Hex` /
+- **volcengine**：火山引擎机器翻译，`[TVolcengine] accessKey/secretKey/region`，目标语言使用调度快照（region
+  默认 `cn-north-1`）。V4 签名与地区相关的部分用 `crypto.ahk` 的 `CryptoSha256Hex` /
   `CryptoHmacSha256`（返回二进制 Buffer 供链式调用）。每次请求用 `TextList` 分批
   （≤16 条 / ≤4500 字符），用 `TranslationList` 按序取回后重建原换行结构。
 
@@ -126,8 +132,9 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
   以 data URI 推给页面并按扩展名/路径缓存。`QbarShow` 每次把窗口重置到收拢高度，页面需配合
   `window.resetRows` 让下一次渲染重报行数（否则隐藏期间残留的 `reportedRows` 会让窗口
   保持收拢、列表只剩半行）。
-- **translate**：`LLMTranslateStartRequest` 是唯一调度点——按 `TranslateResolve` 的结果把
-  请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
+- **translate**：`LLMTranslateStartRequest` 是唯一调度点——先由 `TranslateResolveDirection` 确定原语言、目标语言和
+  请求代号，再按 `TranslateResolve` 的结果把请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
+  过期请求的流式片段和完成回调会被丢弃；互译面板的交换按钮只改变当前请求方向，不写入配置。
 - **dictionary**：查询走 `CSQLite` 的只读连接；搜索联想三段式（前缀→包含→模糊子序列，
   词频排序）。词形、其余音标字段都是可点击的跳转查询；消息回调只记录查询序号，SQLite 工作在可取消队列中执行。
 - **settings**：`settings.html` 是唯一活动设置界面；F12、托盘菜单、qbar `cl set` 和功能页设置按钮都路由到它。

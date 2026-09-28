@@ -238,8 +238,12 @@ keyFunc_translate(*) {
         if DictionaryTryShow(selectedText)
             return
         LLMTranslateShow(selectedText)
-    } else
-        DictionaryShow()
+    } else {
+        ; With no selection, open an empty translation panel so the user can
+        ; enter arbitrary text. The dictionary remains available from its own
+        ; panel button and for selected dictionary words.
+        LLMTranslateShow("", true)
+    }
 }
 
 keyFunc_tabPrve(*) {

@@ -50,6 +50,9 @@ ConfigSchema() {
         "LLMTranslate", Map("kind", "static", "keys", Map(
             "systemPrompt", Map("type", "text", "codec", "jsonScalar"))),
         "TTranslate", Map("kind", "static", "keys", Map(
+            "mode", Map("type", "enum", "values", ["fixed", "bidirectional"]),
+            "languageA", Map("type", "enum", "values", ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
+            "languageB", Map("type", "enum", "values", ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
             "targetLanguage", Map("type", "enum", "values", ["system", "zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
             "engine", Map("type", "enum", "values", ["auto", "llm", "youdao", "volcengine"]))),
         "TYoudao", Map("kind", "static", "keys", Map(

@@ -27,6 +27,173 @@ GetTranslateSetting(key, defaultValue := "") {
     return ConfigRead("TTranslate", key, defaultValue)
 }
 
+; The language list is shared by the settings page, direction resolver and
+; provider adapters. Keep the stored values as stable BCP-47-like codes and
+; translate them to each provider's own code only at the transport boundary.
+TranslateLanguageCodes() {
+    return ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]
+}
+
+TranslateLanguageName(value) {
+    normalized := TranslateNormalizeLanguage(value, true)
+    static names := Map(
+        "zh-cn", "Simplified Chinese", "zh-tw", "Traditional Chinese",
+        "en", "English", "ja", "Japanese", "ko", "Korean", "fr", "French",
+        "de", "German", "es", "Spanish", "ru", "Russian", "it", "Italian",
+        "pt", "Portuguese", "ar", "Arabic", "system", "System language")
+    lowered := StrLower(normalized)
+    return names.Has(lowered) ? names[lowered] : String(value)
+}
+
+TranslateNormalizeLanguage(value, allowSystem := false) {
+    raw := Trim(String(value))
+    lowered := StrLower(raw)
+    static aliases := Map(
+        "zh-cn", "zh-CN", "zh-hans", "zh-CN", "zh-chs", "zh-CN",
+        "简体中文", "zh-CN", "simplified chinese", "zh-CN",
+        "zh-tw", "zh-TW", "zh-hant", "zh-TW", "zh-cht", "zh-TW",
+        "繁體中文", "zh-TW", "traditional chinese", "zh-TW",
+        "en", "en", "english", "en", "英文", "en", "英语", "en",
+        "ja", "ja", "japanese", "ja", "日本語", "ja", "日语", "ja", "日文", "ja",
+        "ko", "ko", "korean", "ko", "한국어", "ko", "韩语", "ko",
+        "fr", "fr", "french", "fr", "français", "fr", "法语", "fr", "法文", "fr",
+        "de", "de", "german", "de", "deutsch", "de", "德语", "de", "德文", "de",
+        "es", "es", "spanish", "es", "español", "es", "西班牙语", "es",
+        "ru", "ru", "russian", "ru", "русский", "ru", "俄语", "ru",
+        "it", "it", "italian", "it", "italiano", "it", "意大利语", "it",
+        "pt", "pt", "portuguese", "pt", "português", "pt", "葡萄牙语", "pt",
+        "ar", "ar", "arabic", "ar", "العربية", "ar", "阿拉伯语", "ar")
+    if allowSystem && lowered = "system"
+        return "system"
+    return aliases.Has(lowered) ? aliases[lowered] : ""
+}
+
+TranslateSystemLanguageCode() {
+    code := TranslateNormalizeLanguage(SystemLanguageName())
+    return code = "" ? "en" : code
+}
+
+TranslateOptionsSnapshot() {
+    return Map(
+        "mode", Trim(GetTranslateSetting("mode", "")),
+        "languageA", Trim(GetTranslateSetting("languageA", "")),
+        "languageB", Trim(GetTranslateSetting("languageB", "")),
+        "targetLanguage", Trim(GetTranslateSetting("targetLanguage", "")))
+}
+
+TranslateValidateOptions(options, &errorText := "") {
+    errorText := ""
+    if !IsObject(options) {
+        errorText := LLMText("Translation settings are unavailable.", "翻译设置不可用。")
+        return false
+    }
+    mode := StrLower(Trim(options.Has("mode") ? String(options["mode"]) : ""))
+    if mode != "fixed" && mode != "bidirectional" {
+        errorText := LLMText("Choose a valid translation mode.", "请选择有效的翻译方式。")
+        return false
+    }
+    if mode = "fixed" {
+        target := TranslateNormalizeLanguage(options.Has("targetLanguage") ? options["targetLanguage"] : "", true)
+        if target = "" {
+            errorText := LLMText("Choose a valid target language.", "请选择有效的目标语言。")
+            return false
+        }
+        return true
+    }
+    languageA := TranslateNormalizeLanguage(options.Has("languageA") ? options["languageA"] : "")
+    languageB := TranslateNormalizeLanguage(options.Has("languageB") ? options["languageB"] : "")
+    if languageA = "" || languageB = "" {
+        errorText := LLMText("Choose both languages for bidirectional translation.", "互译模式需要选择两种语言。")
+        return false
+    }
+    if languageA = languageB {
+        errorText := LLMText("The two translation languages must be different.", "互译的两种语言不能相同。")
+        return false
+    }
+    return true
+}
+
+TranslateMatchLanguage(detected, languageA, languageB) {
+    rawDetected := StrLower(Trim(String(detected)))
+    detected := TranslateNormalizeLanguage(detected)
+    if detected = "" && rawDetected = "zh"
+        detected := "zh"
+    if detected = languageA
+        return languageA
+    if detected = languageB
+        return languageB
+    ; A detector may know that text is Chinese without enough evidence to
+    ; distinguish simplified and traditional variants. That is safe only when
+    ; the configured pair contains one Chinese option.
+    if detected = "zh" {
+        aChinese := InStr(StrLower(languageA), "zh-") = 1
+        bChinese := InStr(StrLower(languageB), "zh-") = 1
+        if aChinese && !bChinese
+            return languageA
+        if bChinese && !aChinese
+            return languageB
+    }
+    return ""
+}
+
+; Resolve one request's source and target before a provider is called. The
+; returned map is a request snapshot: providers must consume its target rather
+; than re-reading the global mode or trying to detect the source themselves.
+TranslateResolveDirection(text, options, sourceOverride := "", targetOverride := "", manual := false) {
+    result := Map("status", "error", "sourceLanguage", "", "targetLanguage", "", "manual", manual ? true : false, "message", "")
+    if !TranslateValidateOptions(options, &validationError) {
+        result["message"] := validationError
+        return result
+    }
+    mode := StrLower(Trim(String(options["mode"])))
+    if mode = "fixed" {
+        target := TranslateNormalizeLanguage(options["targetLanguage"], true)
+        if target = "system"
+            target := TranslateSystemLanguageCode()
+        result["status"] := "ready"
+        result["sourceLanguage"] := "auto"
+        result["targetLanguage"] := target
+        result["manual"] := false
+        return result
+    }
+
+    languageA := TranslateNormalizeLanguage(options["languageA"])
+    languageB := TranslateNormalizeLanguage(options["languageB"])
+    if manual {
+        source := TranslateNormalizeLanguage(sourceOverride)
+        target := TranslateNormalizeLanguage(targetOverride)
+        if source = "" || target = "" || source = target
+            || (source != languageA && source != languageB)
+            || (target != languageA && target != languageB) {
+            result["message"] := LLMText("Choose two different languages from the configured pair.", "请选择语言对中的两种不同语言。")
+            return result
+        }
+        result["status"] := "ready"
+        result["sourceLanguage"] := source
+        result["targetLanguage"] := target
+        return result
+    }
+
+    detected := TranslateDetectLanguage(text)
+    if !IsObject(detected) || detected["status"] != "recognized" {
+        result["status"] := "needsDirection"
+        result["message"] := LLMText("Choose the source and target languages.", "请选择原语言和目标语言。")
+        return result
+    }
+    source := TranslateMatchLanguage(detected["language"], languageA, languageB)
+    if source = "" {
+        result["status"] := "needsDirection"
+        result["message"] := LLMText("The source language is outside the configured pair.", "识别出的原语言不在当前语言对中，请手动选择。")
+        return result
+    }
+    target := source = languageA ? languageB : languageA
+    result["status"] := "ready"
+    result["sourceLanguage"] := source
+    result["targetLanguage"] := target
+    result["manual"] := false
+    return result
+}
+
 TranslateSettingWith(key, defaultValue, overrides) {
     if IsObject(overrides) && overrides.Has(key)
         return overrides[key]

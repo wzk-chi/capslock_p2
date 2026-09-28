@@ -367,6 +367,10 @@ SettingsApplyDraft(message) {
                 return
             }
         }
+        if !SettingsValidateTranslationChanges(changes, &translationError) {
+            SettingsSendSaved(false, translationError)
+            return
+        }
         fileChanged := false
         invalidChange := ""
         effectiveChanges := ConfigWriteUserOverrides(changes, &fileChanged, &invalidChange)
@@ -384,6 +388,26 @@ SettingsApplyDraft(message) {
     } catch as saveError {
         SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
     }
+}
+
+; ConfigSchema validates each scalar field. Translation mode additionally has
+; a relationship between mode, the language pair and the fixed target, so
+; validate the merged draft before touching the INI file.
+SettingsValidateTranslationChanges(changes, &errorText := "") {
+    errorText := ""
+    if !IsObject(changes) || !changes.Has("TTranslate")
+        return true
+    options := TranslateOptionsSnapshot()
+    values := changes["TTranslate"]
+    if IsObject(values) {
+        for key in ["mode", "languageA", "languageB", "targetLanguage"]
+            if values.Has(key)
+                options[key] := values[key]
+    }
+    if TranslateValidateOptions(options, &validationError)
+        return true
+    errorText := validationError
+    return false
 }
 
 SettingsFindDraftConflict(changes, base) {

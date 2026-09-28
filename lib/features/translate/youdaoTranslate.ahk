@@ -1,6 +1,6 @@
 ; Youdao Smart Cloud (有道智云) translation client, v3 signed API (POST form).
 ; Reference: capslock-plus\lib\lib_ydTrans.ahk (AHK v1). Credentials live in
-; [TYoudao]; targetLanguage is shared through [TTranslate]. The translate
+; [TYoudao]; targetLanguage is supplied by the resolved request from [TTranslate]. The translate
 ; panel prefers [LLM] and falls back to Youdao when it is configured.
 
 GetYoudaoSetting(key, defaultValue := "") {
@@ -54,8 +54,13 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
         return ""
     }
 
-    ; Source language stays auto; every provider uses the shared target.
+    ; Source language stays auto; the dispatcher has already resolved the
+    ; request target and passes it through this override map.
     toLang := YoudaoTargetCode(TranslateSettingWith("targetLanguage", "", overrides))
+    if toLang = "" {
+        errorText := LLMText("The selected target language is not supported by Youdao.", "有道翻译不支持当前目标语言。")
+        return ""
+    }
 
     salt := YoudaoSalt()
     if salt = ""
@@ -129,47 +134,39 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
     return result
 }
 
-; Map the shared [TTranslate] targetLanguage setting to a Youdao `to` code. Empty or
-; unknown values fall back to auto (Chinese source → en, otherwise zh-CHS).
+; Map a canonical target language to the Youdao `to` code. Unknown values are
+; rejected by the caller instead of silently changing the translation target.
 YoudaoTargetCode(value) {
-    value := Trim(value)
-    if value = ""
-        return "auto"
-    lowered := StrLower(value)
-    if lowered = "system" {
-        value := SystemLanguageName()
-        lowered := StrLower(value)
+    value := TranslateNormalizeLanguage(value, true)
+    if value = "system"
+        value := TranslateSystemLanguageCode()
+    switch value {
+        case "zh-TW":
+            return "zh-CHT"
+        case "zh-CN":
+            return "zh-CHS"
+        case "en":
+            return "en"
+        case "ja":
+            return "ja"
+        case "ko":
+            return "ko"
+        case "fr":
+            return "fr"
+        case "de":
+            return "de"
+        case "es":
+            return "es"
+        case "ru":
+            return "ru"
+        case "it":
+            return "it"
+        case "pt":
+            return "pt"
+        case "ar":
+            return "ar"
     }
-    if InStr(lowered, "繁") || InStr(lowered, "traditional")
-        return "zh-CHT"
-    if InStr(lowered, "中") || InStr(lowered, "chinese") || InStr(lowered, "simplified")
-        return "zh-CHS"
-    if InStr(lowered, "english") || InStr(lowered, "英文") || InStr(lowered, "英语") || lowered = "en"
-        return "en"
-    if InStr(lowered, "japanese") || InStr(lowered, "日语") || InStr(lowered, "日文") || lowered = "ja" || lowered = "jp"
-        return "ja"
-    if InStr(lowered, "korean") || InStr(lowered, "韩") || lowered = "ko" || lowered = "kr"
-        return "ko"
-    if InStr(lowered, "french") || InStr(lowered, "法语") || InStr(lowered, "法文") || lowered = "fr"
-        return "fr"
-    if InStr(lowered, "german") || InStr(lowered, "德语") || InStr(lowered, "德文") || lowered = "de"
-        return "de"
-    if InStr(lowered, "spanish") || InStr(lowered, "西班牙语") || lowered = "es"
-        return "es"
-    if InStr(lowered, "russian") || InStr(lowered, "俄语") || lowered = "ru"
-        return "ru"
-    if InStr(lowered, "italian") || InStr(lowered, "意大利语") || lowered = "it"
-        return "it"
-    if InStr(lowered, "portuguese") || InStr(lowered, "葡萄牙语") || lowered = "pt"
-        return "pt"
-    if InStr(lowered, "arabic") || InStr(lowered, "阿拉伯语") || lowered = "ar"
-        return "ar"
-    if InStr(lowered, "thai") || InStr(lowered, "泰语") || lowered = "th"
-        return "th"
-    ; Already a plain language code (en, ja, pt-BR...)? Pass it through.
-    if RegExMatch(lowered, "^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
-        return value
-    return "auto"
+    return ""
 }
 
 ; Translation first, then phonetic, dictionary explains and web phrases.

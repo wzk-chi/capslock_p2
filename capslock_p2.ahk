@@ -22,6 +22,7 @@ A_HotkeyInterval := 2000
 #Include lib\shared\crypto.ahk
 #Include lib\vendor\CSQLite.ahk
 #Include lib\features\translate\translate.ahk
+#Include lib\features\translate\languageDetect.ahk
 #Include lib\shared\llm.ahk
 #Include lib\features\translate\llmTranslate.ahk
 #Include lib\features\settings.ahk

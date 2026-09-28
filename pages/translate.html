@@ -13,6 +13,14 @@ main { height: 100vh; padding: 12px 14px 14px; display: flex; flex-direction: co
 .toolbar { display: flex; align-items: center; gap: 8px; flex: none; min-height: 32px; }
 .toolbar-spacer { flex: 1; min-width: 8px; }
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
+.language-bar { display: flex; align-items: end; justify-content: center; gap: 10px; align-self: center; width: min(620px, 100%); flex: none; padding: 2px 8px; }
+.language-field { display: grid; gap: 4px; min-width: 0; flex: 1 1 220px; max-width: 260px; }
+.language-field span { color: var(--ui-muted); font-size: 11px; }
+.language-field select { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); }
+.language-field select:focus { border-color: var(--ui-accent); outline: none; box-shadow: 0 0 0 3px var(--ui-ring); }
+#swapLanguages { flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ui-accent); font-size: 20px; line-height: 1; }
+#swapLanguages:hover { background: transparent; color: var(--ui-accent-strong); }
+#swapLanguages:disabled { border: 0; background: transparent; color: var(--ui-subtle); }
 .columns { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .pane-head { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -53,6 +61,15 @@ button.copied:hover { background: var(--ui-success-soft); }
       <button id="translate" data-i18n="translate" title="Ctrl + Enter">Translate</button>
     </div>
   </div>
+  <div id="languageBar" class="language-bar" hidden>
+    <label id="sourceLanguageField" class="language-field">
+      <select id="sourceLanguage" aria-label="Source language"></select>
+    </label>
+    <button id="swapLanguages" class="small" title="Swap languages" aria-label="Swap languages">⇄</button>
+    <label class="language-field">
+      <select id="targetLanguage" aria-label="Target language"></select>
+    </label>
+  </div>
   <div class="columns">
     <section class="pane">
       <div class="pane-head">
@@ -81,6 +98,11 @@ const settingsBtn = document.getElementById('openSettings');
 const dictionaryBtn = document.getElementById('openDictionary');
 const copySourceBtn = document.getElementById('copySource');
 const copyResultBtn = document.getElementById('copyResult');
+const languageBar = document.getElementById('languageBar');
+const sourceLanguageField = document.getElementById('sourceLanguageField');
+const sourceLanguageSelect = document.getElementById('sourceLanguage');
+const targetLanguageSelect = document.getElementById('targetLanguage');
+const swapLanguagesBtn = document.getElementById('swapLanguages');
 
 // The panel is bilingual: the UI follows the configured target language
 // (Chinese target → Chinese UI, anything else → English). AHK decides and
@@ -90,6 +112,10 @@ const STRINGS = {
     appTitle: 'capslock_p2 Translate',
     source: 'Source',
     translation: 'Translation',
+    sourceLanguage: 'Source language',
+    targetLanguage: 'Target language',
+    swap: 'Swap',
+    chooseDirection: 'Choose the source and target languages',
     pin: 'Pin',
     unpin: 'Unpin',
     settings: 'Settings',
@@ -108,6 +134,10 @@ const STRINGS = {
     appTitle: 'capslock_p2 翻译',
     source: '原文',
     translation: '译文',
+    sourceLanguage: '原语言',
+    targetLanguage: '目标语言',
+    swap: '交换',
+    chooseDirection: '请选择原语言和目标语言',
     pin: '固定',
     unpin: '取消固定',
     settings: '设置',
@@ -126,6 +156,18 @@ const STRINGS = {
 
 let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
 let pinned = false;
+let translationSettings = { mode: 'fixed', languageA: 'zh-CN', languageB: 'en', targetLanguage: 'system' };
+let directionManual = false;
+let directionReady = true;
+
+const LANGUAGE_LABELS = {
+  'zh-CN': ['简体中文', 'Simplified Chinese'], 'zh-TW': ['繁體中文', 'Traditional Chinese'],
+  en: ['English', 'English'], ja: ['日本語', 'Japanese'], ko: ['한국어', 'Korean'],
+  fr: ['Français', 'French'], de: ['Deutsch', 'German'], es: ['Español', 'Spanish'],
+  ru: ['Русский', 'Russian'], it: ['Italiano', 'Italian'], pt: ['Português', 'Portuguese'],
+  ar: ['العربية', 'Arabic'], system: ['系统语言', 'System language']
+};
+const LANGUAGE_CODES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'it', 'pt', 'ar'];
 
 function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
@@ -140,9 +182,73 @@ function applyLanguage() {
   for (const btn of [copySourceBtn, copyResultBtn])
     if (btn.dataset.flash)
       btn.textContent = t(btn.dataset.flash);
-  if (!translateBtn.disabled)
+  sourceLanguageSelect.setAttribute('aria-label', t('sourceLanguage'));
+  targetLanguageSelect.setAttribute('aria-label', t('targetLanguage'));
+  swapLanguagesBtn.title = t('swap');
+  swapLanguagesBtn.setAttribute('aria-label', t('swap'));
+  if (!translateBtn.disabled && ['', 'ready', 'done'].includes(status.dataset.state))
     status.textContent = status.dataset.state === 'done' ? t('done') : t('ready');
   applyPinnedState(pinned);
+  refreshLanguageOptionLabels();
+}
+
+function languageLabel(code) {
+  const labels = LANGUAGE_LABELS[code];
+  return labels ? labels[lang === 'zh' ? 0 : 1] : code;
+}
+
+function refreshLanguageOptionLabels() {
+  for (const select of [sourceLanguageSelect, targetLanguageSelect]) {
+    for (const option of select.options)
+      option.textContent = languageLabel(option.value);
+  }
+}
+
+function fillLanguageSelect(select, codes, includeSystem = false) {
+  const values = includeSystem ? ['system', ...codes] : codes;
+  const previous = select.value;
+  select.replaceChildren();
+  for (const code of values) {
+    const option = document.createElement('option');
+    option.value = code;
+    option.textContent = languageLabel(code);
+    select.appendChild(option);
+  }
+  if (values.includes(previous)) select.value = previous;
+}
+
+function applyTranslationSettings(settings) {
+  const next = settings && typeof settings === 'object' ? settings : {};
+  translationSettings = {
+    mode: next.mode === 'bidirectional' ? 'bidirectional' : 'fixed',
+    languageA: LANGUAGE_CODES.includes(next.languageA) ? next.languageA : 'zh-CN',
+    languageB: LANGUAGE_CODES.includes(next.languageB) ? next.languageB : 'en',
+    targetLanguage: ['system', ...LANGUAGE_CODES].includes(next.targetLanguage) ? next.targetLanguage : 'system'
+  };
+  languageBar.hidden = false;
+  if (translationSettings.mode === 'bidirectional') {
+    const pair = [translationSettings.languageA, translationSettings.languageB];
+    fillLanguageSelect(sourceLanguageSelect, pair);
+    fillLanguageSelect(targetLanguageSelect, pair);
+    if (!pair.includes(sourceLanguageSelect.value)) sourceLanguageSelect.value = pair[0];
+    if (!pair.includes(targetLanguageSelect.value) || sourceLanguageSelect.value === targetLanguageSelect.value)
+      targetLanguageSelect.value = pair[1];
+    sourceLanguageField.hidden = false;
+    swapLanguagesBtn.hidden = false;
+    targetLanguageSelect.disabled = false;
+    swapLanguagesBtn.disabled = false;
+    directionManual = false;
+    directionReady = false;
+  } else {
+    fillLanguageSelect(targetLanguageSelect, LANGUAGE_CODES, true);
+    targetLanguageSelect.value = translationSettings.targetLanguage;
+    sourceLanguageField.hidden = true;
+    swapLanguagesBtn.hidden = true;
+    targetLanguageSelect.disabled = true;
+    directionManual = false;
+    directionReady = true;
+  }
+  refreshLanguageOptionLabels();
 }
 
 function applyPinnedState(value) {
@@ -158,6 +264,7 @@ function applyPinnedState(value) {
 function setStatus(key, state) {
   status.textContent = t(key);
   status.dataset.state = state || '';
+  status.classList.toggle('error', state === 'error' || state === 'needs-direction');
 }
 
 function post(obj) {
@@ -232,6 +339,17 @@ result.addEventListener('input', updateCopyButtons);
 window.setSource = function (text) {
   source.value = text || '';
   result.value = '';
+  directionManual = false;
+  if (translationSettings.mode === 'bidirectional') {
+    sourceLanguageSelect.value = translationSettings.languageA;
+    targetLanguageSelect.value = translationSettings.languageB;
+  }
+  directionReady = translationSettings.mode === 'fixed';
+  source.disabled = false;
+  sourceLanguageSelect.disabled = false;
+  targetLanguageSelect.disabled = translationSettings.mode === 'fixed';
+  swapLanguagesBtn.disabled = translationSettings.mode !== 'bidirectional';
+  translateBtn.disabled = false;
   updateCopyButtons();
   setStatus('ready');
   source.focus();
@@ -241,12 +359,21 @@ window.setSource = function (text) {
 window.startTranslate = function () {
   const text = source.value.trim();
   if (!text) return;
-  postType('translate', text);
+  post({
+    type: 'translate',
+    text,
+    sourceLanguage: translationSettings.mode === 'bidirectional' ? sourceLanguageSelect.value : '',
+    targetLanguage: targetLanguageSelect.value,
+    directionManual: translationSettings.mode === 'bidirectional' ? directionManual : false
+  });
 };
 
 window.startStreaming = function () {
   result.value = '';
   source.disabled = true;
+  sourceLanguageSelect.disabled = true;
+  targetLanguageSelect.disabled = true;
+  swapLanguagesBtn.disabled = true;
   translateBtn.disabled = true;
   updateCopyButtons();
   setStatus('translating', 'loading');
@@ -259,6 +386,10 @@ window.appendStreaming = function (text) {
 };
 
 window.setLoading = function (loading) {
+  source.disabled = !!loading;
+  sourceLanguageSelect.disabled = !!loading;
+  targetLanguageSelect.disabled = !!loading || translationSettings.mode === 'fixed';
+  swapLanguagesBtn.disabled = !!loading || translationSettings.mode !== 'bidirectional';
   translateBtn.disabled = !!loading;
   if (loading)
     setStatus('translating', 'loading');
@@ -271,6 +402,9 @@ window.setResult = function (text) {
   updateCopyButtons();
   setStatus('done', 'done');
   source.disabled = false;
+  sourceLanguageSelect.disabled = false;
+  targetLanguageSelect.disabled = translationSettings.mode === 'fixed';
+  swapLanguagesBtn.disabled = translationSettings.mode !== 'bidirectional';
   translateBtn.disabled = false;
   result.focus();
 };
@@ -280,14 +414,45 @@ window.setError = function (text) {
   updateCopyButtons();
   status.textContent = text || t('failed');
   status.dataset.state = 'error';
+  status.classList.add('error');
   source.disabled = false;
+  sourceLanguageSelect.disabled = false;
+  targetLanguageSelect.disabled = translationSettings.mode === 'fixed';
+  swapLanguagesBtn.disabled = translationSettings.mode !== 'bidirectional';
   translateBtn.disabled = false;
+};
+
+window.setNeedsDirection = function (text) {
+  directionReady = false;
+  directionManual = false;
+  source.disabled = false;
+  sourceLanguageSelect.disabled = false;
+  targetLanguageSelect.disabled = translationSettings.mode === 'fixed';
+  swapLanguagesBtn.disabled = translationSettings.mode !== 'bidirectional';
+  translateBtn.disabled = false;
+  status.textContent = text || t('chooseDirection');
+  status.dataset.state = 'needs-direction';
+  status.classList.add('error');
+};
+
+window.setDirection = function (sourceLanguage, targetLanguage, manual) {
+  if (translationSettings.mode !== 'bidirectional') return;
+  const pair = [translationSettings.languageA, translationSettings.languageB];
+  if (!pair.includes(sourceLanguage) || !pair.includes(targetLanguage) || sourceLanguage === targetLanguage)
+    return;
+  sourceLanguageSelect.value = sourceLanguage;
+  targetLanguageSelect.value = targetLanguage;
+  directionManual = !!manual;
+  directionReady = true;
+  if (status.dataset.state === 'needs-direction')
+    setStatus('ready');
 };
 
 // The standalone settings center pushes the interface language through the
 // host snapshot; this hook keeps the translation panel language in step.
 window.onHostSettings = function (s) {
   lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
+  applyTranslationSettings(s && s.translation);
   applyLanguage();
 };
 
@@ -297,10 +462,37 @@ window.setPinned = function (value) {
 
 translateBtn.addEventListener('click', window.startTranslate);
 source.addEventListener('keydown', event => {
-  if (event.ctrlKey && event.key === 'Enter') {
-    event.preventDefault();
-    window.startTranslate();
+  if (event.key !== 'Enter' || event.isComposing) return;
+  if (event.shiftKey) return;
+  event.preventDefault();
+  window.startTranslate();
+});
+source.addEventListener('input', () => {
+  if (translationSettings.mode === 'bidirectional') {
+    directionManual = false;
+    directionReady = false;
   }
+});
+sourceLanguageSelect.addEventListener('change', () => {
+  if (translationSettings.mode !== 'bidirectional') return;
+  directionManual = true;
+  directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
+  if (directionReady) setStatus('ready');
+});
+targetLanguageSelect.addEventListener('change', () => {
+  if (translationSettings.mode !== 'bidirectional') return;
+  directionManual = true;
+  directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
+  if (directionReady) setStatus('ready');
+});
+swapLanguagesBtn.addEventListener('click', () => {
+  if (translationSettings.mode !== 'bidirectional') return;
+  const sourceValue = sourceLanguageSelect.value;
+  sourceLanguageSelect.value = targetLanguageSelect.value;
+  targetLanguageSelect.value = sourceValue;
+  directionManual = true;
+  directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
+  if (directionReady) setStatus('ready');
 });
 
 // Let the first Esc leave an editor, then use the next Esc to close the panel.
@@ -323,6 +515,7 @@ settingsBtn.addEventListener('click', () => {
 dictionaryBtn.addEventListener('click', () => postType('openDictionary', source.value));
 pinBtn.addEventListener('click', () => postType('togglePinned'));
 
+applyTranslationSettings(translationSettings);
 applyLanguage();
 setStatus('ready');
 </script>

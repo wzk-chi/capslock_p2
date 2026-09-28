@@ -49,6 +49,10 @@ VolcengineTranslate(text, &success := false, &errorText := "", overrides := 0) {
     ; TranslateText requires an explicit target language; the source language
     ; is detected server-side.
     targetCode := VolcengineTargetCode(TranslateSettingWith("targetLanguage", "", overrides))
+    if targetCode = "" {
+        errorText := LLMText("The selected target language is not supported by Volcengine.", "火山翻译不支持当前目标语言。")
+        return ""
+    }
 
     lines := StrSplit(StrReplace(StrReplace(text, "`r`n", "`n"), "`r", "`n"), "`n")
     segments := []
@@ -208,49 +212,39 @@ VolcengineTranslateBatch(texts, targetCode, accessKey, secretKey, region, &succe
     return pieces
 }
 
-; Map the shared [TTranslate] targetLanguage setting to a TranslateText target
-; code. TranslateText has no auto target, so empty or unknown values fall
-; back to zh. The word list follows YoudaoTargetCode; plain language codes
-; like "zh-Hant" pass through when they match the generic pattern.
+; Map a canonical target language to a TranslateText target code. Unknown
+; values are rejected by the caller instead of silently falling back to zh.
 VolcengineTargetCode(value) {
-    value := Trim(value)
-    if value = ""
-        return "zh"
-    lowered := StrLower(value)
-    if lowered = "system" {
-        value := SystemLanguageName()
-        lowered := StrLower(value)
+    value := TranslateNormalizeLanguage(value, true)
+    if value = "system"
+        value := TranslateSystemLanguageCode()
+    switch value {
+        case "zh-TW":
+            return "zh-Hant"
+        case "zh-CN":
+            return "zh"
+        case "en":
+            return "en"
+        case "ja":
+            return "ja"
+        case "ko":
+            return "ko"
+        case "fr":
+            return "fr"
+        case "de":
+            return "de"
+        case "es":
+            return "es"
+        case "ru":
+            return "ru"
+        case "it":
+            return "it"
+        case "pt":
+            return "pt"
+        case "ar":
+            return "ar"
     }
-    if InStr(lowered, "繁") || InStr(lowered, "traditional")
-        return "zh-Hant"
-    if InStr(lowered, "中") || InStr(lowered, "chinese") || InStr(lowered, "simplified")
-        return "zh"
-    if InStr(lowered, "english") || InStr(lowered, "英文") || InStr(lowered, "英语") || lowered = "en"
-        return "en"
-    if InStr(lowered, "japanese") || InStr(lowered, "日语") || InStr(lowered, "日文") || lowered = "ja" || lowered = "jp"
-        return "ja"
-    if InStr(lowered, "korean") || InStr(lowered, "韩") || lowered = "ko" || lowered = "kr"
-        return "ko"
-    if InStr(lowered, "french") || InStr(lowered, "法语") || InStr(lowered, "法文") || lowered = "fr"
-        return "fr"
-    if InStr(lowered, "german") || InStr(lowered, "德语") || InStr(lowered, "德文") || lowered = "de"
-        return "de"
-    if InStr(lowered, "spanish") || InStr(lowered, "西班牙语") || lowered = "es"
-        return "es"
-    if InStr(lowered, "russian") || InStr(lowered, "俄语") || lowered = "ru"
-        return "ru"
-    if InStr(lowered, "italian") || InStr(lowered, "意大利语") || lowered = "it"
-        return "it"
-    if InStr(lowered, "portuguese") || InStr(lowered, "葡萄牙语") || lowered = "pt"
-        return "pt"
-    if InStr(lowered, "arabic") || InStr(lowered, "阿拉伯语") || lowered = "ar"
-        return "ar"
-    if InStr(lowered, "thai") || InStr(lowered, "泰语") || lowered = "th"
-        return "th"
-    ; Already a plain language code (en, zh-Hant, pt-BR...)? Pass it through.
-    if RegExMatch(lowered, "^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
-        return value
-    return "zh"
+    return ""
 }
 
 ; ---- "volcengine" provider glue ----
