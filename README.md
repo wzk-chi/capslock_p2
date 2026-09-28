@@ -261,7 +261,7 @@ region=cn-north-1
 qbar 里输入「ai」或「q」可打开空白聊天面板；输入「ai 问题」「q 问题」，或输入未命中任何命令的内容回车，打开独立的
 **AI 聊天面板**：气泡式对话，支持**追问**（最多保留最近 50 轮，即 100 条消息；更早内容自动遗忘），
 「新会话」按钮清空重来。回答通过 OpenAI 兼容接口流式返回，模型自行判断输入是要回答的问题还是要解释的文本。
-AI 窗口是普通可调整大小、可最小化和最大化的 WebView2 窗口；设置中心的「失焦后隐藏」默认开启，关闭后窗口会像设置页一样保留。
+AI 窗口是普通可调整大小、可最小化和最大化的 WebView2 窗口，失去焦点后仍保持显示。
 聊天或翻译面板处于活动窗口时 CapsLock 键层自动挂起（打大写字母不会误触图层动作）。
 未配置 `[LLM]` API 时自动弹出设置窗口，保存后自动发出等待中的问题。
 
@@ -274,7 +274,6 @@ AI 窗口是普通可调整大小、可最小化和最大化的 WebView2 窗口�
 
 ```ini
 [QAI]
-hideOnBlur=1
 systemPrompt=You are the assistant built into the capslock_p2 launcher. The user's message is either a question to answer or a text to explain; decide which one it is. If it is a question, answer it directly and completely. If it is a text (a word, sentence, paragraph, error message, log entry, code snippet or URL), explain what it means. Reply in the language of the user's message; if the message is not in Chinese or English, reply in {{uiLanguage}}. Be concise.
 ```
 

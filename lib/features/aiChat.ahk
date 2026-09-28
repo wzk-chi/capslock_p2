@@ -15,9 +15,6 @@ global AiChatRequestSerial := 0
 global AiChatActiveRequest := 0
 global AiChatStreamDeltaSerial := 0
 global AiChatPinned := false
-global AiChatSeenActive := false  ; the focus monitor grants a grace period
-                                  ; until the first activation, so a slow
-                                  ; WinActivate cannot flash-hide the panel
 global AiChatWindowInitialized := false
 global AiChatHistory := []        ; {role, content} maps, without the system prompt
 
@@ -34,10 +31,6 @@ GetQAISetting(key, defaultValue := "") {
 LLMAiSystemPrompt() {
     prompt := Trim(GetQAISetting("systemPrompt", ""))
     return prompt
-}
-
-LLMAiHideOnBlur() {
-    return GetQAISetting("hideOnBlur", "1") != "0"
 }
 
 LLMAiPromptVariables() {
@@ -104,7 +97,7 @@ LLMAiBuildMessages(history, overrides := 0) {
 
 AiChatShow(question) {
     global AiChatHost, AiChatVisible, AiChatWindowInitialized
-    global AiChatPendingQuestion, AiChatSeenActive
+    global AiChatPendingQuestion
     question := Trim(question)
     if question != ""
         AiChatPendingQuestion := question
@@ -121,7 +114,6 @@ AiChatShow(question) {
         PanelHostShow(AiChatHost, aiChatSize[1], aiChatSize[2], true)
         AiChatWindowInitialized := true
     }
-    AiChatSeenActive := false
     panelGui := PanelHostGui(AiChatHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
@@ -369,50 +361,15 @@ AiChatOnSettingsSaved() {
 }
 
 AiChatUpdateFocusBehavior() {
-    global AiChatHost, AiChatVisible, AiChatPinned
+    global AiChatHost, AiChatVisible
     if !AiChatVisible || !IsObject(AiChatHost)
         return
-    if AiChatPinned {
-        PanelHostStopFocusMonitor(AiChatHost)
-        return
-    }
-    if !LLMAiHideOnBlur() {
-        PanelHostStopFocusMonitor(AiChatHost)
-        return
-    }
-    PanelHostStartFocusMonitor(AiChatHost, AiChatFocusMonitor)
+    PanelHostStopFocusMonitor(AiChatHost)
 }
 
 AiChatResize(targetGui, minMax, width, height) {
     global AiChatHost
     PanelHostResize(AiChatHost, minMax)
-}
-
-AiChatFocusMonitor(*) {
-    global AiChatHost, AiChatVisible, AiChatSeenActive, SettingsVisible, AiChatPinned
-    if !AiChatVisible || !IsObject(PanelHostGui(AiChatHost)) {
-        PanelHostStopFocusMonitor(AiChatHost)
-        return
-    }
-    if AiChatPinned {
-        PanelHostStopFocusMonitor(AiChatHost)
-        return
-    }
-    if !LLMAiHideOnBlur() {
-        PanelHostStopFocusMonitor(AiChatHost)
-        return
-    }
-    if SettingsVisible {
-        return
-    }
-    if !PanelHostWindowActive(AiChatHost) {
-        ; Grace: WinActivate may not have landed within the first tick, and
-        ; hiding then would flash the panel away before it is reachable.
-        if AiChatSeenActive
-            AiChatHide()
-        return
-    }
-    AiChatSeenActive := true
 }
 
 AiChatHide(*) {

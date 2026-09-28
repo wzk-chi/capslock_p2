@@ -63,8 +63,7 @@ ConfigSchema() {
             "secretKey", Map("type", "secret"),
             "region", Map("type", "text"))),
         "QAI", Map("kind", "static", "keys", Map(
-            "systemPrompt", Map("type", "text", "codec", "jsonScalar"),
-            "hideOnBlur", Map("type", "bool"))),
+            "systemPrompt", Map("type", "text", "codec", "jsonScalar"))),
         "Qbar", Map("kind", "static", "keys", Map(
             "esMaxResults", Map("type", "int", "min", 1, "max", 500))),
         "Keys", Map("kind", "keys"),

@@ -94,7 +94,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 ### 已接入引擎
 
 - **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。翻译和 AI
-  问答共用 `[LLM]`，问答的专用系统提示词和 `hideOnBlur` 保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
+  问答共用 `[LLM]`，问答的专用系统提示词保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
 - **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言使用调度快照并映射到有道代码。同步 WinHttp 请求放到
   `SetTimer(fn, -1)` 回调外执行；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
   `input` 按 ≤20 字符规则截取，`salt` 用 `UuidCreate`。多行文本按行提交、结果按行拼回。
@@ -115,7 +115,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 ## WebView2 面板
 
 所有 WebView2 面板共用 `lib/shared/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
-设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 是否失焦隐藏由 `[QAI] hideOnBlur` 控制。
+设置页和 AI 页是普通可调整大小的窗口；qbar、翻译、词典默认失焦隐藏，AI 失去焦点后仍保持显示。
 
 页面通信遵循同一套习惯：
 
