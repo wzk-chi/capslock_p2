@@ -117,7 +117,6 @@ DictionaryShow(entry := 0, query := "") {
     PanelHostShow(DictionaryHost, dictionarySize[1], dictionarySize[2], true)
     panelGui := PanelHostGui(DictionaryHost)
     if IsObject(panelGui) {
-        DictionaryRemoveFrameBorder(panelGui.Hwnd)
         WinActivate("ahk_id " . panelGui.Hwnd)
     }
     ShowSystemCursor()
@@ -154,7 +153,7 @@ DictionaryEnsureWebView() {
 
     dictionarySize := ScreenFitSize(640, 640, 460, 380)
     DictionaryHost := PanelHostCreate(pagePath, "capslock_p2 词典", Map(
-        "guiOptions", "+AlwaysOnTop -Caption +Resize +MinSize460x380 +ToolWindow",
+        "guiOptions", "+AlwaysOnTop +Caption +Resize +MinSize460x380 +ToolWindow",
         "dataPath", A_Temp . "\CapsLockPlusDictionaryWebView2",
         "initialShow", "x-32000 y-32000 w" . dictionarySize[1] . " h" . dictionarySize[2] . " NA",
         "callbacks", Map(
@@ -228,12 +227,6 @@ DictionaryWebMessageReceived(sender, args) {
             SetTimer(DictionarySuggestionTimer, 0)
         DictionarySuggestionTimer := DictionaryRunSuggestions.Bind(query, DictionarySessionId, DictionaryQuerySeq)
         SetTimer(DictionarySuggestionTimer, -1)
-    } else if messageType = "drag" {
-        ; Borderless window: drag from the page topbar by faking a title-bar
-        ; hit (WM_NCLBUTTONDOWN with HTCAPTION).
-        panelGui := PanelHostGui(DictionaryHost)
-        if IsObject(panelGui)
-            PostMessage(0xA1, 2, 0, , "ahk_id " . panelGui.Hwnd)
     } else if messageType = "hide" {
         DictionaryHide()
     } else if messageType = "cursorMove" {
@@ -407,14 +400,6 @@ DictionaryIsDarkTheme() {
     try return RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) = 0
     catch
         return false
-}
-
-; Windows paints a thin light border around captionless resizable windows.
-; Turn it off (DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_NONE = 0xFFFFFFFE) while
-; keeping the resize edges; a no-op where the attribute is unsupported.
-DictionaryRemoveFrameBorder(hwnd) {
-    borderNone := 0xFFFFFFFE
-    try DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "int", 34, "uint*", borderNone, "int", 4)
 }
 
 DictionaryFocusMonitor(*) {
