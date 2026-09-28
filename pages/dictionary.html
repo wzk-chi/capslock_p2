@@ -8,36 +8,6 @@
 :root {
   color-scheme: light dark;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-  --card: #fbf9f3;
-  --card-edge: #e7e1d3;
-  --ink: #2d2a23;
-  --muted: #8b8577;
-  --faint: #b5ae9e;
-  --line: #eae4d6;
-  --accent: #b0452d;
-  --accent-ink: #93381f;
-  --accent-soft: #f3e1d8;
-  --gold: #bd8f2c;
-  --chip: #ede8da;
-  --chip-ink: #7a7361;
-  --shadow: 0 12px 32px rgba(74, 60, 34, .09), 0 2px 6px rgba(74, 60, 34, .06);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --card: #1f2127;
-    --card-edge: #2e3138;
-    --ink: #e9e6de;
-    --muted: #97917f;
-    --faint: #6f6a5d;
-    --line: #2d3037;
-    --accent: #d4795a;
-    --accent-ink: #e08a6c;
-    --accent-soft: #38261f;
-    --gold: #cfa54e;
-    --chip: #292c33;
-    --chip-ink: #a09a89;
-    --shadow: 0 12px 32px rgba(0, 0, 0, .38);
-  }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -253,6 +223,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 
 [hidden] { display: none !important; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <main class="card">

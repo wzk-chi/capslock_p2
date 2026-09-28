@@ -8,41 +8,7 @@
 <link rel="icon" type="image/png" href="../resources/capslock_p2-icon.png">
 <script>document.documentElement.classList.add("js");</script>
 <style>
-  :root {
-    --bg: #f7f6f2;
-    --surface: #ffffff;
-    --text: #1c1e22;
-    --muted: #6d7178;
-    --line: #e7e5de;
-    --accent: #356ae6;
-    --accent-soft: rgba(53, 106, 230, .09);
-    --code: #f0eee7;
-    --shadow: 0 1px 2px rgba(20, 24, 40, .05), 0 8px 28px rgba(20, 24, 40, .06);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #17191e;
-      --surface: #1f2127;
-      --text: #eef0f4;
-      --muted: #9aa0ab;
-      --line: #2c2f37;
-      --accent: #6d92ff;
-      --accent-soft: rgba(109, 146, 255, .13);
-      --code: #262930;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 28px rgba(0, 0, 0, .35);
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #17191e;
-    --surface: #1f2127;
-    --text: #eef0f4;
-    --muted: #9aa0ab;
-    --line: #2c2f37;
-    --accent: #6d92ff;
-    --accent-soft: rgba(109, 146, 255, .13);
-    --code: #262930;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 28px rgba(0, 0, 0, .35);
-  }
+  :root { color-scheme: light dark; }
 
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -78,12 +44,6 @@
   }
   .nav-links a:hover { color: var(--text); background: var(--accent-soft); }
   @media (max-width: 620px) { .nav-links a[data-wiki], .nav-links a[data-start] { display: none; } }
-  .theme-toggle {
-    border: 1px solid var(--line); background: var(--surface); color: var(--text);
-    border-radius: 8px; height: 30px; padding: 0 10px; font-size: 12.5px; cursor: pointer;
-  }
-  .theme-toggle:hover { border-color: var(--accent); }
-
   /* ---------- layout ---------- */
   main { max-width: 960px; margin: 0 auto; padding: 0 24px 96px; }
 
@@ -106,7 +66,7 @@
   }
   .badge b { color: var(--accent); font-weight: 600; }
   h1 { font-size: 44px; line-height: 1.2; margin: 0 0 18px; letter-spacing: -.02em; font-weight: 800; }
-  h1 em { font-style: normal; background: linear-gradient(120deg, var(--accent), #9a6bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h1 em { font-style: normal; background: linear-gradient(120deg, var(--accent), var(--accent-strong)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .hero-sub { color: var(--muted); font-size: 16.5px; max-width: 620px; margin: 0 0 32px; }
   .modes { display: flex; gap: 14px; flex-wrap: wrap; }
   .mode-chip {
@@ -188,6 +148,7 @@
   footer a:hover { text-decoration: underline; }
   footer .spacer { flex: 1; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
@@ -201,7 +162,6 @@
       <a href="#faq" data-wiki>常见问题</a>
       <a href="https://github.com/wzk-chi/capslock_p2" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
-    <button class="theme-toggle" type="button" id="theme" title="切换明暗">明 / 暗</button>
   </div>
 </header>
 
@@ -378,22 +338,6 @@
 
 <script>
 (function () {
-  // 明暗主题：按钮切换 + 跟随系统
-  var root = document.documentElement;
-  var btn = document.getElementById("theme");
-  var key = "cp2-theme";
-  var saved;
-  try { saved = localStorage.getItem(key) || ""; } catch (e) { saved = ""; }
-  if (saved) root.setAttribute("data-theme", saved);
-  btn.textContent = saved === "dark" ? "亮" : saved === "light" ? "暗" : "明 / 暗";
-  btn.addEventListener("click", function () {
-    var cur = root.getAttribute("data-theme");
-    var next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
-    if (next) root.setAttribute("data-theme", next); else root.removeAttribute("data-theme");
-    btn.textContent = next === "dark" ? "亮" : next === "light" ? "暗" : "明 / 暗";
-    try { localStorage.setItem(key, next); } catch (e) {}
-  });
-
   // 进入视口渐显（禁用动画时自动豁免）
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var els = document.querySelectorAll(".reveal");

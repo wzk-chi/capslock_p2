@@ -8,29 +8,6 @@
 :root {
   color-scheme: light dark;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-  --bg: #f4f6fa;
-  --panel: #ffffff;
-  --panel-2: #f8faff;
-  --ink: #20242b;
-  --muted: #7a8496;
-  --line: #e1e6ef;
-  --accent: #356ae6;
-  --accent-soft: #eaf0ff;
-  --danger: #c0392b;
-  --shadow: 0 18px 45px rgba(32, 50, 90, .08);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171a20;
-    --panel: #222730;
-    --panel-2: #292f3a;
-    --ink: #eef1f6;
-    --muted: #aab4c4;
-    --line: #394352;
-    --accent: #8db0f5;
-    --accent-soft: #293b67;
-    --shadow: 0 18px 45px rgba(0, 0, 0, .25);
-  }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -65,7 +42,7 @@ button { cursor: pointer; }
 .status.error { color: var(--danger); }
 .actions { display: flex; gap: 8px; }
 .btn {
-  border: 0; border-radius: 8px; padding: 8px 15px; background: var(--accent); color: #fff;
+  border: 0; border-radius: 8px; padding: 8px 15px; background: var(--ui-button-bg); color: var(--ui-button-text);
   font-size: 12px; font-weight: 650;
 }
 .btn:hover { filter: brightness(1.06); }
@@ -100,6 +77,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   display: grid; grid-template-columns: 150px minmax(0, 1fr) 32px; gap: 8px; align-items: center;
 }
 .pair-row textarea { min-height: 38px; }
+#tabList .pair-row > input, #tabList .pair-row > textarea { height: 38px; min-height: 38px; resize: none; }
 .custom-hotkey-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; }
 .custom-hotkey-field { min-width: 0; display: flex; gap: 8px; }
 .custom-hotkey-field input { min-width: 0; flex: 1; }
@@ -135,6 +113,27 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .result-dialog h3 { margin: 0 0 8px; font-size: 15px; }
 .result-dialog p { margin: 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .result-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.picker-dialog {
+  width: min(900px, calc(100% - 32px)); max-width: none; max-height: min(700px, calc(100% - 32px));
+  border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--panel); color: var(--ink); box-shadow: var(--shadow);
+}
+.picker-dialog::backdrop { background: rgba(10, 18, 32, .34); }
+.picker-dialog-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 20px; }
+.picker-dialog-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.picker-dialog-head h3 { margin: 0; font-size: 17px; }
+.picker-dialog-head span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.picker-description { margin: -5px 0 0; color: var(--muted); font-size: 12px; }
+.picker-table-wrap { min-height: 180px; max-height: 430px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.picker-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+.picker-table th { position: sticky; top: 0; z-index: 1; padding: 9px 10px; border-bottom: 1px solid var(--line-strong); background: var(--panel-2); color: var(--muted); text-align: left; font-size: 11px; font-weight: 650; }
+.picker-table td { max-width: 0; overflow: hidden; padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--ink); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.picker-table tbody tr { cursor: pointer; }
+.picker-table tbody tr:hover td { background: var(--accent-quiet); }
+.picker-table tbody tr.selected td { background: var(--accent-soft); color: var(--accent-ink); }
+.picker-table tbody tr:last-child td { border-bottom: 0; }
+.picker-empty { display: none; padding: 34px 16px; color: var(--muted); text-align: center; font-size: 12px; }
+.picker-empty.visible { display: block; }
+.picker-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 820px) {
   .side { width: 178px; }
   .topbar { padding: 0 20px; }
@@ -144,6 +143,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   .shortcut-row { grid-template-columns: 135px minmax(0, 1fr) 48px; }
 }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="app">
@@ -306,6 +306,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     <div class="result-dialog-actions"><button id="cancelConfirm" class="btn" autofocus>取消</button><button id="confirmAction" class="btn ghost">确定</button></div>
   </div>
 </dialog>
+<dialog id="windowPickerDialog" class="picker-dialog">
+  <div class="picker-dialog-body">
+    <div class="picker-dialog-head"><h3 id="windowPickerTitle">选择</h3><span id="windowPickerCount"></span></div>
+    <p id="windowPickerDescription" class="picker-description"></p>
+    <div class="picker-table-wrap">
+      <table class="picker-table">
+        <thead><tr id="windowPickerHead"></tr></thead>
+        <tbody id="windowPickerRows"></tbody>
+      </table>
+      <div id="windowPickerEmpty" class="picker-empty">没有可选择的项目。</div>
+    </div>
+    <div class="picker-dialog-actions"><button id="cancelWindowPicker" class="btn ghost" type="button">取消</button><button id="selectWindowPicker" class="btn" type="button" disabled>选择</button></div>
+  </div>
+</dialog>
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false,
@@ -318,6 +332,7 @@ const post = payload => {
   if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload));
 };
 const clone = value => JSON.parse(JSON.stringify(value || {}));
+const pickerState = { selectedIndex: 0, kind: '' };
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const compactWindowText = value => {
@@ -329,6 +344,69 @@ const applicationName = value => {
   return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
 };
 const windowApplicationName = item => applicationName(item && item.exe) || compactWindowText(item && (item.title || item.windowClass));
+
+function setWindowPickerSelection(index) {
+  pickerState.selectedIndex = index;
+  $$('#windowPickerRows tr').forEach(row => row.classList.toggle('selected', Number(row.dataset.index) === index));
+  const selectButton = $('#selectWindowPicker');
+  selectButton.disabled = index < 1;
+  if (index > 0) selectButton.focus();
+}
+
+function closeWindowPickerDialog() {
+  const dialog = $('#windowPickerDialog');
+  if (dialog.open) dialog.close();
+  pickerState.selectedIndex = 0;
+  $('#selectWindowPicker').disabled = true;
+}
+
+window.receiveWindowPicker = function (payload) {
+  const isApplication = payload && payload.kind === 'application';
+  const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+  const columns = isApplication ? ['应用', '窗口数', '程序路径'] : ['窗口标题', '应用', '窗口类'];
+  const head = $('#windowPickerHead');
+  const body = $('#windowPickerRows');
+  head.replaceChildren();
+  body.replaceChildren();
+  columns.forEach(column => {
+    const cell = document.createElement('th');
+    cell.textContent = column;
+    head.appendChild(cell);
+  });
+  rows.forEach((item, offset) => {
+    const index = offset + 1;
+    const row = document.createElement('tr');
+    row.dataset.index = String(index);
+    const values = isApplication ? [item.name, item.count, item.path] : [item.title, item.exe, item.class];
+    values.forEach(value => {
+      const cell = document.createElement('td');
+      cell.textContent = value == null ? '' : String(value);
+      row.appendChild(cell);
+    });
+    row.addEventListener('click', () => setWindowPickerSelection(index));
+    row.addEventListener('dblclick', () => {
+      setWindowPickerSelection(index);
+      confirmWindowPickerSelection();
+    });
+    body.appendChild(row);
+  });
+  pickerState.kind = payload && payload.kind || '';
+  pickerState.selectedIndex = 0;
+  $('#windowPickerTitle').textContent = payload && payload.title || '选择';
+  $('#windowPickerDescription').textContent = payload && payload.description || '';
+  $('#windowPickerCount').textContent = rows.length ? rows.length + ' 项' : '';
+  $('#windowPickerEmpty').classList.toggle('visible', rows.length === 0);
+  $('#selectWindowPicker').disabled = true;
+  const dialog = $('#windowPickerDialog');
+  if (!dialog.open) dialog.showModal();
+};
+
+window.closeWindowPicker = closeWindowPickerDialog;
+
+function confirmWindowPickerSelection() {
+  if (pickerState.selectedIndex > 0)
+    post({ type: 'selectWindowPicker', index: pickerState.selectedIndex });
+}
 
 function setStatus(text, error = false) {
   const node = $('#status');
@@ -965,6 +1043,22 @@ $('#confirmDialog').addEventListener('click', event => {
     state.confirmAction = '';
     event.currentTarget.close();
   }
+});
+$('#selectWindowPicker').addEventListener('click', confirmWindowPickerSelection);
+$('#cancelWindowPicker').addEventListener('click', () => post({ type: 'cancelWindowPicker' }));
+$('#windowPickerDialog').addEventListener('cancel', event => {
+  event.preventDefault();
+  post({ type: 'cancelWindowPicker' });
+});
+$('#windowPickerDialog').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.target === $('#cancelWindowPicker') || pickerState.selectedIndex < 1)
+    return;
+  event.preventDefault();
+  confirmWindowPickerSelection();
+});
+$('#windowPickerDialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget)
+    post({ type: 'cancelWindowPicker' });
 });
 $('#addCustomHotkey').addEventListener('click', () => addCustomHotkeyRow($('#customHotkeyList')));
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);

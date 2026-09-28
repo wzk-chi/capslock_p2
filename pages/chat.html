@@ -7,52 +7,41 @@
 <style>
 :root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #f5f7fb; color: #20242b; cursor: default; }
+body { margin: 0; background: var(--ui-bg); color: var(--ui-text); cursor: default; }
 main { height: 100vh; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
 .topbar { display: flex; align-items: center; gap: 10px; }
 h1 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
-#status { color: #697386; font-size: 12px; text-align: right; flex: 1; }
-button { border: 0; border-radius: 8px; padding: 7px 14px; background: #356ae6; color: white; cursor: pointer; font-weight: 600; }
-button:hover { background: #2859c7; }
-button:disabled { background: #9aa8c2; cursor: wait; }
-button.secondary { background: transparent; color: #356ae6; border: 1px solid #b9c6e8; font-weight: 500; }
-button.secondary:hover { background: #e8eefb; }
+#status { display: none; }
+button { border: 0; border-radius: 8px; padding: 7px 14px; background: var(--ui-button-bg); color: var(--ui-button-text); cursor: pointer; font-weight: 600; }
+button:hover { background: var(--ui-button-hover); }
+button:disabled { background: var(--ui-surface-muted); color: var(--ui-subtle); cursor: wait; }
+button.secondary { background: transparent; color: var(--ui-accent); border: 1px solid var(--ui-line-strong); font-weight: 500; }
+button.secondary:hover { background: var(--ui-accent-soft); }
 #messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
 .msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-.msg.user { align-self: flex-end; background: #356ae6; color: #fff; border-bottom-right-radius: 4px; }
-.msg.assistant { align-self: flex-start; background: #fff; border: 1px solid #d5dae3; border-bottom-left-radius: 4px; }
-.msg.thinking { align-self: flex-start; color: #697386; background: transparent; border: 1px dashed #b9c6e8; }
+.msg.user { align-self: flex-end; background: var(--ui-button-bg); color: var(--ui-button-text); border-bottom-right-radius: 4px; }
+.msg.assistant { align-self: flex-start; background: var(--ui-surface); border: 1px solid var(--ui-line-strong); border-bottom-left-radius: 4px; white-space: normal; }
+.msg.assistant.thinking { align-self: flex-start; color: var(--ui-muted); background: var(--ui-surface-soft); border: 1px dashed var(--ui-line-strong); }
+.msg.assistant.error { color: var(--ui-danger); background: var(--ui-danger-soft); border-color: var(--ui-danger); }
 /* Markdown content inside assistant bubbles. */
 .msg.assistant > :last-child { margin-bottom: 0; }
 .msg.assistant p { margin: 0 0 8px; }
-.msg.assistant pre { background: #f0f2f7; border: 1px solid #d5dae3; border-radius: 8px; padding: 8px 10px; overflow-x: auto; margin: 8px 0; }
+.msg.assistant pre { background: var(--ui-code); border: 1px solid var(--ui-line-strong); border-radius: 8px; padding: 8px 10px; overflow-x: auto; margin: 8px 0; white-space: pre; }
 .msg.assistant code { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
-.msg.assistant :not(pre) > code { background: #f0f2f7; padding: 1px 4px; border-radius: 4px; }
+.msg.assistant :not(pre) > code { background: var(--ui-code); padding: 1px 4px; border-radius: 4px; }
 .msg.assistant ul, .msg.assistant ol { margin: 8px 0; padding-left: 22px; }
 .msg.assistant li { margin: 2px 0; }
-.msg.assistant blockquote { margin: 8px 0; padding: 2px 10px; border-left: 3px solid #b9c6e8; color: #697386; }
+.msg.assistant blockquote { margin: 8px 0; padding: 2px 10px; border-left: 3px solid var(--ui-line-strong); color: var(--ui-muted); }
 .msg.assistant table { border-collapse: collapse; margin: 8px 0; }
-.msg.assistant th, .msg.assistant td { border: 1px solid #d5dae3; padding: 4px 8px; font-size: 13px; }
-.msg.assistant a { color: #356ae6; }
+.msg.assistant th, .msg.assistant td { border: 1px solid var(--ui-line-strong); padding: 4px 8px; font-size: 13px; }
+.msg.assistant a { color: var(--ui-accent); }
 .msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 { margin: 10px 0 6px; font-size: 15px; }
-.composer { display: flex; gap: 10px; align-items: flex-end; }
-textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid #d5dae3; border-radius: 10px; background: #fff; color: #20242b; font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
-textarea:focus { border-color: #4b7bec; box-shadow: 0 0 0 3px #4b7bec22; }
-@media (prefers-color-scheme: dark) {
-  body { background: #20242b; color: #eef1f6; }
-  textarea { border-color: #46505f; background: #2b313b; color: #eef1f6; }
-  .msg.assistant { background: #2b313b; border-color: #46505f; }
-  .msg.thinking { color: #aab4c4; border-color: #4a5b82; }
-  #status { color: #aab4c4; }
-  button.secondary { color: #8db0f5; border-color: #4a5b82; }
-  button.secondary:hover { background: #2b3547; }
-  .msg.assistant pre { background: #232833; border-color: #46505f; }
-  .msg.assistant :not(pre) > code { background: #232833; }
-  .msg.assistant th, .msg.assistant td { border-color: #46505f; }
-  .msg.assistant a { color: #8db0f5; }
-  .msg.assistant blockquote { border-color: #4a5b82; color: #aab4c4; }
-}
+.composer { display: flex; gap: 10px; align-items: stretch; }
+textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--ui-line-strong); border-radius: 10px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
+textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
+#send { min-width: 58px; align-self: stretch; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <main id="mainView">
@@ -149,14 +138,15 @@ function escapeHtml(text) {
 // Assistant answers arrive as markdown; marked parses it and DOMPurify strips
 // anything dangerous from the model output before it becomes HTML.
 function renderMarkdown(text) {
+  const source = String(text ?? '');
   if (window.marked && window.DOMPurify) {
     try {
-      return DOMPurify.sanitize(marked.parse(text || '', { breaks: true, gfm: true }));
+      return DOMPurify.sanitize(marked.parse(source, { breaks: true, gfm: true }));
     } catch (error) {
       // fall through to plain text
     }
   }
-  return escapeHtml(text);
+  return escapeHtml(source).replace(/\r?\n/g, '<br>');
 }
 
 /* ---- host -> page ---- */
@@ -176,14 +166,14 @@ window.appendMessage = function (role, text) {
 };
 
 window.startStreamingMessage = function () {
-  window.setThinking(false);
-  const old = messages.querySelector('.msg.assistant.streaming');
-  if (old) old.remove();
-  const bubble = document.createElement('div');
-  bubble.className = 'msg assistant streaming';
+  let bubble = messages.querySelector('.msg.assistant.thinking');
+  if (!bubble) {
+    bubble = document.createElement('div');
+    messages.appendChild(bubble);
+  }
+  bubble.className = 'msg assistant streaming thinking';
   bubble.dataset.raw = '';
-  messages.appendChild(bubble);
-  status.textContent = t('thinking');
+  bubble.textContent = t('thinking');
   input.disabled = true;
   sendBtn.disabled = true;
   scrollToBottom();
@@ -193,13 +183,14 @@ window.appendStreaming = function (text) {
   const bubble = messages.querySelector('.msg.assistant.streaming');
   if (!bubble) return;
   bubble.dataset.raw += text || '';
+  bubble.classList.remove('thinking');
   bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
   scrollToBottom();
 };
 
 window.finishStreamingMessage = function () {
   const bubble = messages.querySelector('.msg.assistant.streaming');
-  if (bubble) bubble.classList.remove('streaming');
+  if (bubble) bubble.classList.remove('streaming', 'thinking');
   status.textContent = '';
   input.disabled = false;
   sendBtn.disabled = false;
@@ -215,11 +206,11 @@ window.removeStreamingMessage = function () {
 };
 
 window.setThinking = function (on) {
-  let bubble = messages.querySelector('.msg.thinking');
+  let bubble = messages.querySelector('.msg.assistant.thinking');
   if (on) {
     if (!bubble) {
       bubble = document.createElement('div');
-      bubble.className = 'msg thinking';
+      bubble.className = 'msg assistant thinking';
       messages.appendChild(bubble);
     }
     bubble.textContent = t('thinking');
@@ -230,7 +221,12 @@ window.setThinking = function (on) {
 
 window.setError = function (text) {
   window.setThinking(false);
-  status.textContent = text || '';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg assistant error';
+  bubble.textContent = text || '';
+  messages.appendChild(bubble);
+  status.textContent = '';
+  scrollToBottom();
 };
 
 window.newSession = function () {

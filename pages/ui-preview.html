@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 · UI 风格预览</title>
+<link rel="icon" type="image/png" href="../resources/capslock_p2-icon.png">
+<style>
+:root {
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+button, input, select, textarea { font: inherit; }
+button, label { cursor: pointer; }
+
+.preview-app {
+  --bg: var(--ui-bg);
+  --surface: color-mix(in srgb, var(--ui-surface) 86%, transparent);
+  --surface-solid: var(--ui-surface);
+  --surface-soft: var(--ui-surface-soft);
+  --surface-tint: var(--ui-accent-soft);
+  --text: var(--ui-text);
+  --muted: var(--ui-muted);
+  --subtle: var(--ui-subtle);
+  --line: var(--ui-line);
+  --line-strong: var(--ui-line-strong);
+  --accent: var(--ui-accent);
+  --accent-strong: var(--ui-accent-strong);
+  --accent-soft: var(--ui-accent-soft);
+  --accent-quiet: var(--ui-accent-quiet);
+  --mint: var(--ui-accent-strong);
+  --button-bg: var(--ui-button-bg);
+  --button-hover: var(--ui-button-hover);
+  --button-text: var(--ui-button-text);
+  --secondary-text: var(--ui-accent-strong);
+  --secondary-border: var(--ui-line-strong);
+  --ghost-text: var(--ui-muted);
+  --hero-start: var(--ui-button-bg);
+  --hero-mid: var(--ui-accent);
+  --hero-end: var(--ui-success);
+  --green: var(--ui-success);
+  --green-soft: var(--ui-success-soft);
+  --amber: var(--ui-warning);
+  --amber-soft: var(--ui-warning-soft);
+  --rose: var(--ui-danger);
+  --rose-soft: var(--ui-danger-soft);
+  --shadow: var(--ui-shadow);
+  --shadow-soft: var(--ui-shadow-soft);
+  --radius-xl: 24px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 9px;
+  min-height: 100vh;
+  padding: 28px;
+  background: var(--bg);
+  color: var(--text);
+  transition: background .25s ease, color .25s ease;
+}
+
+.preview-frame {
+  width: min(1420px, 100%);
+  min-height: calc(100vh - 56px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.side {
+  min-height: 720px;
+  padding: 25px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ui-surface) 38%, transparent);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 11px 27px;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 7px;
+  border-radius: 11px;
+  background: linear-gradient(145deg, var(--button-bg), var(--button-hover));
+  box-shadow: 0 8px 18px rgba(36, 123, 82, .24);
+}
+
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; filter: brightness(0) invert(1); }
+.brand-name { min-width: 0; }
+.brand-name strong { display: block; color: var(--text); font-size: 14px; letter-spacing: .15px; }
+.nav { display: grid; gap: 3px; }
+
+.nav button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 11px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  font-size: 12px;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+
+.nav button:hover { background: var(--surface-soft); color: var(--text); transform: translateX(2px); }
+.nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.nav button.active .nav-icon { background: var(--button-bg); color: var(--button-text); }
+
+.nav-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 7px;
+  color: currentColor;
+}
+
+.nav-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav-text { flex: 1; }
+.nav-count { color: var(--subtle); font-size: 10px; font-weight: 500; }
+
+.side-divider { height: 1px; margin: 21px 11px 19px; background: var(--line); }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 11px; }
+.breadcrumb strong { color: var(--text); font-weight: 600; }
+.breadcrumb-separator { color: var(--subtle); }
+.topbar-spacer { flex: 1; }
+
+.content {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 32px 34px 46px;
+}
+
+.intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 26px; margin-bottom: 27px; }
+.intro-copy { min-width: 0; }
+.intro h1 { max-width: 650px; margin: 0; font-size: clamp(25px, 3vw, 34px); line-height: 1.16; letter-spacing: -.035em; font-weight: 740; }
+.intro h1 em { font-style: normal; background: linear-gradient(115deg, var(--accent), var(--mint)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.intro-actions { display: flex; flex: none; gap: 8px; }
+
+.button {
+  min-height: 35px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0 13px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  font-size: 11px;
+  font-weight: 650;
+  box-shadow: 0 8px 16px rgba(36, 123, 82, .19);
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.button:hover { background: var(--button-hover); transform: translateY(-1px); box-shadow: 0 11px 20px rgba(36, 123, 82, .24); }
+.button.secondary { border-color: var(--secondary-border); background: var(--surface-solid); color: var(--secondary-text); box-shadow: none; }
+.button.secondary:hover { border-color: var(--accent); background: var(--accent-quiet); color: var(--accent); box-shadow: none; }
+.button.ghost { padding: 0 9px; border-color: transparent; background: transparent; color: var(--ghost-text); box-shadow: none; }
+.button.ghost:hover { background: var(--surface-soft); color: var(--text); box-shadow: none; }
+
+.button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 17px; }
+
+.stat {
+  min-height: 92px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-soft);
+}
+
+.stat-icon { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.stat-icon.green { background: var(--green-soft); color: var(--green); }
+.stat-icon.amber { background: var(--amber-soft); color: var(--amber); }
+.stat-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stat-text { min-width: 0; }
+.stat-label { margin: 1px 0 5px; color: var(--muted); font-size: 10px; }
+.stat-value { margin: 0; color: var(--text); font-size: 17px; font-weight: 720; letter-spacing: -.02em; }
+
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.47fr) minmax(255px, .83fr); gap: 17px; align-items: start; }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-soft);
+}
+
+.card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 20px 15px; }
+.card-header h2, .card-header h3 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+.card-header .button { min-height: 29px; padding: 0 10px; font-size: 10px; }
+.card-body { padding: 0 20px 20px; }
+
+.divider { height: 1px; background: var(--line); }
+
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; padding: 4px 0 19px; }
+.field { display: grid; gap: 7px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field > span, .field-label { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+.control {
+  width: 100%;
+  min-height: 35px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  outline: none;
+  background: var(--surface-solid);
+  color: var(--text);
+  font-size: 11px;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.control:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.control::placeholder { color: var(--subtle); }
+.control.textarea { min-height: 71px; padding: 9px 10px; resize: vertical; line-height: 1.5; }
+.control.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 10px; }
+
+.check-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 35px; }
+.check-copy { min-width: 0; }
+.check-copy strong { display: block; color: var(--text); font-size: 11px; font-weight: 600; }
+
+.switch {
+  width: 36px;
+  height: 21px;
+  position: relative;
+  flex: none;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background .2s ease;
+}
+
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(31, 35, 53, .18); transition: transform .2s ease; }
+.switch.on { background: var(--button-bg); }
+.switch.on::after { transform: translateX(15px); }
+
+.form-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 15px; }
+.profile-card { overflow: hidden; background: linear-gradient(145deg, var(--hero-start), var(--hero-mid) 54%, var(--hero-end)); color: #fff; box-shadow: 0 16px 34px rgba(36, 123, 82, .24); }
+.profile-card .card-header { padding-bottom: 9px; }
+.profile-card .card-header h2 { color: #fff; }
+.profile-card .card-body { padding-top: 4px; }
+.profile-orbit { position: relative; height: 135px; margin: 0 2px 6px; overflow: hidden; border: 1px solid rgba(255, 255, 255, .16); border-radius: 13px; background: rgba(255, 255, 255, .10); }
+.profile-orbit::before, .profile-orbit::after { content: ""; position: absolute; border: 1px solid rgba(255, 255, 255, .16); border-radius: 50%; transform: rotate(-22deg); }
+.profile-orbit::before { width: 215px; height: 92px; left: 25px; top: 18px; }
+.profile-orbit::after { width: 170px; height: 76px; left: 47px; top: 28px; }
+.orbit-core { position: absolute; left: 50%; top: 50%; z-index: 1; width: 52px; height: 52px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 7px solid rgba(255, 255, 255, .18); border-radius: 50%; background: rgba(255, 255, 255, .20); box-shadow: 0 0 0 1px rgba(255, 255, 255, .23), 0 10px 22px rgba(37, 30, 100, .15); }
+.orbit-core svg { width: 21px; height: 21px; fill: none; stroke: #fff; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.orbit-key { position: absolute; z-index: 2; display: inline-flex; align-items: center; justify-content: center; min-width: 27px; height: 21px; border: 1px solid rgba(255, 255, 255, .26); border-radius: 6px; background: rgba(255, 255, 255, .14); color: rgba(255, 255, 255, .93); font: 10px Consolas, monospace; }
+.orbit-key.one { left: 28px; top: 27px; }.orbit-key.two { right: 26px; top: 43px; }.orbit-key.three { left: 40px; bottom: 22px; }.orbit-key.four { right: 42px; bottom: 20px; }
+.profile-list { display: grid; gap: 1px; margin-top: 12px; }
+.profile-list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 31px; border-bottom: 1px solid rgba(255, 255, 255, .13); color: rgba(255, 255, 255, .78); font-size: 10px; }
+.profile-list-row:last-child { border-bottom: 0; }
+.profile-list-row strong { color: #fff; font-size: 10px; font-weight: 650; }
+.profile-card .button.secondary { margin-top: 16px; border-color: rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .12); color: #fff; }
+.profile-card .button.secondary:hover { border-color: rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .19); color: #fff; }
+
+.component-section { margin-top: 23px; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 11px; }
+.section-heading h2 { margin: 0; font-size: 14px; font-weight: 700; }
+
+.component-grid { display: grid; grid-template-columns: 1.1fr .95fr .95fr; gap: 12px; }
+.component-card { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-solid); box-shadow: var(--shadow-soft); }
+.component-title { margin: 0 0 12px; color: var(--subtle); font-size: 10px; font-weight: 700; }
+.button-row, .badge-row, .key-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.component-card .button { min-height: 30px; padding: 0 10px; font-size: 10px; }
+.component-card .button.ghost { padding: 0 7px; }
+
+.badge { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; border-radius: 999px; padding: 0 8px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 650; }
+.badge.green { background: var(--green-soft); color: var(--green); }.badge.amber { background: var(--amber-soft); color: var(--amber); }.badge.rose { background: var(--rose-soft); color: var(--rose); }
+.badge .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+.key { min-width: 23px; height: 23px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; background: var(--surface-soft); color: var(--text); font: 10px Consolas, "Cascadia Mono", monospace; }
+.key.wide { min-width: auto; }
+.key-plus { color: var(--subtle); font-size: 10px; }
+
+.status-list { display: grid; gap: 9px; }
+.status-row { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+.status-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+.status-dot.amber { background: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft); }.status-dot.rose { background: var(--rose); box-shadow: 0 0 0 4px var(--rose-soft); }
+.status-row strong { margin-left: auto; color: var(--text); font-size: 10px; font-weight: 650; }
+
+.search-preview { margin-top: 18px; padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
+.search-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; color: var(--muted); font-size: 10px; }
+.search-head .search-kicker { flex: 1; color: var(--text); font-weight: 650; }
+.search-window { display: flex; align-items: center; gap: 9px; min-height: 34px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 10px; background: var(--surface-solid); }
+.search-window svg { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.search-window span { flex: 1; color: var(--text); font: 11px Consolas, "Cascadia Mono", monospace; }
+.search-window kbd { color: var(--subtle); font: 9px Consolas, monospace; }
+.result-preview { display: grid; gap: 3px; margin-top: 8px; }
+.result-row { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 8px; border-radius: 7px; color: var(--muted); font-size: 10px; }
+.result-row.active { background: var(--accent-soft); color: var(--accent); }
+.result-row .result-icon { width: 15px; text-align: center; color: var(--subtle); }.result-row.active .result-icon { color: var(--accent); }
+.result-row strong { color: currentColor; font-weight: 650; }.result-row small { margin-left: auto; color: var(--subtle); }
+
+@media (max-width: 980px) {
+  .preview-app { padding: 18px; }
+  .preview-frame { min-height: calc(100vh - 36px); grid-template-columns: 205px minmax(0, 1fr); }
+  .content { padding: 28px 24px 38px; }
+  .topbar { padding: 0 24px; }
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .profile-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .75fr); align-items: start; }
+  .profile-card .card-header { grid-column: 1; }.profile-card .card-body { grid-column: 2; grid-row: 1 / span 2; padding-top: 19px; }
+  .profile-orbit { margin-top: 0; }
+}
+
+@media (max-width: 720px) {
+  .preview-app { padding: 0; }
+  .preview-frame { min-height: 100vh; grid-template-columns: 1fr; border: 0; border-radius: 0; }
+  .side { min-height: 0; padding: 17px 16px 13px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .brand { padding-bottom: 15px; }
+  .side-divider { display: none; }
+  .nav { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+  .nav button { min-height: 34px; justify-content: center; padding: 0 5px; }
+  .nav-icon { width: 22px; height: 22px; }.nav-text, .nav-count { display: none; }
+  .topbar { min-height: 58px; padding: 0 18px; }
+  .content { padding: 24px 17px 32px; }
+  .intro { display: block; margin-bottom: 21px; }.intro-actions { margin-top: 16px; }
+  .stats { grid-template-columns: 1fr; gap: 8px; }.stat { min-height: 72px; align-items: center; }
+  .profile-card { display: block; }.profile-card .card-body { padding-top: 0; }
+  .component-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 460px) {
+  .form-grid { grid-template-columns: 1fr; }.field.wide { grid-column: auto; }
+  .intro h1 { font-size: 26px; }.breadcrumb { font-size: 10px; }
+}
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="preview-app">
+  <div class="preview-frame">
+    <aside class="side">
+      <div class="brand">
+        <div class="brand-mark"><img src="../resources/capslock_p2-icon.png" alt=""></div>
+        <div class="brand-name"><strong>capslock_p2</strong></div>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <button class="active" type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z"/><path d="M8 9h8M8 13h5M8 16h3"/></svg></span>
+          <span class="nav-text">设置中心</span><span class="nav-count">01</span>
+        </button>
+        <button type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h9M5 18h6"/><path d="m16 15 3 3-3 3"/></svg></span>
+          <span class="nav-text">翻译</span>
+        </button>
+        <button type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 10h8M8 14h5"/><circle cx="17" cy="17" r="2.2"/></svg></span>
+          <span class="nav-text">AI 问答</span>
+        </button>
+        <button type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg></span>
+          <span class="nav-text">词典</span>
+        </button>
+        <button type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="m9 10 2 2-2 2M13 14h3"/></svg></span>
+          <span class="nav-text">qbar</span><span class="nav-count">⌘Q</span>
+        </button>
+        <button type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 10h8M8 14h6"/></svg></span>
+          <span class="nav-text">使用介绍</span>
+        </button>
+      </nav>
+
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb"><strong>设置中心</strong></div>
+        <span class="topbar-spacer"></span>
+      </header>
+
+      <div class="content">
+        <section class="intro">
+          <div class="intro-copy">
+            <h1>把常用动作，<em>放到指尖</em></h1>
+          </div>
+          <div class="intro-actions">
+            <button class="button secondary" type="button">恢复默认</button>
+            <button class="button" type="button"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7.5"/></svg>保存更改</button>
+          </div>
+        </section>
+
+        <section class="stats" aria-label="概览">
+          <div class="stat">
+            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 10h2M12 10h2M16 10h0M8 14h2M12 14h6"/></svg></div>
+            <div class="stat-text"><p class="stat-label">已启用快捷键</p><p class="stat-value">42 个</p></div>
+          </div>
+          <div class="stat">
+            <div class="stat-icon green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.3 2.3 4.8-5"/></svg></div>
+            <div class="stat-text"><p class="stat-label">运行状态</p><p class="stat-value">一切正常</p></div>
+          </div>
+          <div class="stat">
+            <div class="stat-icon amber"><svg viewBox="0 0 24 24"><path d="M12 4v8l5 3"/><circle cx="12" cy="12" r="8"/></svg></div>
+            <div class="stat-text"><p class="stat-label">本次会话</p><p class="stat-value">1 小时 28 分</p></div>
+          </div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="card">
+            <div class="card-header">
+              <div><h2>通用设置</h2></div>
+            </div>
+            <div class="divider"></div>
+            <div class="card-body">
+              <div class="form-grid">
+                <label class="field">
+                  <span>界面语言</span>
+                  <select class="control"><option>跟随系统</option><option>简体中文</option><option>English</option></select>
+                </label>
+                <label class="field">
+                  <span>启动动画</span>
+                  <select class="control"><option>简洁</option><option>完整</option><option>关闭</option></select>
+                </label>
+                <div class="field wide">
+                  <span>系统行为</span>
+                  <div class="check-row"><div class="check-copy"><strong>开机启动</strong></div><span class="switch on" aria-hidden="true"></span></div>
+                  <div class="check-row"><div class="check-copy"><strong>独立剪贴板</strong></div><span class="switch on" aria-hidden="true"></span></div>
+                  <div class="check-row"><div class="check-copy"><strong>调试日志</strong></div><span class="switch" aria-hidden="true"></span></div>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="form-footer"><button class="button" type="button">应用设置</button></div>
+            </div>
+          </article>
+
+          <article class="card profile-card">
+            <div class="card-header"><div><h2>CapsLock 键层</h2></div></div>
+            <div class="card-body">
+              <div class="profile-orbit">
+                <span class="orbit-key one">S</span><span class="orbit-key two">Q</span><span class="orbit-key three">C</span><span class="orbit-key four">T</span>
+                <span class="orbit-core"><svg viewBox="0 0 24 24"><path d="M6 8.5h12v8H6z"/><path d="M9 11h1M12 11h1M15 11h1M9 14h6"/></svg></span>
+              </div>
+              <div class="profile-list">
+                <div class="profile-list-row"><span>临时层</span><strong>按住 CapsLock</strong></div>
+                <div class="profile-list-row"><span>qbar 启动</span><strong>CapsLock + Q</strong></div>
+                <div class="profile-list-row"><span>翻译面板</span><strong>CapsLock + T</strong></div>
+              </div>
+              <button class="button secondary" type="button">查看完整快捷键</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="component-section">
+          <div class="section-heading"><h2>组件</h2></div>
+          <div class="component-grid">
+            <article class="component-card">
+              <p class="component-title">按钮与状态</p>
+              <div class="button-row"><button class="button" type="button">主操作</button><button class="button secondary" type="button">次操作</button><button class="button ghost" type="button">取消</button></div>
+              <div class="badge-row" style="margin-top: 15px"><span class="badge"><span class="badge-dot"></span>已启用</span><span class="badge green">已完成</span><span class="badge amber">待同步</span><span class="badge rose">需注意</span></div>
+            </article>
+            <article class="component-card">
+              <p class="component-title">快捷键</p>
+              <div class="key-row"><span class="key wide">CapsLock</span><span class="key-plus">+</span><span class="key">Q</span><span class="key-plus">→</span><span class="key wide">打开 qbar</span></div>
+              <div class="status-list" style="margin-top: 15px"><div class="status-row"><span class="status-dot"></span><span>配置已保存</span><strong>刚刚</strong></div><div class="status-row"><span class="status-dot amber"></span><span>等待重启生效</span><strong>可选</strong></div></div>
+            </article>
+            <article class="component-card">
+              <p class="component-title">输入框</p>
+              <label class="field"><span>API 地址</span><input class="control mono" value="https://api.example.com/v1" readonly></label>
+              <label class="field" style="margin-top: 10px"><span>系统提示词</span><textarea class="control textarea" placeholder="输入提示词…" readonly></textarea></label>
+            </article>
+          </div>
+        </section>
+
+        <section class="search-preview">
+          <div class="search-head"><span class="search-kicker">qbar</span></div>
+          <div class="search-window"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg><span>搜索应用、文件或命令…</span><kbd>Esc</kbd></div>
+          <div class="result-preview"><div class="result-row active"><span class="result-icon">⌕</span><strong>打开设置中心</strong><small>cl set</small></div><div class="result-row"><span class="result-icon">↗</span><strong>capslock_p2 使用介绍</strong><small>文档</small></div><div class="result-row"><span class="result-icon">⌘</span><strong>Everything 文件搜索</strong><small>文件</small></div></div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

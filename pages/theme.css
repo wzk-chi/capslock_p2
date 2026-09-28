@@ -1,0 +1,115 @@
+/* Shared visual tokens for every WebView2 page. Layout and behavior remain
+   page-local; this file is the single source for color, focus and surfaces. */
+:root {
+  color-scheme: light;
+
+  --ui-bg: #ffffff;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f7fbf8;
+  --ui-surface-raised: #ffffff;
+  --ui-surface-muted: #edf5ef;
+  --ui-text: #20332a;
+  --ui-muted: #6f8175;
+  --ui-subtle: #9aaa9e;
+  --ui-line: #dfe9e1;
+  --ui-line-strong: #cddccf;
+  --ui-accent: #277a52;
+  --ui-accent-strong: #1e6c48;
+  --ui-accent-soft: #e4f4eb;
+  --ui-accent-quiet: #eef9f2;
+  --ui-button-bg: #247a52;
+  --ui-button-hover: #1e6c48;
+  --ui-button-text: #ffffff;
+  --ui-success: #1f9966;
+  --ui-success-soft: #e7f7ef;
+  --ui-warning: #aa6a2a;
+  --ui-warning-soft: #fff3df;
+  --ui-danger: #b34d62;
+  --ui-danger-soft: #fff0f3;
+  --ui-code: #f0f6f1;
+  --ui-ring: rgba(36, 122, 82, .24);
+  --ui-shadow: 0 16px 42px rgba(36, 84, 62, .09);
+  --ui-shadow-soft: 0 8px 24px rgba(36, 84, 62, .06);
+
+  /* Compatibility aliases keep the page-specific layouts small while they
+     migrate away from their former blue and terracotta palettes. */
+  --bg: var(--ui-bg);
+  --panel: var(--ui-surface);
+  --panel-2: var(--ui-surface-soft);
+  --surface: var(--ui-surface);
+  --surface-solid: var(--ui-surface);
+  --surface-soft: var(--ui-surface-soft);
+  --text: var(--ui-text);
+  --ink: var(--ui-text);
+  --muted: var(--ui-muted);
+  --subtle: var(--ui-subtle);
+  --faint: var(--ui-subtle);
+  --line: var(--ui-line);
+  --line-strong: var(--ui-line-strong);
+  --border: var(--ui-line-strong);
+  --card: var(--ui-surface);
+  --card-edge: var(--ui-line-strong);
+  --accent: var(--ui-accent);
+  --accent-strong: var(--ui-accent-strong);
+  --accent-ink: var(--ui-accent-strong);
+  --accent-soft: var(--ui-accent-soft);
+  --accent-quiet: var(--ui-accent-quiet);
+  --code: var(--ui-code);
+  --ring: var(--ui-ring);
+  --danger: var(--ui-danger);
+  --gold: #a87428;
+  --chip: var(--ui-surface-muted);
+  --chip-ink: var(--ui-muted);
+  --shadow: var(--ui-shadow);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --ui-bg: #151b17;
+    --ui-surface: #1e2821;
+    --ui-surface-soft: #202d24;
+    --ui-surface-raised: #243328;
+    --ui-surface-muted: #263a2c;
+    --ui-text: #eff8f1;
+    --ui-muted: #a3b7a9;
+    --ui-subtle: #7c9383;
+    --ui-line: #304337;
+    --ui-line-strong: #486052;
+    --ui-accent: #8bdca9;
+    --ui-accent-strong: #b2edc7;
+    --ui-accent-soft: #1f3b2d;
+    --ui-accent-quiet: #1b3126;
+    --ui-button-bg: #247b52;
+    --ui-button-hover: #2a8b5b;
+    --ui-button-text: #ffffff;
+    --ui-success: #73d6a5;
+    --ui-success-soft: #1d3429;
+    --ui-warning: #e5b06a;
+    --ui-warning-soft: #3a2f20;
+    --ui-danger: #ed9bad;
+    --ui-danger-soft: #3c2730;
+    --ui-code: #1a271e;
+    --ui-ring: rgba(126, 214, 164, .30);
+    --ui-shadow: 0 18px 46px rgba(0, 0, 0, .27);
+    --ui-shadow-soft: 0 8px 24px rgba(0, 0, 0, .18);
+    --gold: #e2b96c;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+::selection { background: var(--ui-accent-soft); color: var(--ui-text); }
+
+button, input, select, textarea { font-family: inherit; }
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}

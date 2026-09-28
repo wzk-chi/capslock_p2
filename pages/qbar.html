@@ -4,53 +4,31 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>qbar</title>
+<link rel="stylesheet" href="theme.css">
 <style>
-/* Geometry must stay in sync with lib/features/qbar/qbar.ahk
-   (QbarInputHeight / QbarRowHeight / QbarPadding / QbarGap).
-   --card-radius must also match the radius lib/features/qbar/qbar.ahk clips the window to, or
-   the CSS curve and the window's rounded region show as two different arcs.
-   Palette, typography and radii mirror translate.html so both panels
-   read as one product. */
+/* Keep these values in sync with lib/features/qbar/qbar.ahk. The card radius
+   also matches the host window's rounded region. */
 :root {
-  color-scheme: light dark;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 
-  --bg: #f5f7fb;
-  --text: #20242b;
-  --muted: #697386;
-  --surface: #fff;
-  --border: #d5dae3;
-  --accent: #356ae6;
-  --accent-soft: #e8eefb;
-  --ring: #4b7bec22;
-
-  /* The launcher uses a fixed theme so it matches the other panels. */
-  --list-bg: transparent;
-  --list-color: var(--text);
-
+  /* Geometry shared with the native qbar host. */
   --card-radius: 12px;
-  --radius: max(0px, calc(var(--card-radius) - 3px));   /* input + rows */
+  --radius: max(0px, calc(var(--card-radius) - 3px));
   --input-height: 34px;
   --row-height: 30px;
   --padding: 10px;
   --gap: 6px;
+
+  /* Typography and result-list behavior. */
   --input-font-size: 14px;
   --list-font-size: 13px;
+  --list-bg: transparent;
+  --list-color: var(--text);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #20242b;
-    --text: #eef1f6;
-    --muted: #aab4c4;
-    --surface: #2b313b;
-    --border: #46505f;
-    --accent: #8db0f5;
-    --accent-soft: #2b3547;
-    --ring: #4b7bec44;
-  }
-}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+
 body {
   margin: 0;
   overflow: hidden;
@@ -58,20 +36,31 @@ body {
   color: var(--text);
   user-select: none;
 }
-/* The panel IS the card: it fills the window, and the window is clipped to the
-   same radius by the host, so the two curves coincide. The outline is drawn
-   with an inset ring rather than a border because a real border would eat 2px
-   of the layout box and push the last list row out of the window. */
+
+/* The host clips the window to the outer radius. Keep the visible edge one
+   pixel inside that clip so the rounded corners retain the full line. */
 #panel {
   height: 100%;
+  position: relative;
   padding: var(--padding);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--card-radius);
-  box-shadow: inset 0 0 0 1px var(--border);
+  background: var(--surface);
 }
-#input { 
+
+#panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border: 1px solid var(--border);
+  border-radius: max(0px, calc(var(--card-radius) - 1px));
+  pointer-events: none;
+}
+
+/* Query input ------------------------------------------------------------ */
+#input {
   height: var(--input-height);
   flex: 0 0 auto;
   width: 100%;
@@ -82,11 +71,15 @@ body {
   color: var(--text);
   font: var(--input-font-size)/1.5 Consolas, "Microsoft YaHei", monospace;
   outline: none;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 10%, transparent);
   user-select: text;
 }
+
 #input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
 #input:disabled { opacity: .72; cursor: wait; }
 #input::placeholder { color: var(--muted); }
+
+/* Loading state ---------------------------------------------------------- */
 .loading {
   height: var(--row-height);
   flex: 0 0 auto;
@@ -98,7 +91,9 @@ body {
   color: var(--muted);
   font-size: var(--list-font-size);
 }
+
 .loading.hidden { display: none; }
+
 .loading .spinner {
   width: 13px;
   height: 13px;
@@ -107,7 +102,10 @@ body {
   border-radius: 50%;
   animation: qbar-spin .8s linear infinite;
 }
+
 @keyframes qbar-spin { to { transform: rotate(360deg); } }
+
+/* Results ---------------------------------------------------------------- */
 #list {
   flex: 1 1 auto;
   min-width: 0;
@@ -118,7 +116,9 @@ body {
   border-radius: var(--radius);
   background: var(--list-bg);
 }
+
 #list.hidden { display: none; }
+
 .row {
   height: var(--row-height);
   min-width: 0;
@@ -133,12 +133,14 @@ body {
   overflow: hidden;
   cursor: default;
 }
+
 .row .glyph { flex: 0 0 auto; width: 16px; text-align: center; opacity: .75; }
 .row .glyph img { width: 16px; height: 16px; display: block; margin: 0 auto; }
 .row .text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .row.selected { background: var(--accent-soft); color: var(--accent); }
 .row.selected .glyph { opacity: 1; }
 .row.pinned .text { font-weight: 650; }
+
 .empty {
   height: var(--row-height);
   display: flex;
@@ -147,19 +149,21 @@ body {
   color: var(--muted);
   font-size: var(--list-font-size);
 }
+
+/* Keep the scrollbar quiet so it does not compete with the result rows. */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 </style>
 </head>
 <body>
-<div id="panel">
-  <input id="input" spellcheck="false" autocomplete="off" disabled>
-  <div id="loading" class="loading">
-    <span class="spinner" aria-hidden="true"></span>
-    <span id="loadingText">Loading…</span>
+  <div id="panel">
+    <input id="input" spellcheck="false" autocomplete="off" disabled>
+    <div id="loading" class="loading">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="loadingText">Loading…</span>
+    </div>
+    <div id="list" class="hidden"></div>
   </div>
-  <div id="list" class="hidden"></div>
-</div>
 <script>
 const input = document.getElementById('input');
 const loading = document.getElementById('loading');
@@ -167,7 +171,7 @@ const loadingText = document.getElementById('loadingText');
 const list = document.getElementById('list');
 
 const MAX_VISIBLE_ROWS = 12;
-const MAX_RENDERED = 60;       // rows rendered into the DOM
+const MAX_RENDERED = 60; // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
 const TYPE_RANK = { search: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
@@ -178,17 +182,19 @@ const STRINGS = {
   zh: { placeholder: '输入以搜索…', loading: '加载中…' }
 };
 
+/* Page state ------------------------------------------------------------- */
 let lang = 'en';
 let results = [];
-let placeholder = '';   // supplied by AHK, already localized (e.g. "(empty folder)")
+let placeholder = ''; // supplied by AHK, already localized (e.g. "(empty folder)")
 let selectedIndex = -1;
 let listHidden = false;
-let folderMode = false;   // AHK is listing a directory, so completions splice paths
+let folderMode = false; // AHK is listing a directory, so completions splice paths
 let reportedRows = -1;
-let ICONS = {};   // iconKey -> PNG data URI, pushed by AHK once per key
+let ICONS = {}; // iconKey -> PNG data URI, pushed by AHK once per key
 let loadingVisible = true;
 let composing = false;
 
+/* Messaging and sizing -------------------------------------------------- */
 function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
 }
@@ -202,7 +208,7 @@ function postType(type, text = '') {
   post({ type, text });
 }
 
-// Tells AHK the page script is alive and how big its viewport is, so a blank
+// Tell AHK the page script is alive and how big its viewport is, so a blank
 // panel can be told apart from a zero-sized one.
 postType('ready', window.innerWidth + 'x' + window.innerHeight);
 
@@ -211,8 +217,8 @@ function requestQuery(reason = 'input') {
   postType('query', input.value);
 }
 
-// Tell AHK how tall the window should be. Everything is measured in rows so the
-// two sides only have to agree on the row height.
+// Tell AHK how tall the window should be. Everything is measured in rows so
+// the two sides only have to agree on the row height.
 function reportRows() {
   if (reportedRows === visibleRows())
     return;
@@ -232,6 +238,7 @@ function hasContent() {
   return results.length > 0 || !!placeholder;
 }
 
+/* Rendering and selection ------------------------------------------------ */
 function sortResults(items) {
   return items.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
@@ -304,9 +311,10 @@ function select(index) {
     nodes[selectedIndex].scrollIntoView({ block: 'nearest' });
 }
 
-/* Completion: the highlighted row's short
-   key replaces the leaf of a path while a directory is being browsed, and
-   replaces the whole line everywhere else. Returns the row that was used. */
+/* Completion and execution ------------------------------------------------ */
+// The highlighted row's short key replaces the leaf of a path while a
+// directory is being browsed, and replaces the whole line everywhere else.
+// Returns the row that was used.
 function completeSelected() {
   const rows = sortResults(results).slice(0, MAX_RENDERED);
   const row = selectedIndex >= 0 ? rows[selectedIndex] : null;
@@ -336,7 +344,7 @@ function execute(ctrlHeld) {
   });
 }
 
-/* ---- AHK -> page ---- */
+/* AHK -> page ------------------------------------------------------------ */
 
 window.setLanguage = function (language) {
   lang = language === 'zh' ? 'zh' : 'en';
@@ -368,8 +376,8 @@ window.focusInput = function () {
 // AHK resets the window to its collapsed height on every show, but this page
 // keeps its state while hidden. Clear the last reported count so the next
 // render re-reports its rows instead of skipping the resize AHK is waiting
-// for (a same-count prefill query would otherwise leave the window collapsed
-// with the first list row clipped to a sliver).
+// for. Without this, a same-count prefill query can leave the first row
+// clipped to a sliver.
 window.resetRows = function () {
   reportedRows = -1;
 };
@@ -392,14 +400,14 @@ window.setResults = function (items, isFolder, placeholderText) {
   render();
 };
 
-// Merge a batch of iconKey -> data URI pushed by AHK and redraw; normally it
+// Merge a batch of iconKey -> data URI pushed by AHK and redraw. Normally it
 // arrives before setResults, so this render is just a safety net.
 window.addIcons = function (map) {
   Object.assign(ICONS, map || {});
   render();
 };
 
-/* ---- input handling ---- */
+/* Input and keyboard handling ------------------------------------------- */
 
 input.addEventListener('compositionstart', () => {
   composing = true;

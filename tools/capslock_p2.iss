@@ -40,6 +40,7 @@ Source: "{#PayloadDir}\capslock_p2.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Live WebView2 panels and the browser-opened usage page. The retired
 ; settings.js overlay was deleted and is not part of the release payload.
 Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\theme.css"; DestDir: "{app}\pages"; Flags: ignoreversion
 
 ; Markdown renderer used by the AI chat page.
 Source: "{#ProjectRoot}\vendor\*"; DestDir: "{app}\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs

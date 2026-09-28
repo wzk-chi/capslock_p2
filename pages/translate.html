@@ -7,66 +7,68 @@
 <style>
 :root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #f5f7fb; color: #20242b; }
-main { height: 100vh; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
-h1 { margin: 0; font-size: 16px; font-weight: 650; flex: 1; }
-label { flex: 1; font-size: 12px; font-weight: 600; color: #697386; }
-textarea { width: 100%; padding: 10px 12px; border: 1px solid #d5dae3; border-radius: 9px; background: #fff; color: #20242b; font: 14px/1.55 Consolas, "Microsoft YaHei", monospace; outline: none; }
-#source { min-height: 100px; resize: vertical; }
-#result { flex: 1; min-height: 80px; resize: none; }
-textarea:focus { border-color: #4b7bec; box-shadow: 0 0 0 3px #4b7bec22; }
-.topbar { display: flex; align-items: center; gap: 10px; }
-.pane { display: flex; flex-direction: column; gap: 6px; }
-.pane.grow { flex: 1; min-height: 0; }
-.pane-head { display: flex; align-items: center; gap: 8px; }
-.actionbar { display: flex; align-items: center; gap: 10px; }
-#status { flex: 1; color: #697386; font-size: 12px; }
-button { border: 0; border-radius: 8px; padding: 8px 18px; background: #356ae6; color: white; cursor: pointer; font-weight: 600; }
-button:hover { background: #2859c7; }
-button:disabled { background: #9aa8c2; cursor: default; }
-button.secondary { background: transparent; color: #356ae6; border: 1px solid #b9c6e8; font-weight: 500; }
-button.secondary:hover { background: #e8eefb; }
-button.secondary:disabled { color: #9aa8c2; border-color: #ccd3df; background: transparent; }
-button.small { padding: 3px 12px; font-size: 12px; border-radius: 7px; }
-button.copied { color: #157347; border-color: #93cfab; }
-button.copied:hover { background: #eaf6ef; }
-@media (prefers-color-scheme: dark) {
-  body { background: #20242b; color: #eef1f6; }
-  textarea { border-color: #46505f; background: #2b313b; color: #eef1f6; }
-  label, #status { color: #aab4c4; }
-  button.secondary { color: #8db0f5; border-color: #4a5b82; }
-  button.secondary:hover { background: #2b3547; }
-  button.secondary:disabled { color: #5c6778; border-color: #3a4454; background: transparent; }
-  button.copied { color: #7fd8a5; border-color: #406852; }
-  button.copied:hover { background: #24382c; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--ui-surface); color: var(--ui-text); }
+main { height: 100vh; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex: none; min-height: 32px; }
+.toolbar-spacer { flex: 1; min-width: 8px; }
+.toolbar-actions { display: flex; align-items: center; gap: 7px; }
+.columns { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.pane-head { display: flex; align-items: center; gap: 8px; flex: none; }
+.pane-head label { flex: 1; min-width: 0; font-size: 12px; font-weight: 650; color: var(--ui-text); }
+#status { flex: 1; min-width: 0; color: var(--ui-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#status.error { color: var(--ui-danger); }
+textarea { width: 100%; flex: 1; min-height: 0; padding: 11px 12px; border: 1px solid var(--ui-line-strong); border-radius: 9px; background: var(--ui-surface-soft); color: var(--ui-text); font: 14px/1.6 Consolas, "Microsoft YaHei", monospace; outline: none; resize: none; }
+textarea:focus { border-color: var(--ui-accent); background: var(--ui-surface); box-shadow: 0 0 0 3px var(--ui-ring); }
+#result { background: var(--ui-surface-soft); }
+button { border: 0; border-radius: 8px; padding: 8px 16px; background: var(--ui-button-bg); color: var(--ui-button-text); cursor: pointer; font-weight: 600; }
+button:hover { background: var(--ui-button-hover); }
+button:disabled { background: var(--ui-surface-muted); color: var(--ui-subtle); cursor: default; }
+button.secondary { background: transparent; color: var(--ui-accent); border: 1px solid var(--ui-line-strong); font-weight: 500; }
+button.secondary:hover { background: var(--ui-accent-soft); }
+button.secondary:disabled { color: var(--ui-subtle); border-color: var(--ui-line); background: transparent; }
+button.small { min-height: 28px; padding: 3px 10px; font-size: 11px; border-radius: 7px; }
+button#pinPanel.pinned { background: var(--ui-accent-soft); color: var(--ui-accent-strong); border-color: var(--ui-accent); }
+button#pinPanel.pinned:hover { background: var(--ui-accent-quiet); }
+button.copied { color: var(--ui-success); border-color: var(--ui-success); }
+button.copied:hover { background: var(--ui-success-soft); }
+@media (max-width: 720px) {
+  .toolbar { align-items: stretch; flex-wrap: wrap; }
+  #status { flex: 1 1 100%; order: 2; }
+  .toolbar-actions { margin-left: auto; }
+  .columns { grid-template-columns: 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
 }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <main id="mainView">
-  <header class="topbar">
-    <h1 data-i18n="appTitle">capslock_p2 Translate</h1>
-    <button id="openDictionary" class="secondary small" data-i18n="dictionary">Dictionary</button>
-    <button id="openSettings" class="secondary small" data-i18n="settings">Settings</button>
-  </header>
-  <section class="pane">
-    <div class="pane-head">
-      <label for="source" data-i18n="source">Source</label>
-      <button id="copySource" class="secondary small" data-i18n="copySource" disabled>Copy source</button>
-    </div>
-    <textarea id="source" spellcheck="false" autofocus></textarea>
-  </section>
-  <div class="actionbar">
+  <div class="toolbar">
     <span id="status"></span>
-    <button id="translate" data-i18n="translate" title="Ctrl + Enter">Translate</button>
-  </div>
-  <section class="pane grow">
-    <div class="pane-head">
-      <label for="result" data-i18n="translation">Translation</label>
-      <button id="copyResult" class="secondary small" data-i18n="copyResult" disabled>Copy translation</button>
+    <div class="toolbar-actions">
+      <button id="pinPanel" class="secondary small" data-i18n="pin" aria-pressed="false">Pin</button>
+      <button id="openDictionary" class="secondary small" data-i18n="dictionary">Dictionary</button>
+      <button id="openSettings" class="secondary small" data-i18n="settings">Settings</button>
+      <button id="translate" data-i18n="translate" title="Ctrl + Enter">Translate</button>
     </div>
-    <textarea id="result" readonly spellcheck="false"></textarea>
-  </section>
+  </div>
+  <div class="columns">
+    <section class="pane">
+      <div class="pane-head">
+        <label for="source" data-i18n="source">Source</label>
+        <button id="copySource" class="secondary small" data-i18n="copySource" disabled>Copy source</button>
+      </div>
+      <textarea id="source" spellcheck="false" autofocus></textarea>
+    </section>
+    <section class="pane">
+      <div class="pane-head">
+        <label for="result" data-i18n="translation">Translation</label>
+        <button id="copyResult" class="secondary small" data-i18n="copyResult" disabled>Copy translation</button>
+      </div>
+      <textarea id="result" readonly spellcheck="false"></textarea>
+    </section>
+  </div>
 </main>
 
 <script>
@@ -74,6 +76,7 @@ const source = document.getElementById('source');
 const result = document.getElementById('result');
 const status = document.getElementById('status');
 const translateBtn = document.getElementById('translate');
+const pinBtn = document.getElementById('pinPanel');
 const settingsBtn = document.getElementById('openSettings');
 const dictionaryBtn = document.getElementById('openDictionary');
 const copySourceBtn = document.getElementById('copySource');
@@ -87,6 +90,8 @@ const STRINGS = {
     appTitle: 'capslock_p2 Translate',
     source: 'Source',
     translation: 'Translation',
+    pin: 'Pin',
+    unpin: 'Unpin',
     settings: 'Settings',
     dictionary: 'Dictionary',
     translate: 'Translate',
@@ -103,6 +108,8 @@ const STRINGS = {
     appTitle: 'capslock_p2 翻译',
     source: '原文',
     translation: '译文',
+    pin: '固定',
+    unpin: '取消固定',
     settings: '设置',
     dictionary: '词典',
     translate: '翻译',
@@ -118,6 +125,7 @@ const STRINGS = {
 };
 
 let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+let pinned = false;
 
 function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
@@ -134,6 +142,17 @@ function applyLanguage() {
       btn.textContent = t(btn.dataset.flash);
   if (!translateBtn.disabled)
     status.textContent = status.dataset.state === 'done' ? t('done') : t('ready');
+  applyPinnedState(pinned);
+}
+
+function applyPinnedState(value) {
+  pinned = !!value;
+  const key = pinned ? 'unpin' : 'pin';
+  pinBtn.dataset.i18n = key;
+  pinBtn.textContent = t(key);
+  pinBtn.title = t(key);
+  pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+  pinBtn.classList.toggle('pinned', pinned);
 }
 
 function setStatus(key, state) {
@@ -272,6 +291,10 @@ window.onHostSettings = function (s) {
   applyLanguage();
 };
 
+window.setPinned = function (value) {
+  applyPinnedState(value);
+};
+
 translateBtn.addEventListener('click', window.startTranslate);
 source.addEventListener('keydown', event => {
   if (event.ctrlKey && event.key === 'Enter') {
@@ -298,6 +321,7 @@ settingsBtn.addEventListener('click', () => {
 });
 
 dictionaryBtn.addEventListener('click', () => postType('openDictionary', source.value));
+pinBtn.addEventListener('click', () => postType('togglePinned'));
 
 applyLanguage();
 setStatus('ready');
