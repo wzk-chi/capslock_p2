@@ -5,6 +5,7 @@
 global AppName := "capslock_p2"
 global AppVersion := "0.1.1"
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
+global DebugLogMaxBytes := 1 * 1024 * 1024
 global DebugLogging := false
 global KeySet := Map()
 global CapsLockHeld := false
@@ -118,14 +119,73 @@ ApplyGlobalSettings() {
 }
 
 DebugLog(message) {
-    global DebugLogFile, DebugLogging
+    global DebugLogFile, DebugLogMaxBytes, DebugLogging
     if !DebugLogging
         return
-    try FileAppend(
-        FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") . " [" . A_TickCount . "] " . message . "`n",
-        DebugLogFile,
-        "UTF-8"
-    )
+    line := FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") . " [" . A_TickCount . "] " . message . "`n"
+    try {
+        lineBytes := StrPut(line, "UTF-8") - 1
+        if lineBytes > DebugLogMaxBytes || !DebugLogEnsureCapacity(lineBytes)
+            return
+        FileAppend(line, DebugLogFile, "UTF-8")
+    } catch {
+        return
+    }
+}
+
+DebugLogEnsureCapacity(lineBytes) {
+    global DebugLogFile, DebugLogMaxBytes
+    currentBytes := FileExist(DebugLogFile) ? FileGetSize(DebugLogFile) : 0
+    while currentBytes + lineBytes > DebugLogMaxBytes {
+        if !DebugLogTrimFront()
+            return false
+        newBytes := FileExist(DebugLogFile) ? FileGetSize(DebugLogFile) : 0
+        if newBytes >= currentBytes
+            return false
+        currentBytes := newBytes
+    }
+    return true
+}
+
+; Keep the newer two thirds of the file and discard the oldest third. The
+; first complete line after the byte cut is used so a UTF-8 character or log
+; record is not left partially at the start of the compacted file.
+DebugLogTrimFront() {
+    global DebugLogFile
+    currentBytes := FileGetSize(DebugLogFile)
+    if currentBytes <= 0
+        return true
+
+    trimBytes := Max(1, Floor(currentBytes / 3))
+    source := 0
+    target := 0
+    try {
+        source := FileOpen(DebugLogFile, "r", "UTF-8")
+        if !IsObject(source)
+            return false
+        source.Pos := trimBytes
+        tail := source.Read()
+        source.Close()
+        source := 0
+
+        newlinePosition := InStr(tail, "`n")
+        if newlinePosition
+            tail := SubStr(tail, newlinePosition + 1)
+
+        target := FileOpen(DebugLogFile, "w", "UTF-8-RAW")
+        if !IsObject(target)
+            return false
+        target.Write(tail)
+        target.Close()
+        target := 0
+        return true
+    } catch {
+        if IsObject(source)
+            try source.Close()
+        if IsObject(target)
+            try target.Close()
+        return false
+    }
 }
 
 ; Private payloads are represented by their length only. Never pass user text,
