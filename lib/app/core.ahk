@@ -63,6 +63,10 @@ Initialize() {
         Sleep(80)
         HideLoading()
     }
+    ; Open the local usage guide once for a clean installation. Use a timer so
+    ; the browser launch happens after the app has finished registering its
+    ; tray menu, hotkeys and feature state.
+    SetTimer(OpenUsageOnFirstRun, -1)
     DebugLog("Initialize complete")
 }
 

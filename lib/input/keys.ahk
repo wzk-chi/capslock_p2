@@ -334,14 +334,35 @@ keyFunc_tabHotString(*) {
 }
 
 keyFunc_openCpasDocs(*) {
-    ; F1 opens the in-app usage page (pages\usage.html) in the default browser.
-    ; Installed copies always carry it; fall back to the original Capslock+
-    ; docs if the page was stripped from a bare payload.
+    ; F1 keeps the usage guide available on demand.
+    OpenUsagePage()
+}
+
+OpenUsagePage() {
+    ; Installed copies carry pages\usage.html; fall back to the original
+    ; Capslock+ docs if the page was stripped from a bare payload.
     usagePath := A_ScriptDir . "\pages\usage.html"
     if FileExist(usagePath)
         Run(usagePath)
     else
         Run(IsChineseLanguage() ? "https://capslox.com/capslock-plus" : "https://capslox.com/capslock-plus/en.html")
+}
+
+OpenUsageOnFirstRun(*) {
+    global SettingsFile
+    ; An existing user configuration means this is an upgrade or a normal
+    ; restart, not a clean installation. The marker handles a first run where
+    ; the user closes the guide before ever saving settings.
+    if FileExist(SettingsFile) || ConfigGlobalRead("usageShown", "0") = "1"
+        return
+
+    try {
+        OpenUsagePage()
+        if ConfigSet("Global", "usageShown", "1")
+            DebugLog("First-run usage guide opened")
+    } catch as usageError {
+        DebugLog("First-run usage guide failed")
+    }
 }
 
 keyFunc_mediaPrev(*) {

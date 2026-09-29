@@ -36,7 +36,10 @@ ConfigSchema() {
             "debug", Map("type", "bool"),
             "loadingAnimation", Map("type", "bool"),
             "language", Map("type", "enum", "values", ["0", "1", "2"]),
-            "runAsAdmin", Map("type", "bool"))),
+            "runAsAdmin", Map("type", "bool"),
+            ; Internal first-run state; it is persisted but intentionally has
+            ; no control in the settings page.
+            "usageShown", Map("type", "bool"))),
         "LLM", Map("kind", "static", "keys", Map(
             "endpoint", Map("type", "text"),
             "apiKey", Map("type", "secret"),
