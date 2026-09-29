@@ -53,6 +53,7 @@ Source: "{#ProjectRoot}\resources\dictionary.db"; DestDir: "{app}\resources"; Fl
 Source: "{#ProjectRoot}\resources\SQLite3.dll"; DestDir: "{app}\resources"; Flags: ignoreversion
 Source: "{#ProjectRoot}\resources\es.exe"; DestDir: "{app}\resources"; Flags: ignoreversion
 ; The PNG is the runtime tray icon; the ICO is its installer/shortcut form.
+Source: "{#ProjectRoot}\resources\capslock_p2-icon.png"; DestDir: "{app}\resources"; Flags: ignoreversion
 Source: "{#ProjectRoot}\resources\capslock_p2-icon.ico"; DestDir: "{app}\resources"; Flags: ignoreversion
 Source: "{#ProjectRoot}\resources\Everything-1.4.1.1032.x64\*"; DestDir: "{app}\resources\Everything-1.4.1.1032.x64"; Flags: ignoreversion recursesubdirs createallsubdirs
 
