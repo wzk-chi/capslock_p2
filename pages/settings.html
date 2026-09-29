@@ -341,10 +341,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     <div class="picker-dialog-actions"><button id="cancelWindowPicker" class="btn ghost" type="button">取消</button><button id="selectWindowPicker" class="btn" type="button" disabled>选择</button></div>
   </div>
 </dialog>
+<div id="settingsToast" class="ui-toast error" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false,
-  dirtyFields: new Set(), confirmAction: ''
+  dirtyFields: new Set(), confirmAction: '', toastTimer: 0
 };
 let shortcutRecording = null;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -962,6 +963,15 @@ function setPage(page, syncHost = true) {
   $('#pageTitle').textContent = active ? active.textContent : '设置';
   if (syncHost) post({ type: 'setSettingsPage', page });
 }
+function showToast(message) {
+  const toast = $('#settingsToast');
+  const text = String(message || '').trim();
+  if (!text) return;
+  toast.textContent = text;
+  toast.classList.add('visible');
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => toast.classList.remove('visible'), 5000);
+}
 function buildLlmTest() {
   return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
 }
@@ -1000,6 +1010,7 @@ function receiveSnapshot(snapshot) {
   renderAll();
   setPage(snapshot.page || state.page || 'general', false);
   state.dirty = false; setStatus('');
+  if (snapshot.toast) showToast(snapshot.toast);
 }
 function buildChangedSections() {
   const changes = {};

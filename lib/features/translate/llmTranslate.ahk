@@ -45,6 +45,13 @@ TranslateConfigured() {
     return IsObject(provider) && provider["configured"].Call()
 }
 
+LLMTranslateOpenSettingsForMissingConfig() {
+    message := LLMText(
+        "Configure a translation API or LLM before using translation.",
+        "请先配置翻译API或LLM再使用翻译功能")
+    SetTimer(SettingsShow.Bind("translate", message), -1)
+}
+
 ; The normalized engine setting: a registered provider key, else "auto".
 GetTranslateProvider() {
     engine := StrLower(Trim(GetTranslateSetting("engine", "auto")))
@@ -80,7 +87,7 @@ LLMTranslateShow(text, allowEmpty := false) {
         configured := TranslateConfigured()
         LLMTranslateSetSource(text, text != "" && configured)
         if !configured
-            SetTimer(() => SettingsShow("llm"), -1)
+            LLMTranslateOpenSettingsForMissingConfig()
     }
 }
 
@@ -138,7 +145,7 @@ LLMTranslateNavigationCompleted(host, sender, args) {
         configured := TranslateConfigured()
         LLMTranslateSetSource(LLMTranslatePendingText, LLMTranslatePendingText != "" && configured)
         if !configured
-            SetTimer(() => SettingsShow("llm"), -1)
+            LLMTranslateOpenSettingsForMissingConfig()
     }
 }
 

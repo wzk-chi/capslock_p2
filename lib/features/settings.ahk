@@ -4,6 +4,7 @@
 global SettingsHost := 0
 global SettingsVisible := false
 global SettingsPendingPage := "general"
+global SettingsPendingToast := ""
 global SettingsShortcutHook := 0
 global SettingsShortcutTarget := ""
 global WindowPickerVisible := false
@@ -12,10 +13,11 @@ global WindowPickerRows := []
 global WindowPickerBindingNumber := 0
 global WindowPickerBindType := 1
 
-SettingsShow(initialPage := "general", *) {
-    global SettingsHost, SettingsVisible, SettingsPendingPage
+SettingsShow(initialPage := "general", toastMessage := "", *) {
+    global SettingsHost, SettingsVisible, SettingsPendingPage, SettingsPendingToast
     initialPage := StrLower(Trim(initialPage))
     SettingsPendingPage := SettingsPageIsAllowed(initialPage) ? initialPage : "general"
+    SettingsPendingToast := Trim(String(toastMessage))
     SettingsVisible := true
     if !SettingsEnsureWebView() {
         SettingsVisible := false
@@ -302,7 +304,7 @@ SettingsBindingSnapshot() {
 }
 
 SettingsPushSnapshot(*) {
-    global SettingsHost
+    global SettingsHost, SettingsPendingToast
     if !IsObject(SettingsHost)
         return
     sections := Map()
@@ -311,11 +313,13 @@ SettingsPushSnapshot(*) {
     payload := Map(
         "uiLanguage", LLMUiLanguage(),
         "page", SettingsPendingPage,
+        "toast", SettingsPendingToast,
         "sections", sections,
         "keys", SettingsKeySnapshot(),
         "bindings", SettingsBindingSnapshot(),
         "bindingModes", WindowBindingModes())
     PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
+    SettingsPendingToast := ""
 }
 
 SettingsAllowedKey(section, key) {

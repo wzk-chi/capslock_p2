@@ -118,6 +118,38 @@ button, input, select, textarea { font-family: inherit; }
   vertical-align: -0.125em;
 }
 
+.ui-toast {
+  position: fixed;
+  z-index: 1000;
+  top: 88px;
+  left: 50%;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 10px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -6px);
+  transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+  pointer-events: none;
+}
+.ui-toast.error {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+.ui-toast.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
 /* Shared custom title bar for borderless WebView2 panels. */
 .windowbar {
   flex: 0 0 38px;
