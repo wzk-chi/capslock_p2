@@ -32,6 +32,9 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 Uninstallable=yes
+; Use Windows Restart Manager to detect and close apps holding files being updated.
+CloseApplications=yes
+RestartApplications=no
 
 [Files]
 ; Compiled AHK v2 runtime.
