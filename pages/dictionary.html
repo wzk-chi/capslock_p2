@@ -74,7 +74,8 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   font: 13.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
   cursor: pointer;
 }
-.suggest-item.active, .suggest-item:hover { background: var(--accent-soft); color: var(--accent-ink); }
+.suggest-item:hover { background: var(--accent-quiet); color: var(--ink); }
+.suggest-item.active { background: var(--accent-soft); color: var(--accent-ink); }
 .topbar .spacer { display: none; }
 .modebtn {
   border: 1px solid var(--card-edge);
@@ -89,7 +90,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   top: 50%;
   transform: translateY(-50%);
 }
-.modebtn:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.modebtn:hover { border-color: var(--line-strong); color: var(--accent-ink); background: var(--accent-quiet); }
 /* ---------- scrolling body ---------- */
 .scroll { flex: 1; overflow-y: auto; padding: 26px 34px 32px; }
 .scroll::-webkit-scrollbar { width: 10px; }
@@ -124,7 +125,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   cursor: pointer;
   flex: none;
 }
-.speak-btn:hover { background: var(--accent-soft); }
+.speak-btn:hover { background: var(--accent-quiet); }
 .speak-btn .lucide { width: 15px; height: 15px; }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .btn {
@@ -137,7 +138,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+.btn:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
 
 /* ---------- badges ---------- */
 .badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
@@ -193,7 +194,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   gap: 6px;
   align-items: baseline;
 }
-.form-chip:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+.form-chip:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
 .form-chip .form-label { color: var(--muted); font-size: 11.5px; }
 .form-chip .form-word { color: var(--accent-ink); font-weight: 600; }
 

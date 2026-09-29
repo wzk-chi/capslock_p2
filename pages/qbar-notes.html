@@ -35,10 +35,11 @@ button { color: inherit; cursor: default; }
 .tag-actions { display: flex; gap: 5px; margin: 0 3px 10px; }
 .tag-action { display: inline-flex; padding: 4px 6px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 10px; }
 .tag-action .lucide { width: 12px; height: 12px; }
-.tag-action:hover, .tag-action:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.tag-action:hover, .tag-action:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .tag-list { min-height: 0; overflow: auto; }
 .tag-row { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
-.tag-row:hover, .tag-row.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.tag-row:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.tag-row.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 .tag-row.active { font-weight: 650; }
 .tag-count { color: var(--ui-subtle); font-size: 10px; }
 .browse { min-width: 0; min-height: 0; background: var(--ui-bg); }
@@ -48,7 +49,7 @@ button { color: inherit; cursor: default; }
 .browse-heading h1 { margin: 0; font-size: 19px; font-weight: 650; }
 .muted { color: var(--ui-subtle); font-size: 10px; }
 .note-entry { margin: 6px 0; padding: 10px 12px 8px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface); box-shadow: var(--ui-shadow-soft); }
-.note-entry.pinned { border-color: var(--ui-accent); }
+.note-entry.pinned { border-color: var(--ui-line-strong); }
 .note-title { width: 100%; display: flex; align-items: center; gap: 7px; padding: 0 0 5px; border: 0; background: transparent; color: var(--ui-text); text-align: left; font-size: 13px; font-weight: 650; }
 .note-title:hover { color: var(--ui-accent-strong); }
 .pin-mark { color: var(--ui-accent); font-size: 11px; }
@@ -64,7 +65,7 @@ button { color: inherit; cursor: default; }
 .editor-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px 10px; border-bottom: 1px solid var(--ui-line); }
 .editor-back { display: inline-flex; flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
 .editor-back .lucide { width: 13px; height: 13px; }
-.editor-back:hover, .editor-back:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.editor-back:hover, .editor-back:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .editor-title { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 20px; font-weight: 650; }
 .editor-title::placeholder { color: var(--ui-subtle); }
 .editor-tags { display: flex; align-items: flex-start; gap: 9px; padding: 8px 17px; border-bottom: 1px solid var(--ui-line); }
@@ -78,7 +79,8 @@ button { color: inherit; cursor: default; }
 .tag-options { position: absolute; z-index: 5; top: calc(100% + 5px); left: 0; right: 0; max-height: 180px; overflow: auto; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); box-shadow: var(--ui-shadow-soft); }
 .tag-options.hidden { display: none; }
 .tag-option { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
-.tag-option:hover, .tag-option.selected { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.tag-option:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.tag-option.selected { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 .editor-toolbar { display: flex; flex-wrap: wrap; gap: 3px; padding: 7px 14px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface-soft); }
 .tool { min-width: 28px; height: 27px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ui-muted); font-size: 11px; font-weight: 650; }
 .tool .lucide { width: 15px; height: 15px; }
@@ -96,7 +98,7 @@ button { color: inherit; cursor: default; }
 .multi-tools { display: none; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--ui-muted); font-size: 11px; }.multi-tools.visible { display: flex; }
 .select-all { accent-color: var(--ui-accent); }
 .multi-button { padding: 5px 9px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
-.multi-button:hover, .multi-button:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.multi-button:hover, .multi-button:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .multi-button.danger { color: var(--ui-danger); }
 .multi-button:disabled { opacity: .45; }
 .note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
@@ -104,7 +106,7 @@ button { color: inherit; cursor: default; }
 .context-menu.hidden { display: none; }
 .context-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
 .context-menu button .lucide { width: 14px; height: 14px; }
-.context-menu button:hover, .context-menu button:focus-visible { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.context-menu button:hover, .context-menu button:focus-visible { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .context-menu button:disabled { opacity: .4; }
 .context-menu button.danger { color: var(--ui-danger); }
 .context-separator { height: 1px; margin: 4px 3px; background: var(--ui-line); }
