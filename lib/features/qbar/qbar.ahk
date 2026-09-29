@@ -92,6 +92,7 @@ QbarShow() {
 
     QbarVisible := true
     QbarOpen := true
+    QbarHost["visible"] := true
     ; Exactly one geometry call for the whole reveal, and it goes through
     ; QbarPlace like every other geometry change. Mixing Move and Show, or
     ; restating the rectangle in a second call, is what let the panel appear
@@ -101,7 +102,7 @@ QbarShow() {
     panelGui := PanelHostGui(QbarHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
-    PanelHostStartFocusMonitor(QbarHost, QbarFocusMonitor)
+    PanelHostStartAutoHide(QbarHost, QbarHide)
 
     if PanelHostPageReady(QbarHost) {
         ; The page keeps its state across hide/show while the window starts
@@ -134,7 +135,6 @@ QbarHide(*) {
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
     PanelHostHide(QbarHost)
-    PanelHostStopFocusMonitor(QbarHost)
 }
 
 QbarExec(script) {

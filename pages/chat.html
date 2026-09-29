@@ -9,7 +9,9 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--ui-bg); color: var(--ui-text); cursor: default; }
 main { height: 100vh; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+main > .windowbar { margin: -14px -18px 0; padding-left: 18px; }
 .topbar { display: flex; align-items: center; gap: 10px; }
+.topbar-spacer { flex: 1; }
 h1 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
 #status { display: none; }
 button { border: 0; border-radius: 8px; padding: 7px 14px; background: var(--ui-button-bg); color: var(--ui-button-text); cursor: pointer; font-weight: 600; }
@@ -56,13 +58,14 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="windowbar.js"></script>
 </head>
 <body>
 <main id="mainView">
+  <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 AI" data-windowbar-icon="bot"></div>
   <div class="topbar">
-    <h1 id="appTitle">capslock_p2 AI</h1>
     <span id="status"></span>
-    <button id="pinPanel" class="secondary" aria-pressed="false"><i data-lucide="pin"></i><span data-label></span></button>
+    <span class="topbar-spacer"></span>
     <button id="newChat" class="secondary"><i data-lucide="message-square-plus"></i><span data-label></span></button>
     <button id="openSettings" class="secondary"><i data-lucide="settings-2"></i><span data-label></span></button>
   </div>
@@ -77,6 +80,7 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
 <script src="../vendor/marked.min.js"></script>
 <script src="../vendor/purify.min.js"></script>
 <script>
+WindowBar.init();
 const input = document.getElementById('input');
 const messages = document.getElementById('messages');
 const status = document.getElementById('status');
@@ -84,7 +88,10 @@ const sendBtn = document.getElementById('send');
 const pinBtn = document.getElementById('pinPanel');
 const newChatBtn = document.getElementById('newChat');
 const settingsBtn = document.getElementById('openSettings');
-const appTitle = document.getElementById('appTitle');
+const appTitle = document.getElementById('windowTitle');
+const windowDrag = document.getElementById('windowDrag');
+const independentBtn = document.getElementById('independentPanel');
+const closeBtn = document.getElementById('closePanel');
 
 const STRINGS = {
   en: {
@@ -94,6 +101,9 @@ const STRINGS = {
     send: 'Send',
     pin: 'Pin',
     unpin: 'Unpin',
+    close: 'Close',
+    independent: 'Independent window',
+    dragWindow: 'Drag to move',
     copy: 'Copy',
     copied: 'Copied',
     copyFailed: 'Copy failed',
@@ -107,6 +117,9 @@ const STRINGS = {
     send: '发送',
     pin: '固定',
     unpin: '取消固定',
+    close: '关闭',
+    independent: '独立窗口',
+    dragWindow: '拖动移动窗口',
     copy: '复制',
     copied: '已复制',
     copyFailed: '复制失败',
@@ -131,6 +144,11 @@ function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
   appTitle.textContent = t('appTitle');
+  windowDrag.title = t('dragWindow');
+  independentBtn.title = t('independent');
+  independentBtn.setAttribute('aria-label', t('independent'));
+  closeBtn.title = t('close');
+  closeBtn.setAttribute('aria-label', t('close'));
   setButtonLabel(pinBtn, pinBtn.classList.contains('pinned') ? t('unpin') : t('pin'));
   pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
   pinBtn.setAttribute('aria-label', pinBtn.title);
@@ -151,6 +169,7 @@ function postType(type, text) {
 
 function applyPinnedState(value) {
   const pinned = !!value;
+  WindowBar.setPinned(pinned);
   pinBtn.classList.toggle('pinned', pinned);
   pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
   setButtonLabel(pinBtn, pinned ? t('unpin') : t('pin'));
@@ -503,7 +522,6 @@ messages.addEventListener('click', event => {
 });
 
 newChatBtn.addEventListener('click', () => postType('newSession'));
-pinBtn.addEventListener('click', () => postType('togglePinned'));
 settingsBtn.addEventListener('click', () => {
   postType('openSettings');
 });
@@ -516,6 +534,10 @@ window.onHostSettings = function (s) {
 
 window.setPinned = function (value) {
   applyPinnedState(value);
+};
+
+window.setNativeWindowMode = function (value) {
+  WindowBar.setNativeWindowMode(value);
 };
 
 applyLanguage();

@@ -118,6 +118,42 @@ button, input, select, textarea { font-family: inherit; }
   vertical-align: -0.125em;
 }
 
+/* Shared custom title bar for borderless WebView2 panels. */
+.windowbar {
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface);
+}
+
+.windowbar.native-window { display: none; }
+
+.window-drag {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-text);
+  cursor: move;
+  user-select: none;
+}
+
+.window-drag > .lucide { width: 16px; height: 16px; color: var(--ui-accent); }
+.window-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+.window-actions { display: flex; align-items: center; gap: 2px; }
+.window-action { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted); }
+.window-action .lucide { width: 16px; height: 16px; }
+.window-action:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.window-action.pinned { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.window-action.close:hover { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
 button:has(.lucide),
 a:has(.lucide) {
   align-items: center;

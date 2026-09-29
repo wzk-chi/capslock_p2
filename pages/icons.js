@@ -16,12 +16,22 @@
   function refreshIcons() {
     if (!window.lucide || typeof window.lucide.createIcons !== 'function')
       return;
-    window.lucide.createIcons({
-      attrs: {
-        'aria-hidden': 'true',
-        focusable: 'false'
-      }
-    });
+    if (window.WindowBar && typeof window.WindowBar.debug === 'function')
+      window.WindowBar.debug('icons:refresh:start');
+    try {
+      window.lucide.createIcons({
+        attrs: {
+          'aria-hidden': 'true',
+          focusable: 'false'
+        }
+      });
+      if (window.WindowBar && typeof window.WindowBar.debug === 'function')
+        window.WindowBar.debug('icons:refresh:done');
+    } catch {
+      // Icons are decorative; a missing icon must not stop page behavior.
+      if (window.WindowBar && typeof window.WindowBar.debug === 'function')
+        window.WindowBar.debug('icons:refresh:error');
+    }
   }
 
   window.createIcon = createIcon;

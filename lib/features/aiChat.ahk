@@ -117,6 +117,7 @@ AiChatShow(question) {
     panelGui := PanelHostGui(AiChatHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
+    WindowBarApplyNativeMode(AiChatHost, WindowBarIsNative(AiChatHost))
     AiChatApplyWindowState()
     ShowSystemCursor()
 
@@ -158,7 +159,7 @@ AiChatEnsureWebView() {
 
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
     AiChatHost := PanelHostCreate(pagePath, "capslock_p2 AI", Map(
-        "guiOptions", "+Resize +MinSize520x400 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow",
+        "guiOptions", "+Resize +MinSize520x400 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow -Caption",
         "dataPath", A_Temp . "\CapsLockPlusAiChatWebView2",
         "initialShow", "x-32000 y-32000 w" . aiChatSize[1] . " h" . aiChatSize[2] . " NA",
         "callbacks", Map(
@@ -188,16 +189,23 @@ AiChatNavigationCompleted(host, sender, args) {
         return
     }
     if AiChatVisible
+        WindowBarSyncPageState(host)
+    if AiChatVisible
         AiChatAfterReady()
 }
 
 AiChatWebMessageReceived(sender, args) {
-    global AiChatHistory, AiChatPinned
+    global AiChatHost, AiChatHistory, AiChatPinned
     try message := args.TryGetWebMessageAsString()
     catch
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
+    if WindowBarHandleDebugMessage(msg, "ai")
+        return
+    if WindowBarHandleMessage(AiChatHost, messageType, AiChatHide,
+        AiChatSetPinnedState, Map("autoHide", false))
+        return
     if messageType = "ask" {
         text := LLMMsgField(msg, "text")
         if text = ""
@@ -209,12 +217,6 @@ AiChatWebMessageReceived(sender, args) {
         AiChatExec("window.newSession();")
     } else if messageType = "openSettings" {
         SetTimer(() => SettingsShow("llm"), -1)
-    } else if messageType = "togglePinned" {
-        AiChatPinned := !AiChatPinned
-        AiChatApplyWindowState()
-        AiChatSetPinned()
-    } else if messageType = "hide" {
-        AiChatHide()
     } else if messageType = "openUrl" {
         ; Links rendered from markdown answers open in the default browser
         ; instead of navigating the panel away.
@@ -339,11 +341,13 @@ AiChatSetPinned() {
 
 AiChatApplyWindowState() {
     global AiChatHost, AiChatPinned
-    panelGui := PanelHostGui(AiChatHost)
-    if !IsObject(panelGui)
-        return
-    WinSetAlwaysOnTop(AiChatPinned, "ahk_id " . panelGui.Hwnd)
-    AiChatUpdateFocusBehavior()
+    WindowBarApplyPinnedState(AiChatHost, AiChatPinned, true, AiChatHide,
+        Map("autoHide", false))
+}
+
+AiChatSetPinnedState(value) {
+    global AiChatPinned
+    AiChatPinned := !!value
 }
 
 AiChatPushLanguage() {
@@ -365,7 +369,7 @@ AiChatUpdateFocusBehavior() {
     global AiChatHost, AiChatVisible
     if !AiChatVisible || !IsObject(AiChatHost)
         return
-    PanelHostStopFocusMonitor(AiChatHost)
+    PanelHostStopAutoHide(AiChatHost)
 }
 
 AiChatResize(targetGui, minMax, width, height) {
@@ -380,7 +384,6 @@ AiChatHide(*) {
     AiChatInvalidateRequest(hadRequest)
     AiChatVisible := false
     PanelHostHide(AiChatHost)
-    PanelHostStopFocusMonitor(AiChatHost)
 }
 
 AiChatShutdown(*) {

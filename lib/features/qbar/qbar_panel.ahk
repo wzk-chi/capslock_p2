@@ -50,16 +50,6 @@ QbarNavigationCompleted(host, sender, args) {
     }
 }
 
-QbarFocusMonitor(*) {
-    global QbarHost, QbarVisible
-    if !QbarVisible || !IsObject(PanelHostGui(QbarHost)) {
-        PanelHostStopFocusMonitor(QbarHost)
-        return
-    }
-    if !PanelHostWindowActive(QbarHost)
-        QbarHide()
-}
-
 QbarShutdown(*) {
     global QbarHost, QbarVisible, QbarOpen
     global QbarIndexReady, QbarIndexLoading
@@ -67,7 +57,6 @@ QbarShutdown(*) {
     QbarOpen := false
     QbarIndexReady := false
     QbarSearchCancel()
-    PanelHostStopFocusMonitor(QbarHost)
     QbarCancelIconQueue()
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false

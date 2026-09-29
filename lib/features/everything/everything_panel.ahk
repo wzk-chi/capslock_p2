@@ -20,7 +20,7 @@ EverythingEnsureWebView() {
         EverythingPanelMinWidth, EverythingPanelMinHeight)
     EverythingHost := PanelHostCreate(
         A_ScriptDir . "\pages\everything.html", "capslock_p2 Everything", Map(
-            "guiOptions", "+ToolWindow +Resize +MinSize640x440 +MinimizeBox +MaximizeBox +SysMenu",
+            "guiOptions", "+Resize +MinSize640x440 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow -Caption",
             "dataPath", A_Temp . "\CapsLockPlusEverythingWebView2",
             "initialShow", "x-32000 y-32000 w" . size[1] . " h" . size[2] . " NA",
             "callbacks", Map(
@@ -54,6 +54,7 @@ EverythingNavigationCompleted(host, sender, args) {
         return
     }
     if EverythingVisible {
+        WindowBarSyncPageState(host)
         EverythingBeginPendingOpen()
         SetTimer(EverythingFocusInput, -1)
     }
@@ -65,12 +66,17 @@ EverythingResize(targetGui, minMax, width, height) {
 }
 
 EverythingWebMessageReceived(sender, args) {
-    global EverythingQuerySeq, EverythingCategory, EverythingPageReady
+    global EverythingHost, EverythingQuerySeq, EverythingCategory, EverythingPageReady
     try message := args.TryGetWebMessageAsString()
     catch
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
+    if WindowBarHandleDebugMessage(msg, "everything")
+        return
+    if WindowBarHandleMessage(EverythingHost, messageType, EverythingHide, 0,
+        Map("requireActive", true))
+        return
     if messageType = "ready" {
         EverythingPageReady := true
         EverythingBeginPendingOpen()
@@ -99,20 +105,14 @@ EverythingWebMessageReceived(sender, args) {
         ShowSystemCursor()
         return
     }
-    if messageType = "hide" {
-        EverythingHide()
-        return
-    }
 }
 
 EverythingHide(*) {
-    global EverythingVisible, EverythingPendingOpen, EverythingPageReady, EverythingFocusSeenActive
+    global EverythingVisible, EverythingPendingOpen, EverythingPageReady
     EverythingVisible := false
-    EverythingFocusSeenActive := false
     EverythingPendingOpen := false
     EverythingCancelSearch("panel hidden")
     PanelHostHide(EverythingHost)
-    PanelHostStopFocusMonitor(EverythingHost)
 }
 
 EverythingCancelSearch(reason := "") {
@@ -127,10 +127,9 @@ EverythingCancelSearch(reason := "") {
 }
 
 EverythingShutdown(*) {
-    global EverythingHost, EverythingVisible, EverythingWindowInitialized, EverythingFocusSeenActive
+    global EverythingHost, EverythingVisible, EverythingWindowInitialized
     global EverythingPageReady, EverythingEsMode, QbarEsBundledStarted
     EverythingVisible := false
-    EverythingFocusSeenActive := false
     EverythingPageReady := false
     EverythingEsMode := false
     EverythingCancelSearch("shutdown")

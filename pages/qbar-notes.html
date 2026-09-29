@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="windowbar.js"></script>
 <script src="../vendor/marked.min.js"></script>
 <script src="../vendor/purify.min.js"></script>
 <style>
@@ -120,6 +121,7 @@ button { color: inherit; cursor: default; }
 </head>
 <body>
 <div class="app">
+  <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 笔记" data-windowbar-icon="file-text"></div>
   <header class="topbar">
     <div class="search-group"><label class="search" aria-label="搜索标题、正文和标签"><i data-lucide="search"></i><input id="search" type="search" placeholder="搜索标题、正文或标签…"></label><button id="searchButton" class="search-button" type="button" aria-label="搜索"><i data-lucide="search"></i></button></div>
   </header>
@@ -171,7 +173,10 @@ button { color: inherit; cursor: default; }
 <div id="toast" class="toast hidden" role="status"></div>
 
 <script>
+WindowBar.init();
 const post = payload => { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload)); };
+window.setPinned = value => WindowBar.setPinned(value);
+window.setNativeWindowMode = value => WindowBar.setNativeWindowMode(value);
 const $ = id => document.getElementById(id);
 const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null, toastTimer: 0 };
 let searchTimer = 0;

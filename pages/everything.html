@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="windowbar.js"></script>
 <style>
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -211,6 +212,7 @@ body {
 </head>
 <body>
 <main id="shell">
+  <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 Everything" data-windowbar-icon="search"></div>
   <div class="searchbar">
     <input id="query" spellcheck="false" autocomplete="off">
     <button id="searchButton" class="button primary"><i data-lucide="search"></i><span data-label></span></button>
@@ -234,6 +236,8 @@ body {
   <button class="menu-item" data-action="copyParent" role="menuitem"><i data-lucide="folder"></i><span data-label></span></button>
 </div>
 <script>
+WindowBar.init();
+WindowBar.debug('everything:script:start');
 const query = document.getElementById('query');
 const searchButton = document.getElementById('searchButton');
 const categories = document.getElementById('categories');
@@ -242,6 +246,11 @@ const sortButton = document.getElementById('sortButton');
 const sortMenu = document.getElementById('sortMenu');
 const resultList = document.getElementById('resultList');
 const contextMenu = document.getElementById('contextMenu');
+const windowDrag = document.getElementById('windowDrag');
+const windowTitle = document.getElementById('windowTitle');
+const pinBtn = document.getElementById('pinPanel');
+const independentBtn = document.getElementById('independentPanel');
+const closeBtn = document.getElementById('closePanel');
 
 const CATEGORY_IDS = ['all', 'folder', 'excel', 'word', 'ppt', 'pdf', 'image', 'video', 'audio', 'archive'];
 const CATEGORY_ICONS = {
@@ -257,10 +266,12 @@ const SORT_OPTIONS = [
 ];
 const STRINGS = {
   zh: {
+    appTitle: 'capslock_p2 Everything', pin: '固定', unpin: '取消固定', close: '关闭', independent: '独立窗口', dragWindow: '拖动移动窗口',
     placeholder: '搜索文件名，支持 Everything 搜索语法', search: '搜索', all: '全部', folder: '文件夹', excel: 'EXCEL', word: 'WORD', ppt: 'PPT', pdf: 'PDF', image: '图片', video: '视频', audio: '音频', archive: '压缩文件',
     loading: '搜索中…', empty: '没有找到结果', ready: n => `已显示 ${n} 项`, truncated: n => `已显示前 ${n} 项，请细化条件`, error: '搜索失败', reveal: '文件夹中显示', copy: '复制', copyPath: '复制路径', copyParent: '复制所在路径', sort: '排序', sortNameAsc: '按名称升序', sortNameDesc: '按名称降序', sortPathAsc: '按路径升序', sortPathDesc: '按路径降序', sortSizeAsc: '按大小升序', sortSizeDesc: '按大小降序', sortModifiedAsc: '按修改时间升序', sortModifiedDesc: '按修改时间降序', actionOk: '已完成', actionError: '操作失败'
   },
   en: {
+    appTitle: 'capslock_p2 Everything', pin: 'Pin', unpin: 'Unpin', close: 'Close', independent: 'Independent window', dragWindow: 'Drag to move',
     placeholder: 'Search file names with Everything syntax', search: 'Search', all: 'All', folder: 'Folders', excel: 'EXCEL', word: 'WORD', ppt: 'PPT', pdf: 'PDF', image: 'Images', video: 'Videos', audio: 'Audio', archive: 'Archives',
     loading: 'Searching…', empty: 'No results', ready: n => `${n} item${n === 1 ? '' : 's'} shown`, truncated: n => `First ${n} items shown; refine the query`, error: 'Search failed', reveal: 'Show in folder', copy: 'Copy', copyPath: 'Copy path', copyParent: 'Copy containing path', sort: 'Sort', sortNameAsc: 'Name ascending', sortNameDesc: 'Name descending', sortPathAsc: 'Path ascending', sortPathDesc: 'Path descending', sortSizeAsc: 'Size ascending', sortSizeDesc: 'Size descending', sortModifiedAsc: 'Modified ascending', sortModifiedDesc: 'Modified descending', actionOk: 'Done', actionError: 'Action failed'
   }
@@ -297,6 +308,7 @@ document.addEventListener('mousemove', () => {
   post({ type: 'cursorMove' });
 }, { passive: true });
 function renderCategories() {
+  WindowBar.debug('everything:categories:start');
   categories.textContent = '';
   for (const id of CATEGORY_IDS) {
     const button = document.createElement('button');
@@ -312,6 +324,7 @@ function renderCategories() {
     categories.appendChild(button);
   }
   refreshIcons();
+  WindowBar.debug('everything:categories:done');
 }
 function setButtonLabel(button, text) {
   const label = button.querySelector('[data-label]');
@@ -319,6 +332,16 @@ function setButtonLabel(button, text) {
   else button.textContent = text;
 }
 function applyLanguage() {
+  WindowBar.debug('everything:language:start');
+  document.title = t('appTitle');
+  windowTitle.textContent = t('appTitle');
+  windowDrag.title = t('dragWindow');
+  independentBtn.title = t('independent');
+  independentBtn.setAttribute('aria-label', t('independent'));
+  closeBtn.title = t('close');
+  closeBtn.setAttribute('aria-label', t('close'));
+  pinBtn.title = pinBtn.classList.contains('pinned') ? t('unpin') : t('pin');
+  pinBtn.setAttribute('aria-label', pinBtn.title);
   query.placeholder = t('placeholder');
   setButtonLabel(searchButton, t('search'));
   setButtonLabel(contextMenu.querySelector('[data-action="reveal"]'), t('reveal'));
@@ -339,7 +362,23 @@ function applyLanguage() {
   });
   renderCategories();
   refreshIcons();
+  WindowBar.debug('everything:language:done');
 }
+
+function applyPinnedState(value) {
+  const pinned = !!value;
+  WindowBar.setPinned(pinned);
+  pinBtn.title = pinned ? t('unpin') : t('pin');
+  pinBtn.setAttribute('aria-label', pinBtn.title);
+}
+
+window.setPinned = function (value) {
+  applyPinnedState(value);
+};
+
+window.setNativeWindowMode = function (value) {
+  WindowBar.setNativeWindowMode(value);
+};
 function sortOptionKey() {
   const option = SORT_OPTIONS.find(entry => entry[0] === sortId);
   return option ? option[1] : 'sortNameAsc';
@@ -456,6 +495,7 @@ function selectResult(index) {
 }
 
 window.initialize = function (payload) {
+  WindowBar.debug('everything:initialize');
   payload = payload || {};
   lang = payload.uiLanguage === 'en' ? 'en' : 'zh';
   category = CATEGORY_IDS.includes(payload.categoryId) ? payload.categoryId : 'all';

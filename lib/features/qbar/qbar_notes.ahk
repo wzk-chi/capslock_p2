@@ -27,6 +27,10 @@ NotesShow(initialSearch := "", targetHwnd := 0, recordHistory := true) {
     panelGui := PanelHostGui(NotesHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
+    WindowBarApplyNativeMode(NotesHost, WindowBarIsNative(NotesHost))
+    WindowBarApplyPinnedState(NotesHost, WindowBarIsPinned(NotesHost),
+        NotesVisible, NotesHide, Map("autoHide", false))
+    WindowBarSetPinnedPage(NotesHost, WindowBarIsPinned(NotesHost))
     ShowSystemCursor()
     if recordHistory
         QbarHistoryRemember(QbarHistoryNotesEntry(NotesPendingSearch))
@@ -66,7 +70,7 @@ NotesEnsureWebView() {
     }
 
     NotesHost := PanelHostCreate(pagePath, "capslock_p2 笔记", Map(
-        "guiOptions", "+Resize +MinimizeBox +MaximizeBox +SysMenu +ToolWindow",
+        "guiOptions", "+Resize +MinimizeBox +MaximizeBox +SysMenu +ToolWindow -Caption",
         "dataPath", A_Temp . "\CapsLockPlusNotesWebView2",
         "initialShow", "w" . NotesWidth . " h" . NotesHeight . " NA",
         "callbacks", Map(
@@ -104,6 +108,7 @@ NotesNavigationCompleted(host, sender, args) {
         return
     }
     NotesConfigureMediaMapping()
+    WindowBarSyncPageState(host)
     NotesScheduleStateSync()
 }
 
@@ -490,11 +495,17 @@ NotesPost(payload) {
 }
 
 NotesWebMessageReceived(sender, args) {
+    global NotesHost
     try message := args.TryGetWebMessageAsString()
     catch
         return
     msg := LLMMessageParse(message)
     if !IsObject(msg)
+        return
+    if WindowBarHandleDebugMessage(msg, "notes")
+        return
+    if WindowBarHandleMessage(NotesHost, LLMMsgField(msg, "type"), NotesHide, 0,
+        Map("autoHide", false))
         return
     NotesHandleMessage(msg)
 }

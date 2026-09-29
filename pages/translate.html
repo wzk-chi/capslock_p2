@@ -9,7 +9,8 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--ui-surface); color: var(--ui-text); }
-main { height: 100vh; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+main { height: 100vh; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+main > .windowbar { margin: 0 -14px; }
 .toolbar { display: flex; align-items: center; gap: 8px; flex: none; min-height: 32px; }
 .toolbar-spacer { flex: 1; min-width: 8px; }
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
@@ -52,13 +53,14 @@ button.copied:hover { background: var(--ui-success-soft); }
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="windowbar.js"></script>
 </head>
 <body>
 <main id="mainView">
+  <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 Translate" data-windowbar-icon="languages"></div>
   <div class="toolbar">
     <span id="status"></span>
     <div class="toolbar-actions">
-      <button id="pinPanel" class="secondary small" data-i18n="pin" aria-pressed="false"><i data-lucide="pin"></i><span data-label>Pin</span></button>
       <button id="openDictionary" class="secondary small" data-i18n="dictionary"><i data-lucide="book-open"></i><span data-label>Dictionary</span></button>
       <button id="openSettings" class="secondary small" data-i18n="settings"><i data-lucide="settings-2"></i><span data-label>Settings</span></button>
       <button id="translate" data-i18n="translate" title="Ctrl + Enter"><i data-lucide="languages"></i><span data-label>Translate</span></button>
@@ -93,6 +95,8 @@ button.copied:hover { background: var(--ui-success-soft); }
 </main>
 
 <script>
+WindowBar.init();
+WindowBar.debug('translate:script:start');
 const source = document.getElementById('source');
 const result = document.getElementById('result');
 const status = document.getElementById('status');
@@ -100,6 +104,10 @@ const translateBtn = document.getElementById('translate');
 const pinBtn = document.getElementById('pinPanel');
 const settingsBtn = document.getElementById('openSettings');
 const dictionaryBtn = document.getElementById('openDictionary');
+const closeBtn = document.getElementById('closePanel');
+const windowDrag = document.getElementById('windowDrag');
+const windowTitle = document.getElementById('windowTitle');
+const independentBtn = document.getElementById('independentPanel');
 const copySourceBtn = document.getElementById('copySource');
 const copyResultBtn = document.getElementById('copyResult');
 const identifierConvertBtn = document.getElementById('convertIdentifier');
@@ -123,6 +131,9 @@ const STRINGS = {
     chooseDirection: 'Choose the source and target languages',
     pin: 'Pin',
     unpin: 'Unpin',
+    close: 'Close',
+    dragWindow: 'Drag to move',
+    independent: 'Independent window',
     settings: 'Settings',
     dictionary: 'Dictionary',
     translate: 'Translate',
@@ -146,6 +157,9 @@ const STRINGS = {
     chooseDirection: '请选择原语言和目标语言',
     pin: '固定',
     unpin: '取消固定',
+    close: '关闭',
+    dragWindow: '拖动移动窗口',
+    independent: '独立窗口',
     settings: '设置',
     dictionary: '词典',
     translate: '翻译',
@@ -189,6 +203,12 @@ function setLocalizedText(node, text) {
 function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
+  windowTitle.textContent = t('appTitle');
+  windowDrag.title = t('dragWindow');
+  closeBtn.title = t('close');
+  closeBtn.setAttribute('aria-label', t('close'));
+  independentBtn.title = t('independent');
+  independentBtn.setAttribute('aria-label', t('independent'));
   for (const node of document.querySelectorAll('[data-i18n]'))
     setLocalizedText(node, t(node.dataset.i18n));
   // A copy button mid-flash keeps its feedback label under the new language.
@@ -266,6 +286,7 @@ function applyTranslationSettings(settings) {
 
 function applyPinnedState(value) {
   pinned = !!value;
+  WindowBar.setPinned(pinned);
   const key = pinned ? 'unpin' : 'pin';
   pinBtn.dataset.i18n = key;
   setLocalizedText(pinBtn, t(key));
@@ -273,6 +294,10 @@ function applyPinnedState(value) {
   pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
   pinBtn.classList.toggle('pinned', pinned);
 }
+
+window.setNativeWindowMode = function (value) {
+  WindowBar.setNativeWindowMode(value);
+};
 
 function setStatus(key, state) {
   status.textContent = t(key);
@@ -494,9 +519,11 @@ window.setDirection = function (sourceLanguage, targetLanguage, manual) {
 // The standalone settings center pushes the interface language through the
 // host snapshot; this hook keeps the translation panel language in step.
 window.onHostSettings = function (s) {
+  WindowBar.debug('translate:onHostSettings', `ui=${String(s && s.uiLanguage || '')}`);
   lang = s && s.uiLanguage === 'zh' ? 'zh' : 'en';
   applyTranslationSettings(s && s.translation);
   applyLanguage();
+  WindowBar.debug('translate:onHostSettings:applied', `lang=${lang}`);
 };
 
 window.setPinned = function (value) {
@@ -556,11 +583,11 @@ settingsBtn.addEventListener('click', () => {
 });
 
 dictionaryBtn.addEventListener('click', () => postType('openDictionary', source.value));
-pinBtn.addEventListener('click', () => postType('togglePinned'));
 
 applyTranslationSettings(translationSettings);
 applyLanguage();
 setStatus('ready');
+WindowBar.debug('translate:script:ready');
 </script>
 </body>
 </html>

@@ -27,6 +27,8 @@ PanelHostCreate(pagePath, title, options := 0) {
         "visible", false,
         "realized", false,
         "focusMonitor", 0,
+        "windowBarNative", false,
+        "windowBarPinned", false,
         "navigationHandler", 0,
         "messageHandler", 0,
         "navigationToken", 0,
@@ -95,6 +97,7 @@ PanelHostNavigationCompleted(host, sender, args) {
     catch
         success := false
     host["pageReady"] := success
+    DebugLog("panel navigation title=" . host["title"] . " success=" . success)
     callbacks := host["callbacks"]
     if callbacks.Has("navigation")
         callbacks["navigation"].Call(host, sender, args)
@@ -141,6 +144,10 @@ PanelHostHide(host) {
     if !IsObject(host)
         return
     host["visible"] := false
+    PanelHostStopFocusMonitor(host)
+    PanelHostStopAutoHide(host)
+    if host.Has("windowBarNative")
+        host["windowBarNative"] := false
     if IsObject(host["gui"])
         host["gui"].Hide()
 }
@@ -151,8 +158,10 @@ PanelHostExecute(host, script) {
     try {
         host["webView"].ExecuteScriptAsync(script)
         return true
-    } catch
+    } catch {
+        DebugLog("panel execute failed title=" . host["title"])
         return false
+    }
 }
 
 PanelHostFill(host) {
@@ -179,6 +188,69 @@ PanelHostStartFocusMonitor(host, callback, interval := 100) {
     host["focusMonitor"] := callback
     SetTimer(callback, interval)
     return true
+}
+
+; Shared focus-to-hide behavior for transient panels. A feature supplies only
+; its hide callback; visibility, first-activation grace, and window-bar
+; suppressions are handled here.
+PanelHostStartAutoHide(host, hideCallback, options := 0) {
+    if !IsObject(host) || !IsObject(hideCallback)
+        return false
+    options := IsObject(options) ? options : Map()
+    PanelHostStopAutoHide(host)
+    host["autoHideCallback"] := hideCallback
+    host["autoHideGuard"] := options.Has("guard") ? options["guard"] : 0
+    host["autoHideRequireActive"] := options.Has("requireActive") && options["requireActive"]
+    host["autoHideSeenActive"] := false
+    interval := options.Has("interval") ? options["interval"] : 100
+    monitor := PanelHostAutoHideMonitor.Bind(host)
+    host["autoHideMonitor"] := monitor
+    SetTimer(monitor, interval)
+    return true
+}
+
+PanelHostStopAutoHide(host) {
+    if !IsObject(host)
+        return
+    if host.Has("autoHideMonitor") && IsObject(host["autoHideMonitor"])
+        SetTimer(host["autoHideMonitor"], 0)
+    if host.Has("autoHideMonitor")
+        host["autoHideMonitor"] := 0
+    if host.Has("autoHideCallback")
+        host["autoHideCallback"] := 0
+    if host.Has("autoHideGuard")
+        host["autoHideGuard"] := 0
+    if host.Has("autoHideSeenActive")
+        host["autoHideSeenActive"] := false
+}
+
+PanelHostAutoHideMonitor(host, *) {
+    if !IsObject(host)
+        return
+    if !host["visible"] || !IsObject(host["gui"]) {
+        PanelHostStopAutoHide(host)
+        return
+    }
+    ; A pinned or native-window panel is intentionally persistent. The timer
+    ; remains registered so returning to the custom transient mode resumes
+    ; the same behavior without feature-specific monitor code.
+    if (host.Has("windowBarPinned") && host["windowBarPinned"])
+        return
+    if (host.Has("windowBarNative") && host["windowBarNative"])
+        return
+    guard := host.Has("autoHideGuard") ? host["autoHideGuard"] : 0
+    if IsObject(guard) && guard.Call()
+        return
+    if PanelHostWindowActive(host) {
+        host["autoHideSeenActive"] := true
+        return
+    }
+    if host.Has("autoHideRequireActive") && host["autoHideRequireActive"]
+        if !host["autoHideSeenActive"]
+            return
+    hideCallback := host.Has("autoHideCallback") ? host["autoHideCallback"] : 0
+    if IsObject(hideCallback)
+        hideCallback.Call()
 }
 
 PanelHostStopFocusMonitor(host) {
@@ -219,6 +291,7 @@ PanelHostDestroy(host) {
     if !IsObject(host)
         return
     PanelHostStopFocusMonitor(host)
+    PanelHostStopAutoHide(host)
     PanelHostDetachWebViewEvents(host)
     if IsObject(host["gui"])
         try host["gui"].Destroy()

@@ -9,7 +9,6 @@ global EverythingPendingText := ""
 global EverythingPendingOpen := false
 global EverythingOpenSerial := 0
 global EverythingPageReady := false
-global EverythingFocusSeenActive := false
 global EverythingQuerySeq := 0
 global EverythingQueryText := ""
 global EverythingCategory := "all"
@@ -83,7 +82,6 @@ EverythingBuildQuery(text, category := "all") {
 EverythingShow(query := "", explicitQuery := false) {
     global EverythingVisible, EverythingPendingText, EverythingPendingOpen
     global EverythingOpenSerial, EverythingWindowInitialized, EverythingCategory, EverythingQueryText
-    global EverythingFocusSeenActive
     global EverythingPageReady, EverythingEsHintShown
 
     if explicitQuery && EverythingVisible
@@ -120,9 +118,13 @@ EverythingShow(query := "", explicitQuery := false) {
         try WinRestore("ahk_id " . panelGui.Hwnd)
         try WinActivate("ahk_id " . panelGui.Hwnd)
     }
+    WindowBarApplyNativeMode(EverythingHost, WindowBarIsNative(EverythingHost))
+    WindowBarApplyPinnedState(EverythingHost, WindowBarIsPinned(EverythingHost),
+        EverythingVisible, EverythingHide, Map("requireActive", true))
+    WindowBarSetPinnedPage(EverythingHost, WindowBarIsPinned(EverythingHost))
     ShowSystemCursor()
-    EverythingFocusSeenActive := false
-    PanelHostStartFocusMonitor(EverythingHost, EverythingFocusMonitor)
+    PanelHostStartAutoHide(EverythingHost, EverythingHide,
+        Map("requireActive", true))
     if EverythingPageReady {
         EverythingBeginPendingOpen()
         SetTimer(EverythingFocusInput, -1)
@@ -360,22 +362,6 @@ EverythingFocusInput(*) {
 EverythingIsActive() {
     global EverythingHost, EverythingVisible
     return EverythingVisible && PanelHostWindowActive(EverythingHost)
-}
-
-EverythingFocusMonitor(*) {
-    global EverythingHost, EverythingVisible, EverythingFocusSeenActive
-    if !EverythingVisible || !IsObject(PanelHostGui(EverythingHost)) {
-        PanelHostStopFocusMonitor(EverythingHost)
-        return
-    }
-    if !PanelHostWindowActive(EverythingHost) {
-        ; Allow the initial WinActivate to settle before treating the first
-        ; inactive tick as a real blur.
-        if EverythingFocusSeenActive
-            EverythingHide()
-        return
-    }
-    EverythingFocusSeenActive := true
 }
 
 EverythingFindResult(resultId, version := "") {

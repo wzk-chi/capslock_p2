@@ -86,6 +86,7 @@ DictionaryTryShow(text) {
     if word = ""
         return false
     entry := DictionaryLookup(word)
+    DebugLog("dictionary selected length=" . StrLen(word) . " known=" . IsObject(entry))
     if !IsObject(entry)
         return false
     DictionaryShow(entry)
@@ -119,8 +120,11 @@ DictionaryShow(entry := 0, query := "") {
     if IsObject(panelGui) {
         WinActivate("ahk_id " . panelGui.Hwnd)
     }
+    WindowBarApplyNativeMode(DictionaryHost, WindowBarIsNative(DictionaryHost))
+    WindowBarApplyPinnedState(DictionaryHost, WindowBarIsPinned(DictionaryHost),
+        DictionaryVisible, DictionaryHide)
+    WindowBarSetPinnedPage(DictionaryHost, WindowBarIsPinned(DictionaryHost))
     ShowSystemCursor()
-    PanelHostStartFocusMonitor(DictionaryHost, DictionaryFocusMonitor)
 
     if PanelHostPageReady(DictionaryHost) {
         if IsObject(entry)
@@ -153,7 +157,7 @@ DictionaryEnsureWebView() {
 
     dictionarySize := ScreenFitSize(640, 640, 460, 380)
     DictionaryHost := PanelHostCreate(pagePath, "capslock_p2 词典", Map(
-        "guiOptions", "+AlwaysOnTop +Caption +Resize +MinSize460x380 +ToolWindow",
+        "guiOptions", "+Resize +MinSize460x380 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow -Caption",
         "dataPath", A_Temp . "\CapsLockPlusDictionaryWebView2",
         "initialShow", "x-32000 y-32000 w" . dictionarySize[1] . " h" . dictionarySize[2] . " NA",
         "callbacks", Map(
@@ -186,6 +190,7 @@ DictionaryNavigationCompleted(host, sender, args) {
         return
     }
     if DictionaryVisible {
+        WindowBarSyncPageState(host)
         if IsObject(DictionaryPendingEntry)
             DictionaryPushEntry(DictionaryPendingEntry)
         else {
@@ -205,6 +210,10 @@ DictionaryWebMessageReceived(sender, args) {
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
+    if WindowBarHandleDebugMessage(msg, "dictionary")
+        return
+    if WindowBarHandleMessage(DictionaryHost, messageType, DictionaryHide)
+        return
     if messageType = "lookup" {
         word := DictionaryNormalizeWord(LLMMsgField(msg, "text"))
         if word = ""
@@ -227,8 +236,6 @@ DictionaryWebMessageReceived(sender, args) {
             SetTimer(DictionarySuggestionTimer, 0)
         DictionarySuggestionTimer := DictionaryRunSuggestions.Bind(query, DictionarySessionId, DictionaryQuerySeq)
         SetTimer(DictionarySuggestionTimer, -1)
-    } else if messageType = "hide" {
-        DictionaryHide()
     } else if messageType = "cursorMove" {
         ; Same mouse-vanish-on-typing recovery as the other panels.
         ShowSystemCursor()
@@ -286,6 +293,7 @@ DictionaryPushQuery(text) {
     if text = ""
         return
     autoLookup := DictionaryNormalizeWord(text) != ""
+    DebugLog("dictionary push query auto=" . autoLookup . " length=" . StrLen(text))
     script := "window.setQuery(" . LLMJsonQuote(text) . "," . (autoLookup ? "true" : "false") . ");"
     PanelHostExecute(DictionaryHost, script)
 }
@@ -402,16 +410,6 @@ DictionaryIsDarkTheme() {
         return false
 }
 
-DictionaryFocusMonitor(*) {
-    global DictionaryHost, DictionaryVisible
-    if !DictionaryVisible || !IsObject(PanelHostGui(DictionaryHost)) {
-        PanelHostStopFocusMonitor(DictionaryHost)
-        return
-    }
-    if !PanelHostWindowActive(DictionaryHost)
-        DictionaryHide()
-}
-
 DictionaryHide(*) {
     global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
     global DictionaryLookupTimer, DictionarySuggestionTimer
@@ -428,7 +426,6 @@ DictionaryHide(*) {
     DictionaryPendingEntry := 0
     DictionaryPendingQuery := ""
     PanelHostHide(DictionaryHost)
-    PanelHostStopFocusMonitor(DictionaryHost)
 }
 
 DictionaryShutdown(*) {

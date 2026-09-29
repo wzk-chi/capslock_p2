@@ -210,9 +210,11 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="windowbar.js"></script>
 </head>
 <body>
 <main class="card">
+  <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 词典" data-windowbar-icon="book-open"></div>
   <header class="topbar">
     <button id="translateBtn" class="modebtn" data-i18n="switchTranslate"
             data-i18n-title="switchTranslate" title="翻译" aria-label="翻译">翻译</button>
@@ -260,6 +262,8 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 </main>
 
 <script>
+WindowBar.init();
+WindowBar.debug('dictionary:script:start');
 const scroll = document.getElementById('scroll');
 const boot = document.getElementById('boot');
 const entryView = document.getElementById('entryView');
@@ -277,12 +281,18 @@ const missWord = document.getElementById('missWord');
 const search = document.getElementById('search');
 const suggestBox = document.getElementById('suggest');
 const translateBtn = document.getElementById('translateBtn');
+const windowDrag = document.getElementById('windowDrag');
+const windowTitle = document.getElementById('windowTitle');
+const pinBtn = document.getElementById('pinPanel');
+const independentBtn = document.getElementById('independentPanel');
+const closeBtn = document.getElementById('closePanel');
 
 // Bilingual UI, following the same rule as the translate panel: the AHK host
 // sends uiLanguage with every entry.
 const STRINGS = {
   en: {
     brand: 'Dict',
+    appTitle: 'capslock_p2 Dictionary',
     searchPh: 'Look up a word…',
     chineseDefs: 'Chinese definitions',
     englishDefs: 'English definitions',
@@ -291,6 +301,11 @@ const STRINGS = {
     notFoundHint: 'This word is not in the local dictionary.',
     switchTranslate: 'Translate',
     speak: 'Speak',
+    pin: 'Pin',
+    unpin: 'Unpin',
+    close: 'Close',
+    independent: 'Independent window',
+    dragWindow: 'Drag to move',
     oxford: 'Oxford 3000',
     collinsTip: 'Collins frequency',
     bnc: 'BNC',
@@ -304,6 +319,7 @@ const STRINGS = {
   },
   zh: {
     brand: '词典',
+    appTitle: 'capslock_p2 词典',
     searchPh: '查询单词…',
     chineseDefs: '中文释义',
     englishDefs: '英文释义',
@@ -312,6 +328,11 @@ const STRINGS = {
     notFoundHint: '该词不在本地词典中。',
     switchTranslate: '翻译',
     speak: '发音',
+    pin: '固定',
+    unpin: '取消固定',
+    close: '关闭',
+    independent: '独立窗口',
+    dragWindow: '拖动移动窗口',
     oxford: '牛津3000',
     collinsTip: '柯林斯词频星级',
     bnc: 'BNC',
@@ -338,6 +359,14 @@ function tMap(key, code) {
 
 function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  windowTitle.textContent = t('appTitle');
+  windowDrag.title = t('dragWindow');
+  independentBtn.title = t('independent');
+  independentBtn.setAttribute('aria-label', t('independent'));
+  closeBtn.title = t('close');
+  closeBtn.setAttribute('aria-label', t('close'));
+  pinBtn.title = pinBtn.classList.contains('pinned') ? t('unpin') : t('pin');
+  pinBtn.setAttribute('aria-label', pinBtn.title);
   for (const node of document.querySelectorAll('[data-i18n]'))
     node.textContent = t(node.dataset.i18n);
   for (const node of document.querySelectorAll('[data-i18n-ph]'))
@@ -345,6 +374,21 @@ function applyLanguage() {
   for (const node of document.querySelectorAll('[data-i18n-title]'))
     node.title = t(node.dataset.i18nTitle);
 }
+
+function applyPinnedState(value) {
+  const pinned = !!value;
+  WindowBar.setPinned(pinned);
+  pinBtn.title = pinned ? t('unpin') : t('pin');
+  pinBtn.setAttribute('aria-label', pinBtn.title);
+}
+
+window.setPinned = function (value) {
+  applyPinnedState(value);
+};
+
+window.setNativeWindowMode = function (value) {
+  WindowBar.setNativeWindowMode(value);
+};
 
 function post(obj) {
   if (window.chrome && chrome.webview)
@@ -453,6 +497,7 @@ function renderForms(exchangeStr) {
 function lookup(word) {
   const clean = word.trim();
   if (!clean) return;
+  WindowBar.debug('dictionary:lookup', `length=${clean.length}`);
   hideSuggestions();
   postType('lookup', clean);
 }
@@ -541,6 +586,7 @@ suggestBox.addEventListener('click', event => {
 // setEntry carries one dictionary row (all string fields) or {word, miss}.
 window.setEntry = function (entry) {
   if (!entry) return;
+  WindowBar.debug('dictionary:setEntry');
   hideSuggestions();
   lang = entry.uiLanguage === 'en' ? 'en' : 'zh';
   applyLanguage();
@@ -578,6 +624,7 @@ window.setEntry = function (entry) {
 };
 
 window.setQuery = function (text, autoLookup) {
+  WindowBar.debug('dictionary:setQuery', `auto=${!!autoLookup} length=${String(text || '').length}`);
   hideSuggestions();
   search.value = text || '';
   if (autoLookup && search.value.trim())
@@ -673,6 +720,7 @@ document.addEventListener('keydown', event => {
 });
 
 applyLanguage();
+WindowBar.debug('dictionary:script:ready');
 window.focus();
 search.focus({ preventScroll: true });
 </script>

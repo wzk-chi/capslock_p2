@@ -8,7 +8,7 @@
   全局变量和函数在所有文件间共享。
 - **键盘层**：按住 CapsLock 进入键层，`lib/input/keymap.ahk` 做键位方案与层调度，`lib/input/keys.ahk` 提供
   `keyFunc_*` 动作函数；`lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
-- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/shared/panelHost.ahk` 创建控制器并承载。
+- **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/shared/panelHost.ahk` 创建控制器并承载；临时面板的失焦隐藏共用 `PanelHostStartAutoHide()`，使用自定义标题栏的页面再共用 `windowBar.ahk` 的窗口样式切换、拖动、置顶和独立窗口抑制逻辑。
   AHK ⇄ 页面双向通信通过 thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用
   `window.chrome.webview.postMessage` 发 JSON，宿主统一接收并调用页面函数。
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
@@ -27,7 +27,8 @@ lib\
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
   customHotkeys.ahk                [CustomHotkey] 全局快捷键重映射
-  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与焦点生命周期
+  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与共用失焦隐藏生命周期
+  windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
   qbar.ahk                         qbar 状态与稳定入口
   qbar_panel.ahk                   qbar 面板生命周期、消息和尺寸
@@ -54,6 +55,7 @@ lib\
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
+  theme.css / icons.js / windowbar.js 共享主题、图标适配器和标题栏 DOM/交互
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
   resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标

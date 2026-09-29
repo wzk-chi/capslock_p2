@@ -5,6 +5,7 @@
 global LLMTranslateHost := 0
 global LLMTranslateVisible := false
 global LLMTranslatePinned := false
+global LLMTranslateNativeWindow := false
 global LLMTranslatePendingText := ""
 global LLMTranslateRequestRunning := false
 global LLMTranslateStreamId := 0
@@ -69,6 +70,7 @@ LLMTranslateShow(text, allowEmpty := false) {
     panelGui := PanelHostGui(LLMTranslateHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
+    LLMTranslateApplyNativeWindowMode()
     LLMTranslateApplyWindowState()
     ShowSystemCursor()
 
@@ -99,7 +101,7 @@ LLMTranslateEnsureWebView() {
 
     translateSize := ScreenFitSize(720, 500, 520, 360)
     LLMTranslateHost := PanelHostCreate(pagePath, "capslock_p2 Translate", Map(
-        "guiOptions", "+Caption +Resize +MinSize520x360 +ToolWindow",
+        "guiOptions", "+Resize +MinSize520x360 +MinimizeBox +MaximizeBox +SysMenu +ToolWindow -Caption",
         "dataPath", A_Temp . "\CapsLockPlusWebView2",
         "initialShow", "x-32000 y-32000 w" . translateSize[1] . " h" . translateSize[2] . " NA",
         "callbacks", Map(
@@ -130,6 +132,7 @@ LLMTranslateNavigationCompleted(host, sender, args) {
         return
     }
     if LLMTranslateVisible {
+        LLMTranslateApplyNativeWindowMode()
         LLMTranslatePushLanguage()
         LLMTranslateSetPinned()
         configured := TranslateConfigured()
@@ -148,6 +151,12 @@ LLMTranslateWebMessageReceived(sender, args) {
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
+    if WindowBarHandleDebugMessage(msg, "translate")
+        return
+    if WindowBarHandleMessage(LLMTranslateHost, messageType, LLMTranslateHide,
+        LLMTranslateSetPinnedState, Map("guard", LLMTranslateFocusHideGuard),
+        LLMTranslateSetNativeState)
+        return
     if messageType = "translate" {
         text := LLMMsgField(msg, "text")
         if text = ""
@@ -165,12 +174,6 @@ LLMTranslateWebMessageReceived(sender, args) {
         SetTimer(() => LLMTranslateOpenDictionary(text), -1)
     } else if messageType = "openSettings" {
         SetTimer(() => SettingsShow("translate"), -1)
-    } else if messageType = "togglePinned" {
-        LLMTranslatePinned := !LLMTranslatePinned
-        LLMTranslateApplyWindowState()
-        LLMTranslateSetPinned()
-    } else if messageType = "hide" {
-        LLMTranslateHide()
     } else if messageType = "cursorMove" {
         ; WebView2 does not always replay the native cursor after Windows'
         ; mouse-vanish-on-typing behavior. Restore it on an actual page mouse
@@ -220,7 +223,9 @@ LLMTranslateSetDirection(sourceLanguage, targetLanguage, manual := false) {
 
 LLMTranslatePushLanguage() {
     options := TranslateOptionsSnapshot()
-    payload := Map("uiLanguage", LLMUiLanguage(), "translation", options)
+    uiLanguage := LLMUiLanguage()
+    DebugLog("translate push language=" . uiLanguage . " ready=" . PanelHostPageReady(LLMTranslateHost))
+    payload := Map("uiLanguage", uiLanguage, "translation", options)
     LLMTranslateExec("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
 }
 
@@ -237,14 +242,29 @@ LLMTranslateSetPinned() {
 
 LLMTranslateApplyWindowState() {
     global LLMTranslateHost, LLMTranslatePinned, LLMTranslateVisible
-    panelGui := PanelHostGui(LLMTranslateHost)
-    if !IsObject(panelGui)
-        return
-    WinSetAlwaysOnTop(LLMTranslatePinned, "ahk_id " . panelGui.Hwnd)
-    if LLMTranslatePinned
-        PanelHostStopFocusMonitor(LLMTranslateHost)
-    else if LLMTranslateVisible
-        PanelHostStartFocusMonitor(LLMTranslateHost, LLMTranslateFocusMonitor)
+    WindowBarApplyPinnedState(LLMTranslateHost, LLMTranslatePinned,
+        LLMTranslateVisible, LLMTranslateHide,
+        Map("guard", LLMTranslateFocusHideGuard))
+}
+
+LLMTranslateApplyNativeWindowMode() {
+    global LLMTranslateHost, LLMTranslateNativeWindow
+    WindowBarApplyNativeMode(LLMTranslateHost, LLMTranslateNativeWindow)
+}
+
+LLMTranslateSetPinnedState(value) {
+    global LLMTranslatePinned
+    LLMTranslatePinned := !!value
+}
+
+LLMTranslateSetNativeState(value) {
+    global LLMTranslateNativeWindow
+    LLMTranslateNativeWindow := !!value
+}
+
+LLMTranslateBeginDrag() {
+    global LLMTranslateHost
+    WindowBarBeginDrag(LLMTranslateHost)
 }
 
 ; The WebView2 pages post their payloads as JSON.stringify'd text, so a full
@@ -400,30 +420,18 @@ LLMTranslateResize(targetGui, minMax, width, height) {
     PanelHostResize(LLMTranslateHost, minMax)
 }
 
-LLMTranslateFocusMonitor(*) {
-    global LLMTranslateHost, LLMTranslateVisible, LLMTranslatePinned, SettingsVisible
-    if !LLMTranslateVisible || !IsObject(PanelHostGui(LLMTranslateHost)) {
-        PanelHostStopFocusMonitor(LLMTranslateHost)
-        return
-    }
-    if LLMTranslatePinned {
-        PanelHostStopFocusMonitor(LLMTranslateHost)
-        return
-    }
-    if SettingsVisible {
-        return
-    }
-    if !PanelHostWindowActive(LLMTranslateHost)
-        LLMTranslateHide()
+LLMTranslateFocusHideGuard() {
+    global SettingsVisible
+    return SettingsVisible
 }
 
 LLMTranslateHide(*) {
     global LLMTranslateHost, LLMTranslateVisible
-    global LLMTranslateStreamId, LLMTranslateRequestRunning
+    global LLMTranslateStreamId, LLMTranslateRequestRunning, LLMTranslateNativeWindow
     LLMTranslateInvalidateRequest()
     LLMTranslateVisible := false
+    LLMTranslateNativeWindow := false
     PanelHostHide(LLMTranslateHost)
-    PanelHostStopFocusMonitor(LLMTranslateHost)
 }
 
 LLMTranslateShutdown(*) {
