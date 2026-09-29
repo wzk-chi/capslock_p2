@@ -33,7 +33,7 @@ button { color: inherit; cursor: default; }
 .side-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 9px; font-size: 15px; font-weight: 650; }
 .side-count { color: var(--ui-subtle); font-size: 10px; font-weight: 400; }
 .tag-actions { display: flex; gap: 5px; margin: 0 3px 10px; }
-.tag-action { display: inline-flex; padding: 4px 6px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 10px; }
+.tag-action { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
 .tag-action .lucide { width: 12px; height: 12px; }
 .tag-action:hover, .tag-action:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .tag-list { min-height: 0; overflow: auto; }
@@ -63,7 +63,7 @@ button { color: inherit; cursor: default; }
 .editor-page .editor { width: min(900px, 100%); height: 100%; min-height: 0; margin: 0 auto; border: 0; border-radius: 0; box-shadow: none; background: var(--ui-bg); }
 .editor { width: min(900px, 100%); height: min(670px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-line-strong); border-radius: 12px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .editor-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px 10px; border-bottom: 1px solid var(--ui-line); }
-.editor-back { display: inline-flex; flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.editor-back { width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
 .editor-back .lucide { width: 13px; height: 13px; }
 .editor-back:hover, .editor-back:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .editor-title { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 20px; font-weight: 650; }
@@ -91,21 +91,22 @@ button { color: inherit; cursor: default; }
 .editor-content pre { padding: 8px; border-radius: 6px; background: var(--ui-code); font-family: Consolas, monospace; font-style: normal; font-weight: 400; white-space: pre-wrap; }
 .editor-content pre * { font-family: inherit; font-style: normal; font-weight: 400; }
 .editor-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 17px; border-top: 1px solid var(--ui-line); }
-.editor-button { padding: 7px 13px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.editor-button { width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); }
 .editor-button.primary { border-color: var(--ui-button-bg); background: var(--ui-button-bg); color: var(--ui-button-text); }
 .toast { position: fixed; top: 76px; left: 50%; z-index: 30; max-width: 340px; padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); box-shadow: var(--ui-shadow-soft); font-size: 11px; text-align: center; transform: translateX(-50%); }
 .toast.hidden { display: none; }
 .multi-tools { display: none; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--ui-muted); font-size: 11px; }.multi-tools.visible { display: flex; }
 .select-all { accent-color: var(--ui-accent); }
 .multi-button { padding: 5px 9px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.multi-button.icon-only { width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .multi-button:hover, .multi-button:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .multi-button.danger { color: var(--ui-danger); }
 .multi-button:disabled { opacity: .45; }
 .note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
-.context-menu { position: fixed; z-index: 50; min-width: 148px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.context-menu { position: fixed; z-index: 50; width: 42px; min-width: 42px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .context-menu.hidden { display: none; }
-.context-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
-.context-menu button .lucide { width: 14px; height: 14px; }
+.context-menu button { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); }
+.context-menu button .lucide { width: 16px; height: 16px; }
 .context-menu button:hover, .context-menu button:focus-visible { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .context-menu button:disabled { opacity: .4; }
 .context-menu button.danger { color: var(--ui-danger); }
@@ -125,19 +126,19 @@ button { color: inherit; cursor: default; }
   <div id="workspace" class="workspace">
     <aside class="sidebar" aria-label="标签列表">
       <div class="side-heading"><span>标签</span><span id="tagCount" class="side-count"></span></div>
-      <div class="tag-actions"><button id="addTag" class="tag-action" type="button"><i data-lucide="plus"></i>添加</button><button id="renameTag" class="tag-action" type="button"><i data-lucide="pencil"></i>修改</button><button id="deleteTag" class="tag-action" type="button"><i data-lucide="trash"></i>删除</button></div>
+      <div class="tag-actions"><button id="addTag" class="tag-action" type="button" aria-label="添加标签" title="添加标签"><i data-lucide="plus"></i></button><button id="renameTag" class="tag-action" type="button" aria-label="修改标签" title="修改标签"><i data-lucide="pencil"></i></button><button id="deleteTag" class="tag-action" type="button" aria-label="删除标签" title="删除标签"><i data-lucide="trash"></i></button></div>
       <div id="tags" class="tag-list"></div>
     </aside>
     <main id="browse" class="browse" aria-label="便签预览列表">
       <div class="browse-inner">
         <div class="browse-heading"><h1>最近便签</h1><span id="noteCount" class="muted"></span></div>
-        <div id="multiTools" class="multi-tools"><label><input id="selectAll" class="select-all" type="checkbox"> 全选</label><span id="selectedCount">已选 0</span><button id="multiDelete" class="multi-button danger" type="button" disabled>删除</button><button id="multiExit" class="multi-button" type="button">退出多选</button></div>
+        <div id="multiTools" class="multi-tools"><label><input id="selectAll" class="select-all" type="checkbox"> 全选</label><span id="selectedCount">已选 0</span><button id="multiDelete" class="multi-button danger icon-only" type="button" aria-label="删除所选笔记" title="删除所选笔记" disabled><i data-lucide="trash"></i></button><button id="multiExit" class="multi-button icon-only" type="button" aria-label="退出多选" title="退出多选"><i data-lucide="x"></i></button></div>
         <div id="notes"></div>
       </div>
     </main>
     <main id="editorPage" class="editor-page" aria-label="编辑便签">
       <section class="editor">
-        <div class="editor-head"><button id="editorBack" class="editor-back" type="button"><i data-lucide="arrow-left"></i>返回</button><input id="editorTitle" class="editor-title" placeholder="标题"></div>
+        <div class="editor-head"><button id="editorBack" class="editor-back" type="button" aria-label="返回" title="返回"><i data-lucide="arrow-left"></i></button><input id="editorTitle" class="editor-title" placeholder="标题"></div>
         <div class="editor-tags">
           <span class="editor-tags-label" aria-hidden="true">标签</span>
           <div id="editorTagPicker" class="tag-picker">
@@ -150,7 +151,7 @@ button { color: inherit; cursor: default; }
           <button class="tool" type="button" data-command="bold" aria-label="加粗" title="加粗"><i data-lucide="bold"></i></button><button class="tool" type="button" data-command="italic" aria-label="斜体" title="斜体"><i data-lucide="italic"></i></button><button class="tool" type="button" data-command="strike" aria-label="删除线" title="删除线"><i data-lucide="strikethrough"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="h2" aria-label="标题" title="标题"><i data-lucide="heading-2"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="blockquote" aria-label="引用" title="引用"><i data-lucide="quote"></i></button><button class="tool" type="button" data-command="insertUnorderedList" aria-label="无序列表" title="无序列表"><i data-lucide="list"></i></button><button class="tool" type="button" data-command="insertOrderedList" aria-label="有序列表" title="有序列表"><i data-lucide="list-ordered"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="pre" aria-label="代码块" title="代码块"><i data-lucide="code-xml"></i></button><button id="insertImage" class="tool" type="button" aria-label="插入图片" title="插入图片"><i data-lucide="image-plus"></i></button><button class="tool" type="button" data-command="createLink" aria-label="插入链接" title="插入链接"><i data-lucide="link"></i></button>
         </div>
         <div id="editorContent" class="editor-content" contenteditable="true" spellcheck="false"></div>
-        <div class="editor-foot"><button id="cancelEdit" class="editor-button" type="button">取消</button><button id="saveEdit" class="editor-button primary" type="button">保存</button></div>
+        <div class="editor-foot"><button id="cancelEdit" class="editor-button icon-only" type="button" aria-label="取消" title="取消"><i data-lucide="x"></i></button><button id="saveEdit" class="editor-button primary icon-only" type="button" aria-label="保存" title="保存"><i data-lucide="check"></i></button></div>
       </section>
     </main>
   </div>
@@ -158,13 +159,13 @@ button { color: inherit; cursor: default; }
 
 <button id="addNote" class="floating-add" type="button" aria-label="新增笔记" title="新增笔记"><i data-lucide="plus"></i></button>
 <div id="contextMenu" class="context-menu hidden" role="menu" aria-label="笔记操作">
-  <button id="contextEdit" type="button" role="menuitem"><i data-lucide="pencil"></i><span data-label>修改</span></button>
-  <button id="contextCopy" type="button" role="menuitem"><i data-lucide="copy"></i><span data-label>复制</span></button>
-  <button id="contextPaste" type="button" role="menuitem"><i data-lucide="clipboard-paste"></i><span data-label>粘贴</span></button>
-  <button id="contextPin" type="button" role="menuitem"><i data-lucide="pin"></i><span data-label>置顶</span></button>
-  <button id="contextDelete" class="danger" type="button" role="menuitem"><i data-lucide="trash"></i><span data-label>删除</span></button>
+  <button id="contextEdit" type="button" role="menuitem" aria-label="修改" title="修改"><i data-lucide="pencil"></i></button>
+  <button id="contextCopy" type="button" role="menuitem" aria-label="复制" title="复制"><i data-lucide="copy"></i></button>
+  <button id="contextPaste" type="button" role="menuitem" aria-label="粘贴" title="粘贴"><i data-lucide="clipboard-paste"></i></button>
+  <button id="contextPin" type="button" role="menuitem" aria-label="置顶" title="置顶"><i data-lucide="pin"></i></button>
+  <button id="contextDelete" class="danger" type="button" role="menuitem" aria-label="删除" title="删除"><i data-lucide="trash"></i></button>
   <div class="context-separator"></div>
-  <button id="contextMulti" type="button" role="menuitem"><i data-lucide="list-checks"></i><span data-label>多选</span></button>
+  <button id="contextMulti" type="button" role="menuitem" aria-label="多选" title="多选"><i data-lucide="list-checks"></i></button>
 </div>
 <input id="imageInput" type="file" accept="image/*" multiple hidden>
 <div id="toast" class="toast hidden" role="status"></div>
@@ -241,7 +242,7 @@ function addEditorTagFromInput() { if (!state.editor) return; const input = $('e
 function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text == null ? '' : String(text); return div.innerHTML; }
 function contextTargetIds() { const id = state.contextNoteId; if (state.multi && id && state.selectedIds.has(id)) return Array.from(state.selectedIds); return id ? [id] : []; }
 function hideContextMenu() { $('contextMenu').classList.add('hidden'); state.contextNoteId = ''; }
-function updateContextMenu() { const ids = contextTargetIds(); const one = ids.length === 1; $('contextCopy').disabled = !ids.length; $('contextPaste').disabled = !one; $('contextEdit').disabled = !one; $('contextPin').disabled = !ids.length; $('contextDelete').disabled = !ids.length; const label = $('contextMulti').querySelector('[data-label]'); if (label) label.textContent = state.multi ? '退出多选' : '多选'; }
+function updateContextMenu() { const ids = contextTargetIds(); const one = ids.length === 1; $('contextCopy').disabled = !ids.length; $('contextPaste').disabled = !one; $('contextEdit').disabled = !one; $('contextPin').disabled = !ids.length; $('contextDelete').disabled = !ids.length; const multiLabel = state.multi ? '退出多选' : '多选'; $('contextMulti').title = multiLabel; $('contextMulti').setAttribute('aria-label', multiLabel); }
 function showContextMenu(event, note) { const id = String(note.id); state.contextNoteId = id; if (state.multi) { if (!state.selectedIds.has(id)) { state.selectedIds.clear(); state.selectedIds.add(id); renderNotes(); } } else state.selectedIds.clear(); const menu = $('contextMenu'); menu.classList.remove('hidden'); updateContextMenu(); const left = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8); const top = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8); menu.style.left = `${Math.max(8, left)}px`; menu.style.top = `${Math.max(8, top)}px`; }
 function contextIdsOrEmpty() { const ids = contextTargetIds(); if (ids.length) hideContextMenu(); return ids; }
 function contextCopy() { const ids = contextIdsOrEmpty(); if (ids.length) post({ type: 'copyNotes', noteIds: ids }); }
