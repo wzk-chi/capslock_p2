@@ -1,5 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+;@Ahk2Exe-SetFileVersion 0.2.0.0
+;@Ahk2Exe-SetProductVersion 0.2.0.0
 #Warn
 ; The VarUnset check reports helper calls that cross an #Include boundary
 ; (DebugLog, ShowMsg, ...) as unassigned locals, even though they resolve fine
