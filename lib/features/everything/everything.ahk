@@ -74,9 +74,11 @@ EverythingBuildQuery(text, category := "all") {
     clause := EverythingCategoryClause(category)
     if clause = "" || text = ""
         return text = "" ? clause : text
-    ; Apply the type condition in the same native Everything query. Group the
-    ; user's expression so OR branches all remain subject to the type clause.
-    return "(" . text . ") " . clause
+    ; Apply the type condition in the same native Everything query. Everything
+    ; 1.4 uses angle brackets for grouping; round-bracket grouping is optional
+    ; and may be disabled in the user's configuration. Keep OR branches
+    ; subject to the type clause without making the user's text literal.
+    return "<" . text . "> " . clause
 }
 
 EverythingShow(query := "", explicitQuery := false) {
