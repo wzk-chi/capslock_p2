@@ -225,6 +225,8 @@ keyFunc_qbar(*) {
         return
     if EverythingIsActive()
         return
+    if NotesIsActive()
+        return
     QbarToggle()
 }
 

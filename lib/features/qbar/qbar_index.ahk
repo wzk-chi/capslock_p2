@@ -33,6 +33,10 @@ QbarConfigIndex() {
     items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", ""))
     items.Push(Map("short", "everything", "label", "everything <文件搜索>", "type", "everything", "value", ""))
     items.Push(Map("short", "find", "label", "find <文件搜索>", "type", "everything", "value", ""))
+    items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", ""))
+    items.Push(Map("short", "note", "label", "note <笔记>", "type", "notes", "value", ""))
+    items.Push(Map("short", "w", "label", "w <笔记>", "type", "notes", "value", ""))
+    items.Push(Map("short", "write", "label", "write <笔记>", "type", "notes", "value", ""))
     items.Push(Map("short", "f", "label", "f <文件搜索>", "type", "everything", "value", ""))
 
     ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former

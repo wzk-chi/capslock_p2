@@ -94,6 +94,7 @@ Shutdown(*) {
     try DictionaryShutdown()
     try AiChatShutdown()
     try EverythingShutdown()
+    try NotesShutdown()
     try QbarShutdown()
     try ShowSystemCursor()
     try HideLoading()

@@ -1104,12 +1104,12 @@ class WebView2 {
 		 * @param {$FilePath} path 
 		 * @param {WebView2.FILE_SYSTEM_HANDLE_PERMISSION} permission
 		 */
-		CreateWebFileSystemFileHandle(path, permission) => ComCall(26, this, 'wstr', path, 'int', permission, 'ptr*', value := WebView2.FileSystemHandle(), value)
+		CreateWebFileSystemFileHandle(path, permission) => (ComCall(26, this, 'wstr', path, 'int', permission, 'ptr*', value := WebView2.FileSystemHandle()), value)
 		/**
 		 * @param {$DirPath} path 
 		 * @param {WebView2.FILE_SYSTEM_HANDLE_PERMISSION} permission
 		 */
-		CreateWebFileSystemDirectoryHandle(path, permission) => ComCall(27, this, 'wstr', path, 'int', permission, 'ptr*', value := WebView2.FileSystemHandle(), value)
+		CreateWebFileSystemDirectoryHandle(path, permission) => (ComCall(27, this, 'wstr', path, 'int', permission, 'ptr*', value := WebView2.FileSystemHandle()), value)
 		/** @param {Array<IUnknown>} objects */
 		CreateObjectCollection(objects) {
 			items := Buffer(A_PtrSize * len := objects.Length), p := items.Ptr
@@ -2240,4 +2240,3 @@ CoTaskMem_String(ptr) {
 }
 #Include ComVar.ahk
 #Include Promise.ahk
-

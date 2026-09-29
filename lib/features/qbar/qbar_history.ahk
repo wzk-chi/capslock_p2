@@ -171,6 +171,8 @@ QbarHistoryRowType(kind) {
             return "ai"
         case "everything":
             return "everything"
+        case "notes":
+            return "notes"
         default:
             return "history"
     }
@@ -244,6 +246,8 @@ QbarHistorySerializeEntry(entry) {
         case "everything":
             serializedPayload["query"] := payload["query"]
             serializedPayload["runQuery"] := QbarHistoryBoolValue(payload["runQuery"]) ? JSON.true : JSON.false
+        case "notes":
+            serializedPayload["search"] := payload["search"]
         case "settings":
             serializedPayload["page"] := payload["page"]
     }
@@ -302,6 +306,10 @@ QbarHistoryNormalizeEntry(entry) {
             runQuery := payload.Has("runQuery") ? QbarHistoryBoolValue(payload["runQuery"]) : false
             normalizedPayload["query"] := value
             normalizedPayload["runQuery"] := runQuery
+        case "notes":
+            if !QbarHistoryPayloadString(payload, "search", &value)
+                value := ""
+            normalizedPayload["search"] := value
         case "settings":
             if !QbarHistoryPayloadString(payload, "page", &value) || value = ""
                 value := "general"
@@ -329,7 +337,7 @@ QbarHistoryPayloadString(payload, key, &value := "") {
 
 QbarHistoryKnownKind(kind) {
     switch kind {
-        case "run", "shortcut", "url", "path", "reveal", "ai", "everything", "settings":
+        case "run", "shortcut", "url", "path", "reveal", "ai", "everything", "notes", "settings":
             return true
         default:
             return false
@@ -373,6 +381,8 @@ QbarHistoryIdentity(entry) {
             return kind . QbarHistoryIdentityPart(payload["question"])
         case "everything":
             return kind . QbarHistoryIdentityPart(payload["query"]) . QbarHistoryIdentityPart(QbarHistoryBoolValue(payload["runQuery"]) ? "1" : "0")
+        case "notes":
+            return kind . QbarHistoryIdentityPart(payload["search"])
         case "settings":
             return kind . QbarHistoryIdentityPart(payload["page"])
         default:

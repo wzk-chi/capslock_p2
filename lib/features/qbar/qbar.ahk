@@ -6,6 +6,7 @@
 global QbarHost := 0
 global QbarVisible := false
 global QbarOpen := false            ; re-entrancy guard for QbarShow/QbarHide
+global QbarTargetHwnd := 0          ; external window captured before qbar opens
 global QbarIndexReady := false
 global QbarIndexLoading := false
 global QbarPendingText := ""
@@ -68,9 +69,13 @@ QbarToggle(*) {
 }
 
 QbarShow() {
-    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows
+    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarTargetHwnd
     if QbarOpen
         return
+
+    activeHwnd := WinGetID("A")
+    if !IsObject(PanelHostGui(QbarHost)) || activeHwnd != PanelHostGui(QbarHost).Hwnd
+        QbarTargetHwnd := activeHwnd
 
     ; "any": a line-wise selection must prefill too, even though it ends with
     ; the newline that strict mode reads as an editor's no-selection

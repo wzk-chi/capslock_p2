@@ -9,6 +9,7 @@ capslock_p2.ini
 capslock_p2-winsInfosRecorder.ini
 capslock_p2-debug.log
 *.log
+data/qbar-notes/
 
 # 参考的 v1 原版源码（只读参考，不属于本项目的源）
 capslock-plus/

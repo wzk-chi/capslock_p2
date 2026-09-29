@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>QBar 笔记 · 界面草图</title>
+  <link rel="stylesheet" href="../pages/theme.css">
+  <style>
+    :root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    body { margin: 0; min-width: 920px; height: 100vh; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { height: 100%; display: flex; flex-direction: column; }
+    .topbar { height: 68px; flex: 0 0 68px; display: flex; justify-content: center; align-items: center; gap: 20px; padding: 0 22px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface); }
+    .brand { display: flex; align-items: center; gap: 11px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: var(--ui-accent); color: var(--ui-button-text); font-size: 16px; }
+    .brand small { display: block; margin-top: 2px; color: var(--ui-muted); font-size: 11px; font-weight: 500; }
+    .search { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--ui-line-strong); border-radius: 10px; background: var(--ui-surface-soft); color: var(--ui-muted); }
+    .search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 13px; }
+    .search input::placeholder { color: var(--ui-subtle); }
+    .search kbd { padding: 2px 6px; border: 1px solid var(--ui-line); border-radius: 5px; color: var(--ui-subtle); font-size: 10px; white-space: nowrap; }
+    .search-group { width: min(760px, 100%); display: flex; align-items: center; gap: 8px; }
+    .search-button { width: 38px; height: 38px; border: 1px solid var(--ui-button-bg); border-radius: 8px; background: var(--ui-button-bg); color: var(--ui-button-text); }
+    .top-actions { display: none; }
+    .top-action { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ui-muted); }
+    .top-action:hover { background: var(--ui-surface-muted); color: var(--ui-text); }
+    .avatar { width: 29px; height: 29px; display: grid; place-items: center; margin-left: 3px; border-radius: 50%; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 12px; font-weight: 700; }
+
+    .layout { min-height: 0; flex: 1; display: grid; grid-template-columns: 272px minmax(0, 1fr); }
+    .layout.detail-layout { display: none; grid-template-columns: 272px minmax(0, 1fr); }
+    #detail-view:checked ~ .app .browse-layout { display: none; }
+    #detail-view:checked ~ .app .detail-layout { display: grid; }
+    .mode-switch { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    .tag-list { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--ui-line); background: var(--ui-surface-soft); }
+    .tag-head { padding: 21px 17px 13px; }
+    .tag-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .tag-heading h1 { margin: 0; font-size: 17px; letter-spacing: -.2px; }
+    .count { color: var(--ui-subtle); font-size: 11px; font-weight: 500; }
+    .tag-label { padding: 0 17px 8px; color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+    .tag-nav { padding: 0 9px; }
+    .tag-row { min-height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border-radius: 8px; color: var(--ui-muted); font-size: 12px; }
+    .tag-row.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-weight: 600; }
+    .tag-row span:last-child { color: var(--ui-subtle); font-size: 10px; }
+    .tag-tools { display: flex; gap: 6px; margin: 0 17px 11px; }
+    .tag-tool { padding: 4px 7px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 10px; }
+
+    .browse-center { min-width: 0; min-height: 0; overflow: auto; padding: 24px 30px 32px; background: var(--ui-bg); }
+    .browse-head { display: flex; justify-content: space-between; align-items: center; margin: 0 auto 15px; max-width: 760px; }
+    .browse-head h2 { margin: 0; font-size: 19px; }
+    .browse-sub { color: var(--ui-muted); font-size: 11px; }
+    .browse-list { max-width: 760px; margin: 0 auto; }
+    .note-entry { margin: 5px 0; padding: 10px 13px 8px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface); }
+    .note-title-button { display: inline-block; margin: 0 0 4px; padding: 0; border: 0; background: transparent; color: var(--ui-text); font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; }
+    .note-title-button:hover { color: var(--ui-accent-strong); }
+    .preview-lines { display: grid; gap: 2px; max-height: 156px; overflow-y: auto; padding-right: 3px; }
+    .preview-line { width: 100%; min-height: 25px; display: flex; align-items: center; padding: 2px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); font-size: 11px; line-height: 1.45; text-align: left; }
+    .preview-line:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+    .entry-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--ui-subtle); font-size: 10px; }
+    .entry-meta .mini-tag { margin-left: auto; padding: 2px 6px; border-radius: 999px; background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
+
+    .document { min-width: 0; min-height: 0; overflow: auto; background: var(--ui-bg); }
+    .doc-wrap { max-width: 790px; margin: 0 auto; padding: 26px 48px 54px; }
+    .doc-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; color: var(--ui-muted); font-size: 11px; }
+    .crumb { display: flex; align-items: center; gap: 8px; }
+    .crumb strong { color: var(--ui-text); font-weight: 600; }
+    .doc-meta { display: flex; align-items: center; gap: 8px; }
+    .doc-title { margin: 0 0 13px; font-size: 28px; line-height: 1.3; letter-spacing: -.6px; }
+    .doc-subtitle { margin: 0 0 22px; color: var(--ui-muted); font-size: 13px; line-height: 1.7; }
+    .doc-tags { display: flex; gap: 7px; margin-bottom: 30px; }
+    .doc-tag { padding: 4px 9px; border-radius: 999px; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 10px; font-weight: 600; }
+    .doc-body { color: var(--ui-text); font-size: 13px; line-height: 1.65; }
+    .doc-body h2 { margin: 21px 0 8px; font-size: 17px; letter-spacing: -.2px; }
+    .doc-body p { margin: 8px 0; }
+    .doc-body ul { margin: 8px 0; padding-left: 22px; }
+    .doc-body li { margin: 4px 0; }
+    .doc-body blockquote { margin: 13px 0; padding: 8px 14px; border-left: 3px solid var(--ui-accent); border-radius: 0 8px 8px 0; background: var(--ui-accent-quiet); color: var(--ui-muted); }
+    .doc-body code { padding: 2px 5px; border-radius: 5px; background: var(--ui-code); color: var(--ui-accent-strong); font-family: Consolas, monospace; font-size: 12px; }
+    .image-preview { height: 142px; display: flex; align-items: center; justify-content: center; gap: 12px; margin: 18px 0 7px; border: 1px solid var(--ui-line); border-radius: 12px; background: linear-gradient(135deg, var(--ui-surface-soft), var(--ui-accent-quiet)); color: var(--ui-muted); }
+    .image-symbol { width: 42px; height: 34px; display: grid; place-items: center; border: 1px solid var(--ui-line-strong); border-radius: 7px; color: var(--ui-accent); }
+    .image-caption { color: var(--ui-subtle); font-size: 10px; text-align: center; }
+    .doc-footer { display: flex; align-items: center; gap: 7px; margin-top: 31px; padding-top: 14px; border-top: 1px solid var(--ui-line); color: var(--ui-subtle); font-size: 10px; }
+
+    .action-bar { display: none; }
+    .floating-add { position: fixed; right: 24px; bottom: 24px; width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: 50%; background: var(--ui-button-bg); color: var(--ui-button-text); box-shadow: var(--ui-shadow); font-size: 23px; }
+    .action { min-height: 57px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 6px 2px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ui-muted); font-size: 10px; white-space: nowrap; }
+    .action svg { width: 17px; height: 17px; stroke: currentColor; }
+    .action:hover { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
+    .action.primary { background: var(--ui-button-bg); color: var(--ui-button-text); }
+    .action.primary:hover { background: var(--ui-button-hover); }
+    .action.danger { color: var(--ui-danger); }
+    .action.danger:hover { background: var(--ui-danger-soft); }
+    .action-divider { height: 1px; margin: 1px 5px; background: var(--ui-line); }
+    .pin-dot { width: 6px; height: 6px; position: absolute; margin: -15px 0 0 13px; border-radius: 50%; background: var(--ui-accent); }
+    .hint { color: var(--ui-subtle); font-size: 10px; }
+    .back-button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--ui-line); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; cursor: pointer; }
+    .edit-button { padding: 6px 12px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-accent-strong); font-size: 11px; }
+    .detail-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .detail-title-row .doc-title { margin: 0; }
+    .detail-mode-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+
+    @media (max-width: 1050px) {
+      .topbar { padding: 0 15px; }
+      .layout { grid-template-columns: 220px minmax(0, 1fr); }
+      .layout.detail-layout { grid-template-columns: 220px minmax(0, 1fr); }
+      .doc-wrap { padding-right: 30px; padding-left: 30px; }
+      .action-bar { padding-right: 5px; padding-left: 5px; }
+      .browse-center { padding-right: 20px; padding-left: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <input class="mode-switch" type="radio" name="note-view" id="browse-view" checked>
+  <input class="mode-switch" type="radio" name="note-view" id="detail-view">
+  <div class="app">
+    <header class="topbar">
+      <div class="search-group"><label class="search" aria-label="搜索笔记">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.3 4.3"/></svg>
+        <input type="search" placeholder="搜索标题、正文或标签…">
+      </label><button class="search-button" type="button" aria-label="搜索">⌕</button></div>
+    </header>
+
+    <div class="layout browse-layout">
+      <aside class="tag-list" aria-label="标签列表">
+        <div class="tag-head">
+          <div class="tag-heading"><h1>标签</h1><span class="count">12 篇</span></div>
+          <div class="tag-tools"><button class="tag-tool" aria-label="添加标签">＋ 添加</button><button class="tag-tool" aria-label="修改标签">修改</button><button class="tag-tool" aria-label="删除标签">删除</button></div>
+        </div>
+        <nav class="tag-nav" aria-label="按标签筛选">
+          <div class="tag-row active"><span>全部笔记</span><span>12</span></div>
+          <div class="tag-row"><span>无标签</span><span>2</span></div>
+          <div class="tag-row"><span>工作</span><span>5</span></div>
+          <div class="tag-row"><span>灵感</span><span>3</span></div>
+          <div class="tag-row"><span>生活</span><span>2</span></div>
+        </nav>
+      </aside>
+
+      <main class="browse-center" aria-label="便签预览列表">
+        <div class="browse-head"><h2>最近便签</h2><span class="browse-sub">12 篇 · 最近更新</span></div>
+        <div class="browse-list">
+          <article class="note-entry">
+            <button class="note-title-button" type="button">QBar 笔记功能方案</button>
+            <div class="preview-lines">
+              <button class="preview-line" type="button" aria-label="单击复制，双击粘贴该行内容"><span>标题、正文和标签保存在本地 SQLite。</span></button>
+              <button class="preview-line" type="button" aria-label="复制该行内容"><span>图片以原始文件保留，不转成 Base64。</span></button>
+              <button class="preview-line" type="button" aria-label="复制该行内容"><span>编辑器采用单栏 Markdown 预览。</span></button>
+            </div>
+            <div class="entry-meta"><span>刚刚</span><span>·</span><span>更新于今天</span><span class="mini-tag">工作</span></div>
+          </article>
+          <article class="note-entry">
+            <button class="note-title-button" type="button">周会：搜索体验</button>
+            <div class="preview-lines">
+              <button class="preview-line" type="button" aria-label="单击复制，双击粘贴该行内容"><span>搜索标题、正文和标签。</span></button>
+              <button class="preview-line" type="button" aria-label="复制该行内容"><span>周三复盘：减少重复操作，把流程收成一步。</span></button>
+            </div>
+            <div class="entry-meta"><span>昨天 16:42</span><span class="mini-tag">工作</span></div>
+          </article>
+          <article class="note-entry">
+            <button class="note-title-button" type="button">读书摘记 · 慢一点</button>
+            <div class="preview-lines">
+              <button class="preview-line" type="button" aria-label="复制该行内容"><span>把重要的事情做少，把手边的事情做好。</span></button>
+              <button class="preview-line" type="button" aria-label="复制该行内容"><span>记下值得反复回看的段落。</span></button>
+            </div>
+            <div class="entry-meta"><span>昨天 10:18</span><span class="mini-tag">灵感</span></div>
+          </article>
+        </div>
+      </main>
+
+      <aside class="action-bar" aria-label="笔记操作">
+        <button class="action" title="粘贴"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/><path d="M9 2h4a2 2 0 0 1 2 2v2H7V4a2 2 0 0 1 2-2Z"/><path d="m14 11 4 4 4-4M18 15V5"/></svg><span>粘贴</span></button>
+        <button class="action" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/></svg><span>复制</span></button>
+        <div class="action-divider"></div>
+        <button class="action primary" title="添加笔记"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>新增</span></button>
+        <button class="action" title="修改"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m14 5 5 5M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z"/></svg><span>修改</span></button>
+        <button class="action danger" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg><span>删除</span></button>
+        <div class="action-divider"></div>
+        <button class="action" title="多选"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 2.5 2.5L16 9"/></svg><span>多选</span></button>
+        <button class="action" title="置顶"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 4 8 0 1 5 3 3H4l3-3 1-5ZM12 12v9"/></svg><span>置顶</span></button>
+      </aside>
+    </div>
+
+    <div class="layout detail-layout">
+      <aside class="tag-list" aria-label="标签列表">
+        <div class="tag-head">
+          <div class="tag-heading"><h1>标签</h1><span class="count">12 篇</span></div>
+          <div class="tag-tools"><button class="tag-tool" aria-label="添加标签">＋ 添加</button><button class="tag-tool" aria-label="修改标签">修改</button><button class="tag-tool" aria-label="删除标签">删除</button></div>
+        </div>
+        <nav class="tag-nav" aria-label="按标签筛选">
+          <div class="tag-row"><span>全部笔记</span><span>12</span></div>
+          <div class="tag-row"><span>无标签</span><span>2</span></div>
+          <div class="tag-row active"><span>工作</span><span>5</span></div>
+          <div class="tag-row"><span>灵感</span><span>3</span></div>
+          <div class="tag-row"><span>生活</span><span>2</span></div>
+        </nav>
+      </aside>
+      <main class="document" aria-label="便签详情">
+        <div class="doc-wrap">
+          <div class="detail-mode-head">
+            <label class="back-button" for="browse-view">← 返回列表</label>
+            <button class="edit-button" type="button">修改</button>
+          </div>
+          <div class="doc-toolbar">
+            <div class="crumb"><span>工作</span><span>›</span><strong>详情</strong></div>
+            <div class="doc-meta"><span>更新于 刚刚</span><span>·</span><span>约 2 分钟阅读</span></div>
+          </div>
+          <h1 class="doc-title">QBar 笔记功能方案</h1>
+          <p class="doc-subtitle">把零散想法安静地收好，需要的时候很快找到。</p>
+          <div class="doc-tags"><span class="doc-tag">工作</span><span class="doc-tag">产品设计</span></div>
+          <article class="doc-body">
+            <p>下周先完善搜索和剪贴板交互，再补齐图片粘贴的边界情况。</p>
+            <h2>存储方式</h2>
+            <ul>
+              <li>标题、Markdown 正文和标签存入本地 SQLite。</li>
+              <li>图片保留原始文件，放在安装目录的数据子文件夹中。</li>
+              <li>正文中的图片通过内部资源 ID 引用，不把图片编码成大段文本。</li>
+            </ul>
+            <blockquote>常用内容先收在手边，细节可以慢慢补充。</blockquote>
+            <h2>图片附件</h2>
+            <div class="image-preview" role="img" aria-label="图片附件预览占位">
+              <div class="image-symbol"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg></div>
+              <div><div>图片附件预览</div><div class="image-caption">1920 × 1080 · 1.2 MB</div></div>
+            </div>
+            <p class="image-caption">附件 · whiteboard-sketch.png</p>
+          </article>
+          <div class="doc-footer"><span>●</span><span>本地保存</span><span>·</span><span>Markdown 文档</span></div>
+        </div>
+      </main>
+    </div>
+    <button class="floating-add" type="button" aria-label="新增笔记">＋</button>
+  </div>
+</body>
+</html>

@@ -38,6 +38,9 @@ lib\
   everything_panel.ahk             Everything WebView2 面板生命周期和消息协议
   everything_actions.ahk           打开、定位、文件剪贴板和路径复制
   qbar_navigation.ahk              文件夹导航和路径补全
+  qbar_notes.ahk                   笔记页生命周期、编辑会话和页面协议
+  qbar_notes_store.ahk             安装目录下 SQLite 正文/元数据存储
+  qbar_notes_actions.ahk           原始图片文件、WebView2 文件句柄和笔记剪贴板动作
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   languageDetect.ahk               互译模式的本地原文语言识别与候选状态
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
@@ -50,7 +53,7 @@ lib\
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
-  qbar.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
+  qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
   resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
@@ -124,7 +127,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 - **页面 → AHK**：`postMessage` 一个 JSON 字符串，外层一定有 `type` 字段；AHK 侧统一用
   `LLMMessageParse` / `LLMMsgField(msg, "type")` 解析与取字段（避免直接手撕 JSON）。
-- **AHK → 页面**：由 `PanelHostExecute()` 统一调用 `ExecuteScriptAsync("window.fn(" . JSON.stringify(payload, 0) . ")")`。
+- **AHK → 页面**：现有页面通常由 `PanelHostExecute()` 调用页面函数；笔记页的普通状态改用 WebView2 JSON 消息，需要传递图片写入权限时使用 `PostWebMessageAsJsonWithAdditionalObjects` 附带单文件句柄。
 - **页面数据**：在 `pages/*.html` 里声明 `window` 级函数（如 `window.setResults`、
   `window.setEntry`），AHK 用字符串调用。
 
@@ -134,7 +137,8 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 - **qbar**：`qbar_panel.ahk` 负责窗口和通信，`qbar_index.ahk` 负责索引与行图标；`QbarExec` 调用公共宿主，行图标经 `icons.ahk` 从 shell 提取后
   以 data URI 推给页面并按扩展名/路径缓存。`QbarShow` 每次把窗口重置到收拢高度，页面需配合
   `window.resetRows` 让下一次渲染重报行数（否则隐藏期间残留的 `reportedRows` 会让窗口
-  保持收拢、列表只剩半行）。
+   保持收拢、列表只剩半行）。
+- **qbar notes**：`n`、`note`、`w`、`write` 由 qbar 延迟调度到独立窗口；顶部只保留搜索框和搜索按钮，页面主体是标签/预览两栏，新增使用右下角圆形悬浮按钮，卡片右键菜单提供复制、粘贴、修改、删除、多选和置顶；单击预览行复制、双击预览行粘贴，标题直接进入共用编辑态，保存或返回后回到列表。正文以 Markdown 明文存入 SQLite，图片以原始文件写入安装目录 `data\qbar-notes\media`，页面只获得专用虚拟主机 URL 和单文件写句柄。
 - **translate**：`LLMTranslateStartRequest` 是唯一调度点——先由 `TranslateResolveDirection` 确定原语言、目标语言和
   请求代号，再按 `TranslateResolve` 的结果把请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
   过期请求的流式片段和完成回调会被丢弃；互译面板的交换按钮只改变当前请求方向，不写入配置。

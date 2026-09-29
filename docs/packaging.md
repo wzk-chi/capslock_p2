@@ -53,7 +53,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`theme.css`、`qbar.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
+- `pages\`：`theme.css`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`，以及随安装包分发的 `pinyin-pro\pinyin-pro.js`、MIT 许可和来源说明。
 - `resources\dictionary.db`：ECDICT 本地词典
 - `resources\SQLite3.dll`：词典的 SQLite 引擎
@@ -77,6 +77,15 @@ Everything 建立索引时使用独立数据目录：
 ```
 
 Everything 页的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。`Qbar.esMaxResults` 仍可在 1–500 范围内调整。
+
+QBar 笔记使用安装目录下的运行时数据目录：
+
+```text
+{app}\data\qbar-notes\qbar-notes.db
+{app}\data\qbar-notes\media\
+```
+
+该目录不出现在安装器 `[Files]` 或 `UninstallDelete` 中，因此安装包不携带用户笔记，覆盖更新和同目录重装不会覆盖数据库或图片。卸载也不会主动删除笔记；更换安装目录时由用户手动复制整个 `data\qbar-notes` 目录。
 
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 

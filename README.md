@@ -19,6 +19,7 @@ Everything 文件搜索、屏幕自适应等。
 | 翻译面板（LLM / 有道 / 火山） | CapsLock+T 或 CapsLock+F3 |
 | 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
 | AI 问答聊天（支持追问） | CapsLock+Q → 显式输入 `ai`/`q` |
+| QBar 笔记 | CapsLock+Q → `n` / `note` / `w` / `write` |
 | 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V；切换键可自定义 |
 | 窗口绑定（winbind） | CapsLock+数字、CapsLock+LAlt+数字 |
 | 窗口半透明 / 置顶 | CapsLock+F4 / CapsLock+F6 |
@@ -174,6 +175,13 @@ gh<GitHub>=https://github.com
 | `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目 |
 
 **AI 问答需要显式触发**：在 qbar 输入 `ai` 或 `q` 打开空白聊天，输入 `ai 问题` 或 `q 问题` 直接提问。普通未匹配文本不会自动交给 AI。
+
+### QBar 笔记
+
+在 qbar 输入 `n`、`note`、`w` 或 `write` 打开笔记页，后面跟文字时会直接搜索笔记。顶部只保留搜索框和搜索按钮；左侧按标签筛选，中间显示标题和正文预览；单击预览行复制该行，双击预览行粘贴该行，点击标题直接进入编辑。新增使用右下角圆形悬浮按钮，复制、粘贴、修改、删除、多选和置顶通过笔记卡片右键菜单操作；新增和修改共用页面内编辑态，不使用弹窗，保存或返回后直接回到列表。
+
+笔记标题、Markdown 正文、标签和置顶状态明文保存在安装目录下的
+`data\qbar-notes\qbar-notes.db`；图片以原始文件保存在 `data\qbar-notes\media`。该目录不随安装包分发，更新或同目录重装不会覆盖；如果更换安装目录，需要手动复制整个 `data\qbar-notes` 目录。程序不会自动回退到其他路径。
 
 ### 行内添加条目
 

@@ -13,6 +13,10 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
             QbarHistoryRemember(QbarHistoryEverythingEntry("", false))
         return
     }
+    if !QbarConfigShortKeyExists(text) && QbarNotesAlias(text) {
+        QbarScheduleNotes("", true)
+        return
+    }
     ; Preserve the complete argument from all four built-in aliases before
     ; considering whichever row the page last highlighted. This makes Enter
     ; reliable even when the debounce result has not reached WebView2 yet.
@@ -21,6 +25,11 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         QbarHide()
         if EverythingShow(typedRest, typedRest != "")
             QbarHistoryRemember(QbarHistoryEverythingEntry(typedRest, typedRest != ""))
+        return
+    }
+    if QbarSplitCommand(text, &typedToken, &typedRest)
+        && !QbarConfigShortKeyExists(typedToken) && QbarNotesAlias(typedToken) {
+        QbarScheduleNotes(typedRest, true)
         return
     }
     if selected != "" {
@@ -37,6 +46,10 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
             question := QbarAiQuestion(selected)
             if QbarAiAsk(selected)
                 QbarHistoryRemember(QbarHistoryAiEntry(question))
+            return
+        }
+        if selectedType = "notes" {
+            QbarScheduleNotes(QbarSearchArgument(text, selected), true)
             return
         }
         if selectedType = "search" {
@@ -196,6 +209,25 @@ QbarHistoryEverythingEntry(query, runQuery) {
         Map("query", query, "runQuery", runQuery))
 }
 
+QbarHistoryNotesEntry(searchText) {
+    searchText := Trim(String(searchText))
+    input := searchText = "" ? "笔记" : "笔记 " . searchText
+    return QbarHistoryNew("notes", input, input, Map("search", searchText))
+}
+
+QbarNotesAlias(token) {
+    static aliases := Map("n", true, "note", true, "w", true, "write", true)
+    return aliases.Has(StrLower(Trim(token)))
+}
+
+QbarScheduleNotes(searchText := "", recordHistory := true) {
+    global QbarTargetHwnd
+    targetHwnd := QbarTargetHwnd
+    QbarHide()
+    SetTimer(NotesShow.Bind(String(searchText), targetHwnd, recordHistory), -1)
+    return true
+}
+
 QbarHistoryUrlEntry(input, url) {
     input := Trim(input, " `t")
     return QbarHistoryNew("url", input, input, Map("url", url))
@@ -245,6 +277,8 @@ QbarHistoryExecuteEntry(entry) {
         case "everything":
             QbarHide()
             return EverythingShow(payload["query"], QbarHistoryBoolValue(payload["runQuery"]))
+        case "notes":
+            return QbarScheduleNotes(payload["search"], false) ? "deferred" : false
         case "settings":
             QbarHide()
             return QbarScheduleSettingsHistory(entry)

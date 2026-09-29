@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>capslock_p2 笔记</title>
+<link rel="stylesheet" href="theme.css">
+<script src="../vendor/marked.min.js"></script>
+<script src="../vendor/purify.min.js"></script>
+<style>
+:root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); }
+button, input, textarea { font: inherit; }
+button { color: inherit; cursor: default; }
+.app { height: 100%; display: flex; flex-direction: column; }
+.topbar { height: 62px; flex: 0 0 62px; display: flex; align-items: center; justify-content: center; padding: 0 18px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface); }
+.search-group { width: min(760px, 100%); display: flex; align-items: center; gap: 8px; }
+.search { min-width: 0; flex: 1; height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface-soft); color: var(--ui-muted); }
+.search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 12px; }
+.search input::placeholder { color: var(--ui-subtle); }
+.search-button { flex: 0 0 37px; width: 37px; height: 35px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: 8px; background: var(--ui-button-bg); color: var(--ui-button-text); font-size: 16px; }
+.search-button:hover, .search-button:focus-visible { filter: brightness(1.06); }
+.workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.workspace.edit-mode { grid-template-columns: 220px minmax(0, 1fr); }
+.workspace.edit-mode .browse { display: none; }
+.workspace:not(.edit-mode) .editor-page { display: none; }
+.sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 17px 10px; border-right: 1px solid var(--ui-line); background: var(--ui-surface-soft); }
+.side-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 9px; font-size: 15px; font-weight: 650; }
+.side-count { color: var(--ui-subtle); font-size: 10px; font-weight: 400; }
+.tag-actions { display: flex; gap: 5px; margin: 0 3px 10px; }
+.tag-action { padding: 4px 6px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 10px; }
+.tag-action:hover, .tag-action:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.tag-list { min-height: 0; overflow: auto; }
+.tag-row { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
+.tag-row:hover, .tag-row.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.tag-row.active { font-weight: 650; }
+.tag-count { color: var(--ui-subtle); font-size: 10px; }
+.browse { min-width: 0; min-height: 0; background: var(--ui-bg); }
+.browse { overflow: auto; padding: 22px clamp(18px, 3vw, 34px) 30px; }
+.browse-inner { max-width: 760px; margin: 0 auto; }
+.browse-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.browse-heading h1 { margin: 0; font-size: 19px; font-weight: 650; }
+.muted { color: var(--ui-subtle); font-size: 10px; }
+.note-entry { margin: 6px 0; padding: 10px 12px 8px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface); box-shadow: var(--ui-shadow-soft); }
+.note-entry.pinned { border-color: var(--ui-accent); }
+.note-title { width: 100%; display: flex; align-items: center; gap: 7px; padding: 0 0 5px; border: 0; background: transparent; color: var(--ui-text); text-align: left; font-size: 13px; font-weight: 650; }
+.note-title:hover { color: var(--ui-accent-strong); }
+.pin-mark { color: var(--ui-accent); font-size: 11px; }
+.preview-lines { display: grid; gap: 1px; max-height: 156px; overflow-y: auto; padding-right: 3px; }
+.preview-line { width: 100%; min-height: 24px; display: flex; align-items: center; padding: 2px 6px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); font-size: 11px; line-height: 1.45; text-align: left; }
+.preview-line:hover, .preview-line:focus-visible { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.note-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--ui-subtle); font-size: 10px; }
+.note-tag { margin-left: auto; color: var(--ui-accent-strong); }
+.empty { padding: 35px 10px; color: var(--ui-muted); text-align: center; font-size: 12px; }
+.editor-page { min-width: 0; min-height: 0; height: 100%; display: flex; overflow: auto; padding: 0 clamp(18px, 3vw, 34px); background: var(--ui-bg); }
+.editor-page .editor { width: min(900px, 100%); height: 100%; min-height: 0; margin: 0 auto; border: 0; border-radius: 0; box-shadow: none; background: var(--ui-bg); }
+.editor { width: min(900px, 100%); height: min(670px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-line-strong); border-radius: 12px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.editor-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px 10px; border-bottom: 1px solid var(--ui-line); }
+.editor-back { flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.editor-back:hover, .editor-back:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.editor-title { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 20px; font-weight: 650; }
+.editor-title::placeholder { color: var(--ui-subtle); }
+.editor-tags { display: flex; align-items: flex-start; gap: 9px; padding: 8px 17px; border-bottom: 1px solid var(--ui-line); }
+.editor-tags-label { flex: 0 0 auto; padding-top: 5px; white-space: nowrap; writing-mode: horizontal-tb; color: var(--ui-muted); font-size: 11px; }
+.tag-picker { position: relative; min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 27px; padding: 2px 0; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 99px; background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-size: 10px; white-space: nowrap; }
+.tag-chip button { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 12px; line-height: 1; }
+.tag-picker input { min-width: 120px; flex: 1; width: auto; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 11px; }
+.tag-picker input::placeholder { color: var(--ui-subtle); }
+.tag-options { position: absolute; z-index: 5; top: calc(100% + 5px); left: 0; right: 0; max-height: 180px; overflow: auto; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); box-shadow: var(--ui-shadow-soft); }
+.tag-options.hidden { display: none; }
+.tag-option { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
+.tag-option:hover, .tag-option.selected { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.editor-toolbar { display: flex; flex-wrap: wrap; gap: 3px; padding: 7px 14px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface-soft); }
+.tool { min-width: 28px; height: 27px; padding: 0 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ui-muted); font-size: 11px; font-weight: 650; }
+.tool:hover, .tool:focus-visible { border-color: var(--ui-line-strong); background: var(--ui-surface); color: var(--ui-accent-strong); }
+.editor-content { min-height: 0; flex: 1; overflow: auto; padding: 17px 21px; outline: 0; color: var(--ui-text); font-size: 13px; line-height: 1.65; }
+.editor-content:empty::before { content: "开始输入 Markdown 内容…"; color: var(--ui-subtle); }
+.editor-content img { max-width: 100%; height: auto; border: 1px solid var(--ui-line); border-radius: 7px; }
+.editor-content pre { padding: 8px; border-radius: 6px; background: var(--ui-code); font-family: Consolas, monospace; font-style: normal; font-weight: 400; white-space: pre-wrap; }
+.editor-content pre * { font-family: inherit; font-style: normal; font-weight: 400; }
+.editor-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 17px; border-top: 1px solid var(--ui-line); }
+.editor-button { padding: 7px 13px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.editor-button.primary { border-color: var(--ui-button-bg); background: var(--ui-button-bg); color: var(--ui-button-text); }
+.toast { position: fixed; top: 76px; left: 50%; z-index: 30; max-width: 340px; padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); box-shadow: var(--ui-shadow-soft); font-size: 11px; text-align: center; transform: translateX(-50%); }
+.toast.hidden { display: none; }
+.multi-tools { display: none; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--ui-muted); font-size: 11px; }.multi-tools.visible { display: flex; }
+.select-all { accent-color: var(--ui-accent); }
+.multi-button { padding: 5px 9px; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.multi-button:hover, .multi-button:focus-visible { border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.multi-button.danger { color: var(--ui-danger); }
+.multi-button:disabled { opacity: .45; }
+.note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
+.context-menu { position: fixed; z-index: 50; min-width: 148px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.context-menu.hidden { display: none; }
+.context-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
+.context-menu button:hover, .context-menu button:focus-visible { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.context-menu button:disabled { opacity: .4; }
+.context-menu button.danger { color: var(--ui-danger); }
+.context-separator { height: 1px; margin: 4px 3px; background: var(--ui-line); }
+.floating-add { position: fixed; z-index: 20; right: 24px; bottom: 24px; width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: 50%; background: var(--ui-button-bg); color: var(--ui-button-text); box-shadow: var(--ui-shadow); font-size: 23px; line-height: 1; }
+.floating-add.editor-hidden { display: none; }
+.floating-add:hover, .floating-add:focus-visible { transform: translateY(-1px); filter: brightness(1.06); }
+@media (max-width: 760px) { .topbar { padding: 0 10px; }.workspace, .workspace.edit-mode { grid-template-columns: 170px minmax(0, 1fr); }.floating-add { right: 16px; bottom: 16px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="search-group"><label class="search" aria-label="搜索标题、正文和标签"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索标题、正文或标签…"></label><button id="searchButton" class="search-button" type="button" aria-label="搜索">⌕</button></div>
+  </header>
+  <div id="workspace" class="workspace">
+    <aside class="sidebar" aria-label="标签列表">
+      <div class="side-heading"><span>标签</span><span id="tagCount" class="side-count"></span></div>
+      <div class="tag-actions"><button id="addTag" class="tag-action" type="button">＋ 添加</button><button id="renameTag" class="tag-action" type="button">修改</button><button id="deleteTag" class="tag-action" type="button">删除</button></div>
+      <div id="tags" class="tag-list"></div>
+    </aside>
+    <main id="browse" class="browse" aria-label="便签预览列表">
+      <div class="browse-inner">
+        <div class="browse-heading"><h1>最近便签</h1><span id="noteCount" class="muted"></span></div>
+        <div id="multiTools" class="multi-tools"><label><input id="selectAll" class="select-all" type="checkbox"> 全选</label><span id="selectedCount">已选 0</span><button id="multiDelete" class="multi-button danger" type="button" disabled>删除</button><button id="multiExit" class="multi-button" type="button">退出多选</button></div>
+        <div id="notes"></div>
+      </div>
+    </main>
+    <main id="editorPage" class="editor-page" aria-label="编辑便签">
+      <section class="editor">
+        <div class="editor-head"><button id="editorBack" class="editor-back" type="button">← 返回</button><input id="editorTitle" class="editor-title" placeholder="标题"></div>
+        <div class="editor-tags">
+          <span class="editor-tags-label" aria-hidden="true">标签</span>
+          <div id="editorTagPicker" class="tag-picker">
+            <div id="editorTagChips" class="tag-chips"></div>
+            <input id="editorTagInput" placeholder="选择或输入标签" autocomplete="off">
+            <div id="editorTagOptions" class="tag-options hidden"></div>
+          </div>
+        </div>
+        <div class="editor-toolbar" aria-label="Markdown 工具栏">
+          <button class="tool" type="button" data-command="bold"><b>B</b></button><button class="tool" type="button" data-command="italic"><i>I</i></button><button class="tool" type="button" data-command="strike"><s>S</s></button><button class="tool" type="button" data-command="formatBlock" data-value="h2">H</button><button class="tool" type="button" data-command="formatBlock" data-value="blockquote">❯</button><button class="tool" type="button" data-command="insertUnorderedList">•</button><button class="tool" type="button" data-command="insertOrderedList">1.</button><button class="tool" type="button" data-command="formatBlock" data-value="pre">{ }</button><button id="insertImage" class="tool" type="button">▧</button><button class="tool" type="button" data-command="createLink">↗</button>
+        </div>
+        <div id="editorContent" class="editor-content" contenteditable="true" spellcheck="false"></div>
+        <div class="editor-foot"><button id="cancelEdit" class="editor-button" type="button">取消</button><button id="saveEdit" class="editor-button primary" type="button">保存</button></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<button id="addNote" class="floating-add" type="button" aria-label="新增笔记" title="新增笔记">＋</button>
+<div id="contextMenu" class="context-menu hidden" role="menu" aria-label="笔记操作">
+  <button id="contextEdit" type="button" role="menuitem">✎ 修改</button>
+  <button id="contextCopy" type="button" role="menuitem">⧉ 复制</button>
+  <button id="contextPaste" type="button" role="menuitem">⇩ 粘贴</button>
+  <button id="contextPin" type="button" role="menuitem">⌖ 置顶</button>
+  <button id="contextDelete" class="danger" type="button" role="menuitem">× 删除</button>
+  <div class="context-separator"></div>
+  <button id="contextMulti" type="button" role="menuitem">☷ 多选</button>
+</div>
+<input id="imageInput" type="file" accept="image/*" multiple hidden>
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script>
+const post = payload => { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload)); };
+const $ = id => document.getElementById(id);
+const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null, toastTimer: 0 };
+let searchTimer = 0;
+
+// Windows hides the pointer while typing when that system option is enabled.
+// Native edit controls show it again on mouse movement; report that movement
+// so the WebView2 host can restore the same behavior without polling.
+let cursorMovePostedAt = 0;
+document.addEventListener('mousemove', () => {
+  const now = performance.now();
+  if (now - cursorMovePostedAt < 80) return;
+  cursorMovePostedAt = now;
+  post({ type: 'cursorMove' });
+}, { passive: true });
+
+function messageValue(value, fallback = '') { return value == null ? fallback : value; }
+function toast(text) { if (!text) return; $('toast').textContent = text; $('toast').classList.remove('hidden'); clearTimeout(state.toastTimer); state.toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 1500); }
+function submitQuery() { clearTimeout(searchTimer); state.search = $('search').value; post({ type: 'query', text: state.search, tag: state.currentTag }); }
+function requestQuery() { clearTimeout(searchTimer); searchTimer = setTimeout(submitQuery, 180); }
+function toggleEditor(on) { $('workspace').classList.toggle('edit-mode', on); $('addNote').classList.toggle('editor-hidden', on); }
+function escapeExternalImages(markdown) { return String(markdown || '').replace(/!\[([^\]]*)\]\((?!asset:)[^)]*\)/g, '$1'); }
+function editorMarkdown(markdown, assets) {
+  const lookup = new Map((assets || []).map(asset => [String(asset.id), asset.url]));
+  let source = escapeExternalImages(markdown || '');
+  source = source.replace(/!\[([^\]]*)\]\(asset:([A-Za-z0-9_-]+)\)/g, (all, alt, id) => lookup.has(id) ? `![${alt}](${lookup.get(id)})` : alt);
+  let html = marked.parse(source, { breaks: true, gfm: true });
+  html = DOMPurify.sanitize(html, { ADD_ATTR: ['data-asset-id'], FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'] });
+  const holder = document.createElement('div'); holder.innerHTML = html;
+  holder.querySelectorAll('img').forEach(img => { const src = img.getAttribute('src') || ''; if (!src.startsWith('https://qbar-notes.local/')) { img.replaceWith(document.createTextNode(img.alt || '[图片]')); return; } for (const [id, url] of lookup) if (src === url) img.dataset.assetId = id; });
+  return holder.innerHTML;
+}
+function serializeNode(node, parentTag = '') {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\u00a0/g, ' ');
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const tag = node.tagName.toLowerCase();
+  const children = () => Array.from(node.childNodes).map(child => serializeNode(child, tag)).join('');
+  if (tag === 'br') return '\n';
+  if (tag === 'img') return node.dataset.assetId ? `![${node.alt || ''}](asset:${node.dataset.assetId})` : (node.alt || '[图片]');
+  if (tag === 'strong' || tag === 'b') return `**${children()}**`;
+  if (tag === 'em' || tag === 'i') return `*${children()}*`;
+  if (tag === 'del' || tag === 's') return `~~${children()}~~`;
+  if (tag === 'code' && parentTag !== 'pre') return `\`${node.textContent}\``;
+  if (tag === 'pre') { const code = String(node.innerText || node.textContent || '').replace(/\r\n/g, '\n').replace(/\n+$/, ''); return `\n\`\`\`\n${code}\n\`\`\`\n`; }
+  if (/^h[1-6]$/.test(tag)) return `\n${'#'.repeat(Number(tag[1]))} ${children().trim()}\n`;
+  if (tag === 'blockquote') return `\n${children().trim().split('\n').map(line => line ? `> ${line}` : '>').join('\n')}\n`;
+  if (tag === 'li') return children().trim();
+  if (tag === 'ul' || tag === 'ol') return `\n${Array.from(node.children).map((li, index) => `${tag === 'ol' ? `${index + 1}.` : '-'} ${serializeNode(li, tag)}`).join('\n')}\n`;
+  if (tag === 'a') return `[${children()}](${node.getAttribute('href') || ''})`;
+  if (['p', 'div', 'section', 'article'].includes(tag)) return `${children().trim()}\n`;
+  if (tag === 'hr') return '\n---\n';
+  return children();
+}
+function contentMarkdown() { return serializeNode($('editorContent')).replace(/\n{3,}/g, '\n\n').trim(); }
+function setEditorContent(html) { $('editorContent').innerHTML = html || ''; }
+function saveSelection() { const selection = window.getSelection(); if (selection.rangeCount) state.savedRange = selection.getRangeAt(0).cloneRange(); }
+function restoreSelection() { if (!state.savedRange) { $('editorContent').focus(); return; } const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(state.savedRange); $('editorContent').focus(); }
+function insertImageNode(url, assetId, name) { restoreSelection(); const img = document.createElement('img'); img.src = url; img.alt = name || '图片'; img.dataset.assetId = assetId; img.style.maxWidth = '100%'; const selection = window.getSelection(); if (selection.rangeCount) { const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(img); range.setStartAfter(img); range.collapse(true); selection.removeAllRanges(); selection.addRange(range); } else $('editorContent').appendChild(img); }
+async function uploadFile(file) { if (!state.editor || !file) return; const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`; saveSelection(); state.pendingUploads.set(requestId, { file, name: file.name, url: '', assetId: '', writable: null, cancelled: false, cancelRequested: false }); post({ type: 'assetStart', editorId: state.editor.editorId, requestId, mime: file.type || 'application/octet-stream', name: file.name || '' }); }
+function uploadFiles(files) { Array.from(files || []).forEach(uploadFile); }
+async function stopWritable(writable) { if (!writable) return; try { if (typeof writable.abort === 'function') await writable.abort(); else await writable.close(); } catch {} }
+async function cancelPendingUploads(editorId) { const pendingItems = Array.from(state.pendingUploads.entries()); for (const [requestId, pending] of pendingItems) { pending.cancelled = true; await stopWritable(pending.writable); pending.writable = null; if (!pending.cancelRequested) { pending.cancelRequested = true; post({ type: 'assetCancel', editorId, requestId, assetId: pending.assetId || '' }); } } }
+async function receiveAssetHandle(data, objects) { const requestId = String(data.requestId || ''); const pending = state.pendingUploads.get(requestId); const handle = objects && objects[0]; if (!pending || !handle || !state.editor || data.editorId !== state.editor.editorId) return; pending.assetId = String(data.assetId || ''); try { const writable = await handle.createWritable(); pending.writable = writable; if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.write(pending.file); if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.close(); pending.writable = null; if (pending.cancelled || !state.pendingUploads.has(requestId)) { post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: true }); } catch (error) { pending.writable = null; if (!pending.cancelled && state.pendingUploads.has(requestId)) post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: false }); } }
+function renderTags() { const root = $('tags'); root.textContent = ''; const all = document.createElement('button'); all.className = `tag-row${state.currentTag === '' ? ' active' : ''}`; all.type = 'button'; all.innerHTML = '<span>全部笔记</span><span class="tag-count">' + state.notes.length + '</span>'; all.onclick = () => { state.currentTag = ''; requestQuery(); renderTags(); }; root.appendChild(all); const none = document.createElement('button'); none.className = `tag-row${state.currentTag === '__none__' ? ' active' : ''}`; none.type = 'button'; none.innerHTML = '<span>无标签</span><span class="tag-count"> </span>'; none.onclick = () => { state.currentTag = '__none__'; requestQuery(); renderTags(); }; root.appendChild(none); state.tags.forEach(tag => { const row = document.createElement('button'); row.className = `tag-row${state.currentTag === tag.name ? ' active' : ''}`; row.type = 'button'; row.innerHTML = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.count}</span>`; row.onclick = () => { state.currentTag = tag.name; requestQuery(); renderTags(); }; root.appendChild(row); }); $('tagCount').textContent = `${state.tags.reduce((sum, tag) => sum + Number(tag.count || 0), 0)} 篇`; }
+function editorHasTag(name) { return !!state.editor && (state.editor.tags || []).some(tag => String(tag).toLowerCase() === String(name).toLowerCase()); }
+function renderEditorTagOptions(show = false) { if (!state.editor) return; const root = $('editorTagOptions'); const query = $('editorTagInput').value.trim().toLowerCase(); root.textContent = ''; state.tags.filter(tag => !query || String(tag.name).toLowerCase().includes(query)).forEach(tag => { const option = document.createElement('button'); option.type = 'button'; option.className = `tag-option${editorHasTag(tag.name) ? ' selected' : ''}`; const label = document.createElement('span'); label.textContent = tag.name; const mark = document.createElement('span'); mark.textContent = editorHasTag(tag.name) ? '✓' : ''; option.append(label, mark); option.onclick = event => { event.preventDefault(); const index = (state.editor.tags || []).findIndex(value => String(value).toLowerCase() === String(tag.name).toLowerCase()); if (index >= 0) state.editor.tags.splice(index, 1); else state.editor.tags.push(tag.name); renderEditorTags(true); $('editorTagInput').focus(); }; root.appendChild(option); }); if (!root.children.length) { const empty = document.createElement('div'); empty.className = 'muted'; empty.textContent = query ? '按 Enter 添加新标签' : '暂无标签'; empty.style.padding = '6px 8px'; root.appendChild(empty); } root.classList.toggle('hidden', !show); }
+function renderEditorTags(showOptions = false) { if (!state.editor) return; const unique = []; const seen = new Set(); (state.editor.tags || []).forEach(value => { const name = String(value).trim(); const key = name.toLowerCase(); if (name && !seen.has(key)) { seen.add(key); unique.push(name); } }); state.editor.tags = unique; const chips = $('editorTagChips'); chips.textContent = ''; state.editor.tags.forEach((tag, index) => { const chip = document.createElement('span'); chip.className = 'tag-chip'; const label = document.createElement('span'); label.textContent = tag; const remove = document.createElement('button'); remove.type = 'button'; remove.title = '移除标签'; remove.textContent = '×'; remove.onclick = event => { event.preventDefault(); event.stopPropagation(); state.editor.tags.splice(index, 1); renderEditorTags(true); $('editorTagInput').focus(); }; chip.append(label, remove); chips.appendChild(chip); }); renderEditorTagOptions(showOptions); }
+function addEditorTagFromInput() { if (!state.editor) return; const input = $('editorTagInput'); const name = input.value.trim(); if (!name) return; if (!editorHasTag(name)) state.editor.tags.push(name); input.value = ''; renderEditorTags(true); input.focus(); }
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text == null ? '' : String(text); return div.innerHTML; }
+function contextTargetIds() { const id = state.contextNoteId; if (state.multi && id && state.selectedIds.has(id)) return Array.from(state.selectedIds); return id ? [id] : []; }
+function hideContextMenu() { $('contextMenu').classList.add('hidden'); state.contextNoteId = ''; }
+function updateContextMenu() { const ids = contextTargetIds(); const one = ids.length === 1; $('contextCopy').disabled = !ids.length; $('contextPaste').disabled = !one; $('contextEdit').disabled = !one; $('contextPin').disabled = !ids.length; $('contextDelete').disabled = !ids.length; $('contextMulti').textContent = state.multi ? '☷ 退出多选' : '☷ 多选'; }
+function showContextMenu(event, note) { const id = String(note.id); state.contextNoteId = id; if (state.multi) { if (!state.selectedIds.has(id)) { state.selectedIds.clear(); state.selectedIds.add(id); renderNotes(); } } else state.selectedIds.clear(); const menu = $('contextMenu'); menu.classList.remove('hidden'); updateContextMenu(); const left = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8); const top = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8); menu.style.left = `${Math.max(8, left)}px`; menu.style.top = `${Math.max(8, top)}px`; }
+function contextIdsOrEmpty() { const ids = contextTargetIds(); if (ids.length) hideContextMenu(); return ids; }
+function contextCopy() { const ids = contextIdsOrEmpty(); if (ids.length) post({ type: 'copyNotes', noteIds: ids }); }
+function contextPaste() { const ids = contextIdsOrEmpty(); if (ids.length === 1) post({ type: 'pasteNote', noteId: ids[0] }); }
+function contextEdit() { const ids = contextIdsOrEmpty(); if (ids.length === 1) beginEdit(ids[0]); }
+function contextPin() { const ids = contextIdsOrEmpty(); if (ids.length) { const unpinned = state.notes.some(note => ids.includes(String(note.id)) && !note.pinned); post({ type: 'setPinned', noteIds: ids, value: unpinned }); } }
+function contextDelete() { const ids = contextTargetIds(); if (ids.length && confirm(`删除 ${ids.length} 篇笔记？`)) { hideContextMenu(); post({ type: 'deleteNotes', noteIds: ids }); } }
+function contextToggleMulti() { if (!state.multi && state.contextNoteId) { state.selectedIds.clear(); state.selectedIds.add(state.contextNoteId); } toggleMulti(); hideContextMenu(); }
+function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark">⌖</span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; (note.lines || []).forEach(line => { const button = document.createElement('button'); button.type = 'button'; button.className = 'preview-line'; button.textContent = line; button.setAttribute('aria-label', '单击复制，双击粘贴'); button.onclick = () => post({ type: 'copyLine', noteId: note.id, text: line }); button.ondblclick = event => { event.preventDefault(); post({ type: 'pasteLine', noteId: note.id, text: line }); }; lines.appendChild(button); }); entry.appendChild(lines); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); }
+function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }
+function updateActionState() { updateContextMenu(); }
+function formatStamp(value) {
+  const text = String(value || '');
+  if (!/^\d{14}$/.test(text)) return '';
+  const pad = number => String(number).padStart(2, '0');
+  const utc = new Date(Date.UTC(
+    Number(text.slice(0, 4)),
+    Number(text.slice(4, 6)) - 1,
+    Number(text.slice(6, 8)),
+    Number(text.slice(8, 10)),
+    Number(text.slice(10, 12)),
+    Number(text.slice(12, 14))
+  ));
+  return `${utc.getFullYear()}-${pad(utc.getMonth() + 1)}-${pad(utc.getDate())} ${pad(utc.getHours())}:${pad(utc.getMinutes())}`;
+}
+function openEditor(payload) { state.editor = payload.editor; state.editor.tags = Array.isArray(state.editor.tags) ? state.editor.tags.slice() : []; $('editorTitle').value = state.editor.title || ''; $('editorTagInput').value = ''; renderEditorTags(); setEditorContent(editorMarkdown(state.editor.content || '', state.editor.assets || [])); state.editor.originalSnapshot = editorSnapshot(); toggleEditor(true); $('editorTitle').focus(); }
+function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').value, tags: state.editor.tags || [], content: contentMarkdown() }); }
+function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
+async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !confirm('放弃当前修改？')) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
+async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
+function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: contentMarkdown() }); }
+function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
+function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
+function updateTag(action) { const current = state.currentTag && state.currentTag !== '__none__' ? state.tags.find(tag => tag.name === state.currentTag) : null; if (action === 'add') { const name = prompt('标签名称'); if (name) post({ type: 'addTag', name }); } else if (action === 'rename' && current) { const name = prompt('标签名称', current.name); if (name) post({ type: 'renameTag', tagId: current.id, name }); } else if (action === 'delete' && current && confirm(`删除标签“${current.name}”？`)) post({ type: 'deleteTag', tagId: current.id }); }
+function applyTool(button) { saveSelection(); const command = button.dataset.command; if (command === 'createLink') { const url = prompt('链接地址'); if (url) document.execCommand('createLink', false, url); } else if (command === 'formatBlock') document.execCommand(command, false, button.dataset.value); else document.execCommand(command, false, null); $('editorContent').focus(); }
+
+$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = () => { const ids = Array.from(state.selectedIds); if (ids.length && confirm(`删除 ${ids.length} 篇笔记？`)) post({ type: 'deleteNotes', noteIds: ids }); }; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
+
+const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (pending && data.ok) { pending.assetId = data.assetId; pending.url = data.url; insertImageNode(data.url, data.assetId, pending.name); state.pendingUploads.delete(String(data.requestId)); } else if (pending) { state.pendingUploads.delete(String(data.requestId)); toast(data.error || '图片写入失败'); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : '已完成'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
+if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
+
+setTimeout(() => post({ type: 'ready' }), 0);
+</script>
+</body>
+</html>
