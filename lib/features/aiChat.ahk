@@ -132,7 +132,7 @@ AiChatAfterReady() {
     AiChatPushLanguage()
     AiChatSetPinned()
     if !LLMSettingsConfigured() {
-        SetTimer(() => SettingsShow("llm"), -1)
+        AiChatOpenSettingsForMissingConfig()
         return
     }
     if AiChatPendingQuestion != "" {
@@ -140,6 +140,16 @@ AiChatAfterReady() {
         AiChatPendingQuestion := ""
         AiChatAsk(question)
     }
+}
+
+AiChatOpenSettingsForMissingConfig() {
+    global AiChatPendingQuestion
+    AiChatPendingQuestion := ""
+    AiChatHide()
+    message := LLMText(
+        "Configure an LLM API before using AI Q&A.",
+        "请先配置LLM API再使用AI问答功能")
+    SetTimer(SettingsShow.Bind("llm", message), -1)
 }
 
 AiChatEnsureWebView() {

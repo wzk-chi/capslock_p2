@@ -49,6 +49,7 @@ LLMTranslateOpenSettingsForMissingConfig() {
     message := LLMText(
         "Configure a translation API or LLM before using translation.",
         "请先配置翻译API或LLM再使用翻译功能")
+    LLMTranslateHide()
     SetTimer(SettingsShow.Bind("translate", message), -1)
 }
 
