@@ -4,6 +4,7 @@
 
 global AppName := "capslock_p2"
 global AppVersion := "0.2.0"
+global AppInstanceMutex := 0
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
 global DebugLogMaxBytes := 1 * 1024 * 1024
 global DebugLogging := false
@@ -40,6 +41,10 @@ Initialize() {
 
     ConfigLoad()
     EnsureConfiguredElevation()
+    AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
+        "ptr", 0, "int", 0, "wstr", "Local\capslock_p2-running", "ptr")
+    if !AppInstanceMutex
+        DebugLog("Unable to create app instance mutex")
     BuildKeySet()
     ApplyGlobalSettings()
     TrayMenuInitialize()

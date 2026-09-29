@@ -16,6 +16,7 @@
 
 [Setup]
 AppId=capslock_p2
+AppMutex=Local\capslock_p2-running
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=capslock_p2
