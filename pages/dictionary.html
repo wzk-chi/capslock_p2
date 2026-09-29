@@ -125,6 +125,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   flex: none;
 }
 .speak-btn:hover { background: var(--accent-soft); }
+.speak-btn .lucide { width: 15px; height: 15px; }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .btn {
   border: 1px solid var(--card-edge);
@@ -206,6 +207,8 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 [hidden] { display: none !important; }
 </style>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 </head>
 <body>
 <main class="card">
@@ -228,11 +231,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
         <span class="head-sound">
           <span class="phonetic" id="phonetic"></span>
           <button class="speak-btn" id="speakBtn" data-i18n-title="speak" title="发音">
-            <svg viewBox="0 0 24 24" width="15" height="15">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19" fill="currentColor"/>
-              <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
-            </svg>
+            <i data-lucide="volume-2"></i>
           </button>
         </span>
       </div>

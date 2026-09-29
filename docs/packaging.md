@@ -53,8 +53,10 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`theme.css`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
-- `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`，以及随安装包分发的 `pinyin-pro\pinyin-pro.js`、MIT 许可和来源说明。
+- `pages\`：`theme.css`、`icons.js`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
+- `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`，共享 UI 图标库
+  `lucide\lucide.min.js` 及其许可证，还有随安装包分发的 `pinyin-pro\pinyin-pro.js`、MIT
+  许可和来源说明。
 - `resources\dictionary.db`：ECDICT 本地词典
 - `resources\SQLite3.dll`：词典的 SQLite 引擎
 - `resources\es.exe`：Everything 查询命令行工具

@@ -13,6 +13,7 @@ main { height: 100vh; padding: 12px 14px 14px; display: flex; flex-direction: co
 .toolbar { display: flex; align-items: center; gap: 8px; flex: none; min-height: 32px; }
 .toolbar-spacer { flex: 1; min-width: 8px; }
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
+.toolbar-actions button, .pane-head button, #swapLanguages { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .language-bar { display: flex; align-items: end; justify-content: center; gap: 10px; align-self: center; width: min(620px, 100%); flex: none; padding: 2px 8px; }
 .language-field { display: grid; gap: 4px; min-width: 0; flex: 1 1 220px; max-width: 260px; }
 .language-field span { color: var(--ui-muted); font-size: 11px; }
@@ -49,23 +50,25 @@ button.copied:hover { background: var(--ui-success-soft); }
 }
 </style>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 </head>
 <body>
 <main id="mainView">
   <div class="toolbar">
     <span id="status"></span>
     <div class="toolbar-actions">
-      <button id="pinPanel" class="secondary small" data-i18n="pin" aria-pressed="false">Pin</button>
-      <button id="openDictionary" class="secondary small" data-i18n="dictionary">Dictionary</button>
-      <button id="openSettings" class="secondary small" data-i18n="settings">Settings</button>
-      <button id="translate" data-i18n="translate" title="Ctrl + Enter">Translate</button>
+      <button id="pinPanel" class="secondary small" data-i18n="pin" aria-pressed="false"><i data-lucide="pin"></i><span data-label>Pin</span></button>
+      <button id="openDictionary" class="secondary small" data-i18n="dictionary"><i data-lucide="book-open"></i><span data-label>Dictionary</span></button>
+      <button id="openSettings" class="secondary small" data-i18n="settings"><i data-lucide="settings-2"></i><span data-label>Settings</span></button>
+      <button id="translate" data-i18n="translate" title="Ctrl + Enter"><i data-lucide="languages"></i><span data-label>Translate</span></button>
     </div>
   </div>
   <div id="languageBar" class="language-bar" hidden>
     <label id="sourceLanguageField" class="language-field">
       <select id="sourceLanguage" aria-label="Source language"></select>
     </label>
-    <button id="swapLanguages" class="small" title="Swap languages" aria-label="Swap languages">⇄</button>
+    <button id="swapLanguages" class="small" title="Swap languages" aria-label="Swap languages"><i data-lucide="arrow-left-right"></i></button>
     <label class="language-field">
       <select id="targetLanguage" aria-label="Target language"></select>
     </label>
@@ -74,15 +77,15 @@ button.copied:hover { background: var(--ui-success-soft); }
     <section class="pane">
       <div class="pane-head">
         <label for="source" data-i18n="source">Source</label>
-        <button id="convertIdentifier" class="secondary small" data-i18n="identifierConvert" disabled>Convert identifier</button>
-        <button id="copySource" class="secondary small" data-i18n="copySource" disabled>Copy source</button>
+        <button id="convertIdentifier" class="secondary small" data-i18n="identifierConvert" disabled><i data-lucide="braces"></i><span data-label>Convert identifier</span></button>
+        <button id="copySource" class="secondary small" data-i18n="copySource" disabled><i data-lucide="copy"></i><span data-label>Copy source</span></button>
       </div>
       <textarea id="source" spellcheck="false" autofocus></textarea>
     </section>
     <section class="pane">
       <div class="pane-head">
         <label for="result" data-i18n="translation">Translation</label>
-        <button id="copyResult" class="secondary small" data-i18n="copyResult" disabled>Copy translation</button>
+        <button id="copyResult" class="secondary small" data-i18n="copyResult" disabled><i data-lucide="copy"></i><span data-label>Copy translation</span></button>
       </div>
       <textarea id="result" readonly spellcheck="false"></textarea>
     </section>
@@ -177,15 +180,21 @@ function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
 }
 
+function setLocalizedText(node, text) {
+  const label = node.querySelector('[data-label]');
+  if (label) label.textContent = text;
+  else node.textContent = text;
+}
+
 function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
   for (const node of document.querySelectorAll('[data-i18n]'))
-    node.textContent = t(node.dataset.i18n);
+    setLocalizedText(node, t(node.dataset.i18n));
   // A copy button mid-flash keeps its feedback label under the new language.
   for (const btn of [copySourceBtn, copyResultBtn])
     if (btn.dataset.flash)
-      btn.textContent = t(btn.dataset.flash);
+      setLocalizedText(btn, t(btn.dataset.flash));
   sourceLanguageSelect.setAttribute('aria-label', t('sourceLanguage'));
   targetLanguageSelect.setAttribute('aria-label', t('targetLanguage'));
   swapLanguagesBtn.title = t('swap');
@@ -259,7 +268,7 @@ function applyPinnedState(value) {
   pinned = !!value;
   const key = pinned ? 'unpin' : 'pin';
   pinBtn.dataset.i18n = key;
-  pinBtn.textContent = t(key);
+  setLocalizedText(pinBtn, t(key));
   pinBtn.title = t(key);
   pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
   pinBtn.classList.toggle('pinned', pinned);
@@ -321,13 +330,13 @@ async function writeClipboard(text) {
 function flashCopyButton(button, ok) {
   const key = ok ? 'copied' : 'copyFailed';
   button.dataset.flash = key;
-  button.textContent = t(key);
+  setLocalizedText(button, t(key));
   button.classList.toggle('copied', ok);
   clearTimeout(button._flashTimer);
   button._flashTimer = setTimeout(() => {
     delete button.dataset.flash;
     button.classList.remove('copied');
-    button.textContent = t(button.dataset.i18n);
+    setLocalizedText(button, t(button.dataset.i18n));
   }, 1200);
 }
 

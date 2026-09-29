@@ -46,27 +46,30 @@ button#pinPanel.pinned:hover { background: var(--ui-accent-quiet); }
 .copy-message:hover { background: transparent; color: var(--ui-accent); }
 .copy-message:disabled { opacity: .35; cursor: default; }
 .copy-message.copied { color: var(--ui-success); }
-.copy-message svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.copy-message .lucide { width: 15px; height: 15px; }
+.topbar button, #send { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .composer { display: flex; gap: 10px; align-items: stretch; }
 textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--ui-line-strong); border-radius: 10px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
 textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
 #send { min-width: 58px; align-self: stretch; }
 </style>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 </head>
 <body>
 <main id="mainView">
   <div class="topbar">
     <h1 id="appTitle">capslock_p2 AI</h1>
     <span id="status"></span>
-    <button id="pinPanel" class="secondary" aria-pressed="false"></button>
-    <button id="newChat" class="secondary"></button>
-    <button id="openSettings" class="secondary"></button>
+    <button id="pinPanel" class="secondary" aria-pressed="false"><i data-lucide="pin"></i><span data-label></span></button>
+    <button id="newChat" class="secondary"><i data-lucide="message-square-plus"></i><span data-label></span></button>
+    <button id="openSettings" class="secondary"><i data-lucide="settings-2"></i><span data-label></span></button>
   </div>
   <div id="messages"></div>
   <div class="composer">
     <textarea id="input" rows="1" spellcheck="false"></textarea>
-    <button id="send"></button>
+    <button id="send"><i data-lucide="send"></i><span data-label></span></button>
   </div>
 </main>
 
@@ -118,16 +121,22 @@ function t(key) {
   return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
 }
 
+function setButtonLabel(button, text) {
+  const label = button.querySelector('[data-label]');
+  if (label) label.textContent = text;
+  else button.textContent = text;
+}
+
 function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
   appTitle.textContent = t('appTitle');
-  pinBtn.textContent = pinBtn.classList.contains('pinned') ? t('unpin') : t('pin');
-  pinBtn.title = pinBtn.textContent;
-  pinBtn.setAttribute('aria-label', pinBtn.textContent);
-  newChatBtn.textContent = t('newChat');
-  settingsBtn.textContent = t('settings');
-  sendBtn.textContent = t('send');
+  setButtonLabel(pinBtn, pinBtn.classList.contains('pinned') ? t('unpin') : t('pin'));
+  pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
+  pinBtn.setAttribute('aria-label', pinBtn.title);
+  setButtonLabel(newChatBtn, t('newChat'));
+  setButtonLabel(settingsBtn, t('settings'));
+  setButtonLabel(sendBtn, t('send'));
   input.placeholder = t('inputPlaceholder');
 }
 
@@ -144,9 +153,9 @@ function applyPinnedState(value) {
   const pinned = !!value;
   pinBtn.classList.toggle('pinned', pinned);
   pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-  pinBtn.textContent = pinned ? t('unpin') : t('pin');
-  pinBtn.title = pinBtn.textContent;
-  pinBtn.setAttribute('aria-label', pinBtn.textContent);
+  setButtonLabel(pinBtn, pinned ? t('unpin') : t('pin'));
+  pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
+  pinBtn.setAttribute('aria-label', pinBtn.title);
 }
 
 async function copyText(text) {
@@ -176,7 +185,7 @@ function createCopyButton(bubble, visible = false) {
   copyButton.disabled = !visible;
   copyButton.title = t('copy');
   copyButton.setAttribute('aria-label', t('copy'));
-  copyButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"></rect><path d="M5 16V6a2 2 0 0 1 2-2h9"></path></svg>';
+  copyButton.appendChild(createIcon('copy'));
   copyButton.addEventListener('click', async event => {
     event.preventDefault();
     event.stopPropagation();
@@ -275,6 +284,7 @@ window.appendMessage = function (role, text) {
     row.appendChild(createCopyButton(bubble, true));
     row.appendChild(bubble);
     messages.appendChild(row);
+    refreshIcons();
   } else {
     const entry = createAssistantRow();
     entry.bubble.dataset.raw = text || '';
@@ -282,6 +292,7 @@ window.appendMessage = function (role, text) {
     entry.copyButton.hidden = !String(text || '');
     entry.copyButton.disabled = !String(text || '');
     messages.appendChild(entry.row);
+    refreshIcons();
   }
   scrollToBottom();
 };
@@ -294,6 +305,7 @@ window.startStreamingMessage = function (requestId) {
     bubble = entry.bubble;
     copyButton = entry.copyButton;
     messages.appendChild(entry.row);
+    refreshIcons();
   }
   bubble.className = 'msg assistant streaming thinking';
   bubble.dataset.raw = '';
@@ -400,6 +412,7 @@ window.setThinking = function (on) {
       const entry = createAssistantRow();
       bubble = entry.bubble;
       messages.appendChild(entry.row);
+      refreshIcons();
     }
     bubble.className = 'msg assistant thinking';
     const copyButton = assistantCopyButton(bubble);

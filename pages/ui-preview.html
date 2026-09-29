@@ -6,6 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>capslock_p2 · UI 风格预览</title>
 <link rel="icon" type="image/png" href="../resources/capslock_p2-icon.png">
+<link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 <style>
 :root {
   font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
@@ -144,7 +147,7 @@ button, label { cursor: pointer; }
   color: currentColor;
 }
 
-.nav-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav-icon .lucide { width: 15px; height: 15px; }
 .nav-text { flex: 1; }
 .nav-count { color: var(--subtle); font-size: 10px; font-weight: 500; }
 
@@ -202,7 +205,7 @@ button, label { cursor: pointer; }
 .button.ghost { padding: 0 9px; border-color: transparent; background: transparent; color: var(--ghost-text); box-shadow: none; }
 .button.ghost:hover { background: var(--surface-soft); color: var(--text); box-shadow: none; }
 
-.button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.button .lucide { width: 14px; height: 14px; }
 
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 17px; }
 
@@ -221,7 +224,7 @@ button, label { cursor: pointer; }
 .stat-icon { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
 .stat-icon.green { background: var(--green-soft); color: var(--green); }
 .stat-icon.amber { background: var(--amber-soft); color: var(--amber); }
-.stat-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stat-icon .lucide { width: 17px; height: 17px; }
 .stat-text { min-width: 0; }
 .stat-label { margin: 1px 0 5px; color: var(--muted); font-size: 10px; }
 .stat-value { margin: 0; color: var(--text); font-size: 17px; font-weight: 720; letter-spacing: -.02em; }
@@ -293,7 +296,7 @@ button, label { cursor: pointer; }
 .profile-orbit::before { width: 215px; height: 92px; left: 25px; top: 18px; }
 .profile-orbit::after { width: 170px; height: 76px; left: 47px; top: 28px; }
 .orbit-core { position: absolute; left: 50%; top: 50%; z-index: 1; width: 52px; height: 52px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 7px solid rgba(255, 255, 255, .18); border-radius: 50%; background: rgba(255, 255, 255, .20); box-shadow: 0 0 0 1px rgba(255, 255, 255, .23), 0 10px 22px rgba(37, 30, 100, .15); }
-.orbit-core svg { width: 21px; height: 21px; fill: none; stroke: #fff; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.orbit-core .lucide { width: 21px; height: 21px; stroke: #fff; stroke-width: 1.65; }
 .orbit-key { position: absolute; z-index: 2; display: inline-flex; align-items: center; justify-content: center; min-width: 27px; height: 21px; border: 1px solid rgba(255, 255, 255, .26); border-radius: 6px; background: rgba(255, 255, 255, .14); color: rgba(255, 255, 255, .93); font: 10px Consolas, monospace; }
 .orbit-key.one { left: 28px; top: 27px; }.orbit-key.two { right: 26px; top: 43px; }.orbit-key.three { left: 40px; bottom: 22px; }.orbit-key.four { right: 42px; bottom: 20px; }
 .profile-list { display: grid; gap: 1px; margin-top: 12px; }
@@ -332,7 +335,7 @@ button, label { cursor: pointer; }
 .search-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; color: var(--muted); font-size: 10px; }
 .search-head .search-kicker { flex: 1; color: var(--text); font-weight: 650; }
 .search-window { display: flex; align-items: center; gap: 9px; min-height: 34px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 10px; background: var(--surface-solid); }
-.search-window svg { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.search-window .lucide { width: 14px; height: 14px; flex: none; color: var(--accent); }
 .search-window span { flex: 1; color: var(--text); font: 11px Consolas, "Cascadia Mono", monospace; }
 .search-window kbd { color: var(--subtle); font: 9px Consolas, monospace; }
 .result-preview { display: grid; gap: 3px; margin-top: 8px; }
@@ -374,7 +377,6 @@ button, label { cursor: pointer; }
   .intro h1 { font-size: 26px; }.breadcrumb { font-size: 10px; }
 }
 </style>
-<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="preview-app">
@@ -387,27 +389,27 @@ button, label { cursor: pointer; }
 
       <nav class="nav" aria-label="主导航">
         <button class="active" type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z"/><path d="M8 9h8M8 13h5M8 16h3"/></svg></span>
+          <span class="nav-icon"><i data-lucide="settings-2"></i></span>
           <span class="nav-text">设置中心</span><span class="nav-count">01</span>
         </button>
         <button type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h9M5 18h6"/><path d="m16 15 3 3-3 3"/></svg></span>
+          <span class="nav-icon"><i data-lucide="languages"></i></span>
           <span class="nav-text">翻译</span>
         </button>
         <button type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 10h8M8 14h5"/><circle cx="17" cy="17" r="2.2"/></svg></span>
+          <span class="nav-icon"><i data-lucide="message-circle-question-mark"></i></span>
           <span class="nav-text">AI 问答</span>
         </button>
         <button type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg></span>
+          <span class="nav-icon"><i data-lucide="search"></i></span>
           <span class="nav-text">词典</span>
         </button>
         <button type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="m9 10 2 2-2 2M13 14h3"/></svg></span>
+          <span class="nav-icon"><i data-lucide="terminal"></i></span>
           <span class="nav-text">qbar</span><span class="nav-count">⌘Q</span>
         </button>
         <button type="button">
-          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 10h8M8 14h6"/></svg></span>
+          <span class="nav-icon"><i data-lucide="book-open"></i></span>
           <span class="nav-text">使用介绍</span>
         </button>
       </nav>
@@ -427,21 +429,21 @@ button, label { cursor: pointer; }
           </div>
           <div class="intro-actions">
             <button class="button secondary" type="button">恢复默认</button>
-            <button class="button" type="button"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7.5"/></svg>保存更改</button>
+            <button class="button" type="button"><i data-lucide="check"></i>保存更改</button>
           </div>
         </section>
 
         <section class="stats" aria-label="概览">
           <div class="stat">
-            <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 10h2M12 10h2M16 10h0M8 14h2M12 14h6"/></svg></div>
+            <div class="stat-icon"><i data-lucide="keyboard"></i></div>
             <div class="stat-text"><p class="stat-label">已启用快捷键</p><p class="stat-value">42 个</p></div>
           </div>
           <div class="stat">
-            <div class="stat-icon green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.3 2.3 4.8-5"/></svg></div>
+            <div class="stat-icon green"><i data-lucide="circle-check"></i></div>
             <div class="stat-text"><p class="stat-label">运行状态</p><p class="stat-value">一切正常</p></div>
           </div>
           <div class="stat">
-            <div class="stat-icon amber"><svg viewBox="0 0 24 24"><path d="M12 4v8l5 3"/><circle cx="12" cy="12" r="8"/></svg></div>
+            <div class="stat-icon amber"><i data-lucide="clock-3"></i></div>
             <div class="stat-text"><p class="stat-label">本次会话</p><p class="stat-value">1 小时 28 分</p></div>
           </div>
         </section>
@@ -479,7 +481,7 @@ button, label { cursor: pointer; }
             <div class="card-body">
               <div class="profile-orbit">
                 <span class="orbit-key one">S</span><span class="orbit-key two">Q</span><span class="orbit-key three">C</span><span class="orbit-key four">T</span>
-                <span class="orbit-core"><svg viewBox="0 0 24 24"><path d="M6 8.5h12v8H6z"/><path d="M9 11h1M12 11h1M15 11h1M9 14h6"/></svg></span>
+                <span class="orbit-core"><i data-lucide="keyboard"></i></span>
               </div>
               <div class="profile-list">
                 <div class="profile-list-row"><span>临时层</span><strong>按住 CapsLock</strong></div>
@@ -514,8 +516,8 @@ button, label { cursor: pointer; }
 
         <section class="search-preview">
           <div class="search-head"><span class="search-kicker">qbar</span></div>
-          <div class="search-window"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg><span>搜索应用、文件或命令…</span><kbd>Esc</kbd></div>
-          <div class="result-preview"><div class="result-row active"><span class="result-icon">⌕</span><strong>打开设置中心</strong><small>cl set</small></div><div class="result-row"><span class="result-icon">↗</span><strong>capslock_p2 使用介绍</strong><small>文档</small></div><div class="result-row"><span class="result-icon">⌘</span><strong>Everything 文件搜索</strong><small>文件</small></div></div>
+          <div class="search-window"><i data-lucide="search"></i><span>搜索应用、文件或命令…</span><kbd>Esc</kbd></div>
+          <div class="result-preview"><div class="result-row active"><span class="result-icon"><i data-lucide="settings-2"></i></span><strong>打开设置中心</strong><small>cl set</small></div><div class="result-row"><span class="result-icon"><i data-lucide="arrow-up-right"></i></span><strong>capslock_p2 使用介绍</strong><small>文档</small></div><div class="result-row"><span class="result-icon"><i data-lucide="files"></i></span><strong>Everything 文件搜索</strong><small>文件</small></div></div>
         </section>
 
       </div>

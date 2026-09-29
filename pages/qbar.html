@@ -5,6 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <title>qbar</title>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 <script src="../vendor/pinyin-pro/pinyin-pro.js"></script>
 <script src="qbar-search.js"></script>
 <style>
@@ -136,8 +138,9 @@ body {
   cursor: default;
 }
 
-.row .glyph { flex: 0 0 auto; width: 16px; text-align: center; opacity: .75; }
+.row .glyph { flex: 0 0 auto; width: 16px; display: grid; place-items: center; opacity: .75; }
 .row .glyph img { width: 16px; height: 16px; display: block; margin: 0 auto; }
+.row .glyph .lucide { width: 15px; height: 15px; }
 .row .text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .row.selected { background: var(--accent-soft); color: var(--accent); }
 .row.selected .glyph { opacity: 1; }
@@ -180,7 +183,11 @@ const MAX_RENDERED = 60; // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
 const TYPE_RANK = { search: -1, everything: -1, notes: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
-const TYPE_GLYPH = { search: '🔍', everything: '🗂', notes: '📝', folder: '📁', file: '📄', web: '🌐', app: '▶', ai: '🤖', history: '↻' };
+const TYPE_ICON = {
+  search: 'search', everything: 'folder-search', notes: 'notebook-pen',
+  folder: 'folder', file: 'file', web: 'globe', app: 'play', ai: 'bot',
+  history: 'clock-3'
+};
 
 const STRINGS = {
   en: { placeholder: 'Type to search…', loading: 'Loading…' },
@@ -309,7 +316,7 @@ function render() {
         img.draggable = false;
         glyph.appendChild(img);
       } else {
-        glyph.textContent = TYPE_GLYPH[item.type] || '•';
+        glyph.appendChild(createIcon(TYPE_ICON[item.type] || 'circle'));
       }
       const text = document.createElement('span');
       text.className = 'text';
@@ -329,6 +336,7 @@ function render() {
   list.classList.toggle('hidden', listHidden || !hasContent());
   if (loadingVisible)
     list.classList.add('hidden');
+  refreshIcons();
   reportRows();
 }
 

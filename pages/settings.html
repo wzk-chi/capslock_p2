@@ -25,9 +25,10 @@ button { cursor: pointer; }
 .brand span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .nav { display: grid; gap: 4px; }
 .nav button {
-  width: 100%; border: 0; border-radius: 9px; padding: 10px 12px;
+  width: 100%; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 9px; padding: 10px 12px;
   background: transparent; color: var(--muted); text-align: left; font-size: 13px;
 }
+.nav button .lucide { width: 16px; height: 16px; }
 .nav button:hover { background: var(--panel-2); color: var(--ink); }
 .nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .side-foot { margin-top: auto; padding: 10px 12px 0; color: var(--muted); font-size: 11px; }
@@ -90,8 +91,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .shortcut-group { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); overflow: hidden; }
 .shortcut-group summary { display: flex; align-items: center; gap: 8px; padding: 11px 13px; cursor: pointer; list-style: none; user-select: none; color: var(--ink); font-size: 12px; font-weight: 650; }
 .shortcut-group summary::-webkit-details-marker { display: none; }
-.shortcut-group summary::before { content: '›'; color: var(--muted); font-size: 17px; line-height: 1; transition: transform .15s ease; }
-.shortcut-group[open] summary::before { transform: rotate(90deg); }
+.shortcut-group .summary-icon { color: var(--muted); width: 16px; height: 16px; transition: transform .15s ease; }
+.shortcut-group[open] .summary-icon { transform: rotate(90deg); }
 .shortcut-group-count { margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 500; }
 .shortcut-group-list { display: grid; gap: 7px; padding: 0 12px 12px; }
 .icon-btn { border: 0; border-radius: 7px; padding: 6px; background: transparent; color: var(--muted); font-size: 16px; }
@@ -145,21 +146,23 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 </style>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 </head>
 <body>
 <div class="app">
   <aside class="side">
     <div class="brand"><strong>capslock_p2</strong><span>设置中心</span></div>
     <nav class="nav" id="nav">
-      <button class="active" data-page="general">通用</button>
-      <button data-page="mouse">鼠标</button>
-      <button data-page="llm">LLM</button>
-      <button data-page="translate">翻译</button>
-      <button data-page="ai">AI 问答</button>
-      <button data-page="shortcuts">快捷键</button>
-      <button data-page="tab">Tab 替换</button>
-      <button data-page="qbar">qbar</button>
-      <button data-page="windows">窗口绑定</button>
+      <button class="active" data-page="general"><i data-lucide="sliders-horizontal"></i><span>通用</span></button>
+      <button data-page="mouse"><i data-lucide="mouse-pointer-2"></i><span>鼠标</span></button>
+      <button data-page="llm"><i data-lucide="cpu"></i><span>LLM</span></button>
+      <button data-page="translate"><i data-lucide="languages"></i><span>翻译</span></button>
+      <button data-page="ai"><i data-lucide="message-circle-question-mark"></i><span>AI 问答</span></button>
+      <button data-page="shortcuts"><i data-lucide="keyboard"></i><span>快捷键</span></button>
+      <button data-page="tab"><i data-lucide="text-cursor-input"></i><span>Tab 替换</span></button>
+      <button data-page="qbar"><i data-lucide="search"></i><span>qbar</span></button>
+      <button data-page="windows"><i data-lucide="app-window"></i><span>窗口绑定</span></button>
     </nav>
     <div class="side-foot">v0.1.1</div>
   </aside>
@@ -692,6 +695,7 @@ function renderShortcuts() {
     details.className = 'shortcut-group';
     details.dataset.group = group.id;
     const summary = document.createElement('summary');
+    summary.appendChild(createIcon('chevron-right', 'summary-icon'));
     const title = document.createElement('span');
     title.textContent = group.label;
     const count = document.createElement('span');
@@ -748,6 +752,7 @@ function renderShortcuts() {
     root.append(details);
   }
   applyShortcutFilter();
+  refreshIcons();
 }
 function updateCustomHotkeyKey(row, triggerInput, sendInput) {
   const oldKey = row.dataset.key;
@@ -811,7 +816,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   const remove = document.createElement('button');
   remove.className = 'icon-btn';
   remove.type = 'button';
-  remove.textContent = '×';
+  remove.appendChild(createIcon('x'));
   remove.title = '删除自定义快捷键';
   remove.addEventListener('click', () => {
     if (row.dataset.key) {
@@ -831,6 +836,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   });
   row.append(triggerField, sendField, remove);
   root.append(row);
+  refreshIcons();
 }
 function renderCustomHotkeys() {
   const root = $('#customHotkeyList');
@@ -856,8 +862,8 @@ function addPairRow(sectionName, root, initialKey = '', initialValue = '', multi
   row.dataset.key = initialKey;
   const keyInput = document.createElement('input'); keyInput.value = initialKey; keyInput.placeholder = '键';
   const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.value = initialValue; valueInput.placeholder = '值';
-  const remove = document.createElement('button'); remove.className = 'icon-btn'; remove.type = 'button'; remove.textContent = '×';
-  row.append(keyInput, valueInput, remove); root.append(row);
+  const remove = document.createElement('button'); remove.className = 'icon-btn'; remove.type = 'button'; remove.appendChild(createIcon('x'));
+  row.append(keyInput, valueInput, remove); root.append(row); refreshIcons();
   const updateKey = () => {
     const oldKey = row.dataset.key;
     const newKey = keyInput.value.trim();

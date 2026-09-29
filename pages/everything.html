@@ -5,6 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <title>capslock_p2 Everything</title>
 <link rel="stylesheet" href="theme.css">
+<script src="../vendor/lucide/lucide.min.js"></script>
+<script src="icons.js"></script>
 <style>
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -73,6 +75,9 @@ body {
 .category {
   width: 100%;
   min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 4px;
   padding: 0 11px;
   border: 0;
@@ -83,6 +88,7 @@ body {
   text-align: left;
   font: 12px/1.2 "Segoe UI", "Microsoft YaHei", sans-serif;
 }
+.category .lucide { width: 15px; height: 15px; }
 .category:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
 .category.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-weight: 650; }
 
@@ -164,6 +170,7 @@ body {
 .result.stale { opacity: .58; cursor: wait; }
 .result-icon { flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--ui-accent-strong); font-size: 22px; }
 .result-icon img { width: 26px; height: 26px; object-fit: contain; }
+.result-icon .lucide { width: 22px; height: 22px; }
 .result-copy { min-width: 0; flex: 1 1 auto; }
 .result-name { color: var(--ui-text); font-size: 13px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-parent { margin-top: 3px; color: var(--ui-muted); font-size: 11px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -183,6 +190,9 @@ body {
 .menu-item {
   width: 100%;
   min-height: 31px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 0 10px;
   border: 0;
   border-radius: 6px;
@@ -203,14 +213,14 @@ body {
 <main id="shell">
   <div class="searchbar">
     <input id="query" spellcheck="false" autocomplete="off">
-    <button id="searchButton" class="button primary"></button>
+    <button id="searchButton" class="button primary"><i data-lucide="search"></i><span data-label></span></button>
   </div>
   <div class="content">
     <nav id="categories" aria-label="File types"></nav>
     <section class="results-pane">
       <div id="statusBar">
         <div id="status"></div>
-        <button id="sortButton" type="button" aria-haspopup="menu" aria-expanded="false"></button>
+        <button id="sortButton" type="button" aria-haspopup="menu" aria-expanded="false"><i data-lucide="arrow-down-up"></i><span data-label></span></button>
         <div id="sortMenu" class="hidden" role="menu"></div>
       </div>
       <div id="resultList" tabindex="0" role="listbox" aria-label="Everything results"></div>
@@ -218,10 +228,10 @@ body {
   </div>
 </main>
 <div id="contextMenu" class="hidden" role="menu">
-  <button class="menu-item" data-action="reveal" role="menuitem"></button>
-  <button class="menu-item" data-action="copy" role="menuitem"></button>
-  <button class="menu-item" data-action="copyPath" role="menuitem"></button>
-  <button class="menu-item" data-action="copyParent" role="menuitem"></button>
+  <button class="menu-item" data-action="reveal" role="menuitem"><i data-lucide="folder-open"></i><span data-label></span></button>
+  <button class="menu-item" data-action="copy" role="menuitem"><i data-lucide="copy"></i><span data-label></span></button>
+  <button class="menu-item" data-action="copyPath" role="menuitem"><i data-lucide="file-code"></i><span data-label></span></button>
+  <button class="menu-item" data-action="copyParent" role="menuitem"><i data-lucide="folder"></i><span data-label></span></button>
 </div>
 <script>
 const query = document.getElementById('query');
@@ -234,6 +244,11 @@ const resultList = document.getElementById('resultList');
 const contextMenu = document.getElementById('contextMenu');
 
 const CATEGORY_IDS = ['all', 'folder', 'excel', 'word', 'ppt', 'pdf', 'image', 'video', 'audio', 'archive'];
+const CATEGORY_ICONS = {
+  all: 'files', folder: 'folder', excel: 'file-spreadsheet', word: 'file-text',
+  ppt: 'presentation', pdf: 'file-text', image: 'image', video: 'video',
+  audio: 'music-2', archive: 'archive'
+};
 const SORT_OPTIONS = [
   ['name-asc', 'sortNameAsc'], ['name-desc', 'sortNameDesc'],
   ['path-asc', 'sortPathAsc'], ['path-desc', 'sortPathDesc'],
@@ -287,7 +302,7 @@ function renderCategories() {
     const button = document.createElement('button');
     button.className = 'category' + (id === category ? ' active' : '');
     button.dataset.category = id;
-    button.textContent = t(id);
+    button.append(createIcon(CATEGORY_ICONS[id] || 'folder'), document.createTextNode(t(id)));
     button.addEventListener('click', () => {
       if (category === id) return;
       category = id;
@@ -296,15 +311,21 @@ function renderCategories() {
     });
     categories.appendChild(button);
   }
+  refreshIcons();
+}
+function setButtonLabel(button, text) {
+  const label = button.querySelector('[data-label]');
+  if (label) label.textContent = text;
+  else button.textContent = text;
 }
 function applyLanguage() {
   query.placeholder = t('placeholder');
-  searchButton.textContent = t('search');
-  contextMenu.querySelector('[data-action="reveal"]').textContent = t('reveal');
-  contextMenu.querySelector('[data-action="copy"]').textContent = t('copy');
-  contextMenu.querySelector('[data-action="copyPath"]').textContent = t('copyPath');
-  contextMenu.querySelector('[data-action="copyParent"]').textContent = t('copyParent');
-  sortButton.textContent = t('sort') + ': ' + t(sortOptionKey());
+  setButtonLabel(searchButton, t('search'));
+  setButtonLabel(contextMenu.querySelector('[data-action="reveal"]'), t('reveal'));
+  setButtonLabel(contextMenu.querySelector('[data-action="copy"]'), t('copy'));
+  setButtonLabel(contextMenu.querySelector('[data-action="copyPath"]'), t('copyPath'));
+  setButtonLabel(contextMenu.querySelector('[data-action="copyParent"]'), t('copyParent'));
+  setButtonLabel(sortButton, t('sort') + ': ' + t(sortOptionKey()));
   sortButton.setAttribute('aria-expanded', sortMenu.classList.contains('hidden') ? 'false' : 'true');
   sortMenu.textContent = '';
   SORT_OPTIONS.forEach(([id, key]) => {
@@ -317,6 +338,7 @@ function applyLanguage() {
     sortMenu.appendChild(button);
   });
   renderCategories();
+  refreshIcons();
 }
 function sortOptionKey() {
   const option = SORT_OPTIONS.find(entry => entry[0] === sortId);
@@ -401,7 +423,7 @@ function renderResults() {
       image.alt = '';
       image.draggable = false;
       icon.appendChild(image);
-    } else icon.textContent = item.kind === 'folder' ? '📁' : '📄';
+    } else icon.appendChild(createIcon(item.kind === 'folder' ? 'folder' : 'file'));
     const copy = document.createElement('span');
     copy.className = 'result-copy';
     const name = document.createElement('span');
@@ -422,6 +444,7 @@ function renderResults() {
     }
     resultList.appendChild(row);
   });
+  refreshIcons();
 }
 function selectResult(index) {
   const ordered = sortedResults();
