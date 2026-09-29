@@ -20,6 +20,8 @@ AppMutex=Local\capslock_p2-running
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=capslock_p2
+; Match the Windows UI language without showing a language picker.
+ShowLanguageDialog=no
 DefaultDirName={localappdata}\capslock_p2
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -36,6 +38,10 @@ Uninstallable=yes
 ; Use Windows Restart Manager to detect and close apps holding files being updated.
 CloseApplications=yes
 RestartApplications=no
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimp"; MessagesFile: "{#ProjectRoot}\tools\Languages\ChineseSimplified.isl"
 
 [Files]
 ; Compiled AHK v2 runtime.
