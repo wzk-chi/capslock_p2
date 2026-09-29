@@ -228,6 +228,19 @@ QbarScheduleNotes(searchText := "", recordHistory := true) {
     return true
 }
 
+QbarScheduleNotesHistory(entry) {
+    global QbarTargetHwnd
+    targetHwnd := QbarTargetHwnd
+    QbarHide()
+    SetTimer(QbarNotesHistoryAction.Bind(entry, targetHwnd), -1)
+    return "deferred"
+}
+
+QbarNotesHistoryAction(entry, targetHwnd, *) {
+    if NotesShow(entry["payload"]["search"], targetHwnd, false)
+        QbarHistoryRemember(entry)
+}
+
 QbarHistoryUrlEntry(input, url) {
     input := Trim(input, " `t")
     return QbarHistoryNew("url", input, input, Map("url", url))
@@ -278,7 +291,7 @@ QbarHistoryExecuteEntry(entry) {
             QbarHide()
             return EverythingShow(payload["query"], QbarHistoryBoolValue(payload["runQuery"]))
         case "notes":
-            return QbarScheduleNotes(payload["search"], false) ? "deferred" : false
+            return QbarScheduleNotesHistory(entry)
         case "settings":
             QbarHide()
             return QbarScheduleSettingsHistory(entry)
