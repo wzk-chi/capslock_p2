@@ -3,7 +3,7 @@
 ; entry point includes only the v2 modules.
 
 global AppName := "capslock_p2"
-global AppVersion := "0.1.1"
+global AppVersion := "0.2.0"
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
 global DebugLogMaxBytes := 1 * 1024 * 1024
 global DebugLogging := false
