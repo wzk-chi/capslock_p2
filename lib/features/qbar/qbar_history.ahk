@@ -1,8 +1,10 @@
-; qbar recent execution history.
+; qbar recent execution history and decayed command usage.
 ;
 ; The history is deliberately separate from capslock_p2.ini. It stores only
 ; successful, repeatable actions and keeps enough resolved data to replay an
-; action even after the corresponding Qbar configuration entry changes.
+; action even after the corresponding Qbar configuration entry changes. Usage
+; counters live beside the history so the two files never need to be migrated
+; independently.
 
 global QbarHistoryLoaded := false
 global QbarHistoryItems := []
@@ -12,6 +14,8 @@ global QbarHistoryDisplayLimit := 10
 global QbarHistoryDisplayedSeq := 0
 global QbarHistoryDisplayedPageId := 0
 global QbarHistoryDisplayedIds := Map()
+global QbarUsageItems := Map()
+global QbarUsageHalfLifeSeconds := 604800 ; seven days
 
 QbarHistoryFilePath() {
     return A_AppData . "\capslock_p2\qbar-history.json"
@@ -22,11 +26,12 @@ QbarHistoryDirectory() {
 }
 
 QbarHistoryEnsureLoaded() {
-    global QbarHistoryLoaded, QbarHistoryItems
+    global QbarHistoryLoaded, QbarHistoryItems, QbarUsageItems
     if QbarHistoryLoaded
         return
     QbarHistoryLoaded := true
     QbarHistoryItems := []
+    QbarUsageItems := Map()
 
     path := QbarHistoryFilePath()
     if !FileExist(path)
@@ -58,6 +63,26 @@ QbarHistoryEnsureLoaded() {
         QbarHistoryItems.Push(entry)
         if QbarHistoryItems.Length >= QbarHistoryLimit
             break
+    }
+    if document.Has("usage") && Type(document["usage"]) = "Map"
+        QbarUsageLoad(document["usage"])
+}
+
+QbarUsageLoad(storedUsage) {
+    global QbarUsageItems
+    for key, stored in storedUsage {
+        if Type(key) != "String" || Type(stored) != "Map"
+            continue
+        if !stored.Has("score") || !stored.Has("lastUsedUtc")
+            continue
+        valid := false
+        score := QbarUsageReadScore(stored["score"], &valid)
+        lastUsedUtc := stored["lastUsedUtc"]
+        if !valid || Type(lastUsedUtc) != "String"
+            continue
+        if !RegExMatch(lastUsedUtc, "^\d{14}$")
+            continue
+        QbarUsageItems[key] := Map("score", score, "lastUsedUtc", lastUsedUtc)
     }
 }
 
@@ -102,6 +127,7 @@ QbarHistoryRemember(entry) {
 
     normalized["id"] := oldId != "" ? oldId : QbarHistoryNewId()
     normalized["lastUsedUtc"] := FormatTime(A_NowUTC, "yyyyMMddHHmmss")
+    QbarUsageRemember(normalized)
     QbarHistoryItems.InsertAt(1, normalized)
     while QbarHistoryItems.Length > QbarHistoryLimit
         QbarHistoryItems.Pop()
@@ -114,7 +140,7 @@ QbarHistorySave() {
     serialized := []
     for entry in QbarHistoryItems
         serialized.Push(QbarHistorySerializeEntry(entry))
-    document := Map("items", serialized)
+    document := Map("items", serialized, "usage", QbarUsageSerialize())
 
     try {
         DirCreate(QbarHistoryDirectory())
@@ -126,6 +152,118 @@ QbarHistorySave() {
         return false
     }
     return true
+}
+
+QbarUsageRemember(entry) {
+    global QbarUsageItems
+    key := QbarHistoryUsageKey(entry)
+    if key = ""
+        return false
+
+    current := QbarUsageInfo(key)
+    QbarUsageItems[key] := Map(
+        "score", current["score"] + 1,
+        "lastUsedUtc", FormatTime(A_NowUTC, "yyyyMMddHHmmss"))
+    return true
+}
+
+QbarUsageSerialize() {
+    global QbarUsageItems
+    serialized := Map()
+    for key, usage in QbarUsageItems {
+        if Type(usage) != "Map" || !usage.Has("score") || !usage.Has("lastUsedUtc")
+            continue
+        valid := false
+        score := QbarUsageReadScore(usage["score"], &valid)
+        lastUsedUtc := usage["lastUsedUtc"]
+        if !valid || Type(lastUsedUtc) != "String"
+            continue
+        if !RegExMatch(lastUsedUtc, "^\d{14}$")
+            continue
+        serialized[key] := Map("score", score, "lastUsedUtc", lastUsedUtc)
+    }
+    return serialized
+}
+
+; Return the score after applying the seven-day half-life, plus the raw last
+; execution time for deterministic tie-breaking in the page sort.
+QbarUsageInfo(key) {
+    global QbarUsageItems, QbarUsageHalfLifeSeconds
+    QbarHistoryEnsureLoaded()
+    info := Map("score", 0, "lastUsedUtc", "")
+    if key = "" || !QbarUsageItems.Has(key)
+        return info
+
+    usage := QbarUsageItems[key]
+    if Type(usage) != "Map" || !usage.Has("score") || !usage.Has("lastUsedUtc")
+        return info
+    valid := false
+    score := QbarUsageReadScore(usage["score"], &valid)
+    lastUsedUtc := usage["lastUsedUtc"]
+    if !valid || Type(lastUsedUtc) != "String"
+        return info
+    if !RegExMatch(lastUsedUtc, "^\d{14}$")
+        return info
+
+    elapsed := 0
+    try elapsed := DateDiff(A_NowUTC, lastUsedUtc, "Seconds")
+    catch
+        return info
+    if elapsed > 0
+        score *= 2 ** (0 - elapsed / QbarUsageHalfLifeSeconds)
+    info["score"] := score
+    info["lastUsedUtc"] := lastUsedUtc
+    return info
+}
+
+QbarUsageReadScore(value, &valid := false) {
+    valid := false
+    valueType := Type(value)
+    if valueType != "Integer" && valueType != "Float"
+        return 0
+    score := value + 0
+    if score <= 0
+        return 0
+    valid := true
+    return score
+}
+
+QbarHistoryUsageKey(entry) {
+    kind := entry["kind"]
+    payload := entry["payload"]
+    switch kind {
+        case "ai":
+            return "builtin:ai"
+        case "everything":
+            return "builtin:everything"
+        case "notes":
+            return "builtin:notes"
+        case "shortcut":
+            if payload.Has("shortcutPath")
+                return "shortcut:" . StrLower(String(payload["shortcutPath"]))
+        case "run":
+            return QbarHistoryConfiguredUsageKey("QRun", entry["input"])
+        case "url":
+            usageKey := QbarHistoryConfiguredUsageKey("QSearch", entry["input"])
+            if usageKey != ""
+                return usageKey
+            return QbarHistoryConfiguredUsageKey("QWeb", entry["input"])
+        case "path", "reveal":
+            return QbarHistoryConfiguredUsageKey("QRun", entry["input"])
+    }
+    return ""
+}
+
+QbarHistoryConfiguredUsageKey(section, input) {
+    token := QbarFirstToken(Trim(String(input), " `t"))
+    if token = ""
+        return ""
+    entry := QbarConfigEntry(section, token)
+    if !IsObject(entry) && section = "QSearch"
+        entry := QbarConfigEntry(section, QbarEngineAlias(token))
+    if !IsObject(entry) || !entry.Has("usageKey")
+        return ""
+    return entry["usageKey"]
 }
 
 QbarHistoryRows(limit := 10) {

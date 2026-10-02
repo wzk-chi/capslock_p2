@@ -278,6 +278,12 @@ function sortResults(items) {
     const matchA = Number.isFinite(a.matchRank) ? a.matchRank : 60;
     const matchB = Number.isFinite(b.matchRank) ? b.matchRank : 60;
     if (matchA !== matchB) return matchA - matchB;
+    const usageA = Number.isFinite(a.usageScore) ? a.usageScore : 0;
+    const usageB = Number.isFinite(b.usageScore) ? b.usageScore : 0;
+    if (usageA !== usageB) return usageB - usageA;
+    const lastUsedA = Number(a.usageLastUsedUtc) || 0;
+    const lastUsedB = Number(b.usageLastUsedUtc) || 0;
+    if (lastUsedA !== lastUsedB) return lastUsedB - lastUsedA;
     const rankA = TYPE_RANK[a.type] ?? 9;
     const rankB = TYPE_RANK[b.type] ?? 9;
     if (rankA !== rankB) return rankA - rankB;

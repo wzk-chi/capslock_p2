@@ -30,11 +30,11 @@ QbarConfigIndex() {
     ; Discoverability rows always lead the list. Keep one row per built-in
     ; action while retaining every alias for matching and direct dispatch.
     items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", "",
-        "aliases", ["q", "ai"]))
+        "usageKey", "builtin:ai", "aliases", ["q", "ai"]))
     items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", "",
-        "aliases", ["e", "everything", "find", "f"]))
+        "usageKey", "builtin:everything", "aliases", ["e", "everything", "find", "f"]))
     items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", "",
-        "aliases", ["n", "note", "w", "write"]))
+        "usageKey", "builtin:notes", "aliases", ["n", "note", "w", "write"]))
 
     ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former
     ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun -> QWeb.
@@ -47,7 +47,8 @@ QbarConfigIndex() {
         if Trim(value) = "" || short = "default"
             continue
         configuredSearch[StrLower(short)] := true
-        entry := Map("short", short, "label", key, "type", "search", "value", value)
+        entry := Map("short", short, "label", key, "type", "search", "value", value,
+            "usageKey", "qsearch:" . StrLower(short))
         sections["QSearch"].Push(entry)
         QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
     }
@@ -65,6 +66,7 @@ QbarConfigIndex() {
             "label", key,
             "type", isFolder ? "folder" : "file",
             "value", value,
+            "usageKey", "qrun:" . StrLower(short),
             "icon", isFolder ? "folder" : IconKeyForPath(resolved))
         sections["QRun"].Push(entry)
         QbarConfigIndexRecordEntry(byShort, "QRun", entry)
@@ -72,7 +74,9 @@ QbarConfigIndex() {
     for key, value in ConfigSection("QWeb") {
         if Trim(value) = ""
             continue
-        entry := Map("short", QbarShortKey(key), "label", key, "type", "web", "value", value)
+        short := QbarShortKey(key)
+        entry := Map("short", short, "label", key, "type", "web", "value", value,
+            "usageKey", "qweb:" . StrLower(short))
         sections["QWeb"].Push(entry)
         QbarConfigIndexRecordEntry(byShort, "QWeb", entry)
     }
@@ -81,9 +85,11 @@ QbarConfigIndex() {
     ; entry suppresses it; an empty entry retains the previous fallback row.
     if !configuredSearch.Has("s") {
         if IsChineseLanguage()
-            entry := Map("short", "s", "label", "s <搜索>", "type", "search", "value", "https://www.bing.com/search?q={q}")
+            entry := Map("short", "s", "label", "s <搜索>", "type", "search", "value", "https://www.bing.com/search?q={q}",
+                "usageKey", "qsearch:s")
         else
-            entry := Map("short", "s", "label", "s <search>", "type", "search", "value", "https://www.google.com/search?q={q}")
+            entry := Map("short", "s", "label", "s <search>", "type", "search", "value", "https://www.google.com/search?q={q}",
+                "usageKey", "qsearch:s")
         sections["QSearch"].Push(entry)
         QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
     }
@@ -163,6 +169,7 @@ QbarStartMenuItems() {
                     "label", label,
                     "type", "app",
                     "value", A_LoopFileFullPath,
+                    "usageKey", "shortcut:" . StrLower(A_LoopFileFullPath),
                     "icon", IconKeyForPath(A_LoopFileFullPath),
                     "exe", target
                 ))
@@ -247,6 +254,13 @@ QbarFilterItems(text) {
         matchRank := 60
         if !QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank)
             continue
+        usageScore := 0
+        usageLastUsedUtc := ""
+        if item.Has("usageKey") {
+            usage := QbarUsageInfo(item["usageKey"])
+            usageScore := usage["score"]
+            usageLastUsedUtc := usage["lastUsedUtc"]
+        }
         ; An exact trigger match floats to the top (reference: column 3 pinning).
         pinned := short = matchStrLeft
         results.Push(Map(
@@ -256,6 +270,8 @@ QbarFilterItems(text) {
             "pinned", pinned,
             "icon", item.Has("icon") ? item["icon"] : "",
             "matchRank", matchRank,
+            "usageScore", usageScore,
+            "usageLastUsedUtc", usageLastUsedUtc,
             "searchOrder", entry["order"]
         ))
     }
@@ -326,6 +342,10 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
             row["matchRank"] := item["matchRank"]
         if item.Has("searchOrder")
             row["searchOrder"] := item["searchOrder"]
+        if item.Has("usageScore")
+            row["usageScore"] := item["usageScore"]
+        if item.Has("usageLastUsedUtc")
+            row["usageLastUsedUtc"] := item["usageLastUsedUtc"]
         if item.Has("historyId")
             row["historyId"] := item["historyId"]
         if item.Has("history")
