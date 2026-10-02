@@ -14,7 +14,7 @@ global QbarQuerySeq := 0
 global QbarPageQueryId := 0
 global QbarCurrentRows := 0
 global QbarStartMenuCache := 0      ; 0 = not scanned yet, otherwise an array
-global QbarConfigIndexCache := 0    ; lazily built QSearch/QRun/QWeb index
+global QbarConfigIndexCache := 0    ; lazily built QSearch/QRun index
 global QbarConfigIndexGeneration := 1
 global QbarFolderDir := ""
 global QbarFolderItems := []

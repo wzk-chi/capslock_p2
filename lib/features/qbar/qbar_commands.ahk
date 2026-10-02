@@ -2,11 +2,6 @@
 
 QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     text := Trim(text, " `t")
-    ; "键 ->类型 值" adds an entry to the settings file. It is decided on the
-    ; typed text alone and before the row handling, because the row for the
-    ; trigger would otherwise replace the command with just the trigger.
-    if QbarTryInlineConfig(text)
-        return
     if QbarEsAlias(text) && !QbarConfigShortKeyExists(text) {
         QbarHide()
         if EverythingShow("", false)
@@ -129,14 +124,6 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
         ; "cl <sub>" -- a shortcut to the settings center.
         if QbarTryClCommand(firstToken, rest)
             return
-        ; "web <url>" opens whatever follows as a site, http:// added when it
-        ; is missing; a configured "web" trigger wins over the command word.
-        if firstToken = "web" && !QbarConfigShortKeyExists("web") {
-            url := QbarNormalizeUrl(rest)
-            if QbarOpenUrl(url)
-                QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
-            return
-        }
         ; Search engine trigger: substitute {q} with the URL-encoded argument.
         search := QbarConfigEntry("QSearch", firstToken)
         if !IsObject(search)
@@ -161,13 +148,6 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
     if QbarRunBy(text, "", &runSucceeded, &runCommand) {
         if runSucceeded
             QbarHistoryRemember(QbarHistoryRunEntry(text, runCommand))
-        return
-    }
-    web := QbarConfigEntry("QWeb", text)
-    if IsObject(web) {
-        url := QbarNormalizeUrl(web["value"])
-        if QbarOpenUrl(url)
-            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
         return
     }
     app := QbarFindByShort(QbarStartMenuItems(), text)
@@ -300,79 +280,6 @@ QbarHistoryExecuteEntry(entry) {
     }
 }
 
-; Handles "键 ->类型 值", which adds one entry to the settings file so qbar can
-; be extended without leaving it. Returns true when the text was such a command,
-; so the caller stops.
-
-QbarTryInlineConfig(text) {
-    if !QbarSplitCommand(text, &firstToken, &rest)
-        return false
-    if !QbarSplitCommand(rest, &arrowWord, &value)
-        return false
-    if !RegExMatch(arrowWord, "^->(.*)$", &match)
-        return false
-    if value = ""
-        return false
-    section := QbarInlineSection(match[1], value)
-    if section = ""
-        return false
-    QbarAddSetting(section, firstToken, value)
-    return true
-}
-
-; The settings section an inline command writes to, or "" when the arrow asks
-; for nothing recognisable -- in that case the text is left to the normal
-; triggers rather than being swallowed.
-
-QbarInlineSection(arrowWord, value) {
-    switch StrLower(Trim(arrowWord)) {
-        case "run", "qrun", "path", "file", "folder", "ftp":
-            return "QRun"
-        case "web", "qweb":
-            return "QWeb"
-        case "search", "qsearch":
-            return "QSearch"
-        case "str", "string", "hotstring", "tabhotstring":
-            return "TabHotString"
-        case "":
-            ; A bare arrow guesses from the value: a URL carrying {q} is a
-            ; search, whatever the shell can classify is a path or a site, and
-            ; anything left over becomes a hotstring.
-            if RegExMatch(value, "i)(http:|www|\.com|\.net|\.org).*\{q\}")
-                return "QSearch"
-            detected := CheckStringType(value)
-            if detected = "file" || detected = "folder" || detected = "ftp"
-                return "QRun"
-            if detected = "web"
-                return "QWeb"
-            return "TabHotString"
-        default:
-            return ""
-    }
-}
-
-; Adds one entry, asking first and asking again before replacing a key that is
-; already configured. TabHotString values keep a literal \n so the file stays
-; one line per key.
-
-QbarAddSetting(section, key, value) {
-    prompt := QbarText("Add to ", "添加到 ") . "[" . section . "]`n`n" . key . "=" . value
-    if MsgBox(prompt, "qbar", "OKCancel") != "OK"
-        return
-
-    existing := ""
-    existing := ConfigRead(section, key, "")
-    if existing != "" {
-        prompt := QbarText("That key is already set. Replace it?", "该键已存在，要覆盖吗？")
-        prompt .= "`n`n" . key . "=" . existing . "`n`n-> " . key . "=" . value
-        if MsgBox(prompt, "qbar", "OKCancel") != "OK"
-            return
-    }
-
-    if ConfigSet(section, key, value)
-        ShowMsg(QbarText("Added ", "已添加 ") . key, 1500)
-}
-
 ; "cl <sub>" -- the built-in shortcut to the settings center. Returns true
 ; when the line was a cl command.
 
@@ -440,15 +347,10 @@ QbarRunBy(shortKey, params := "", &didRun := false, &commandOut := "") {
         return false
 
     if params != "" {
-        ; The argument may itself be another entry's trigger (reference qrunBy).
-        replacement := QbarConfigEntry("QWeb", params)
+        ; The argument may itself be another QRun entry's trigger.
+        replacement := QbarConfigEntry("QRun", params)
         if IsObject(replacement)
             params := replacement["value"]
-        else {
-            replacement := QbarConfigEntry("QRun", params)
-            if IsObject(replacement)
-                params := replacement["value"]
-        }
     }
 
     command := QbarRunCommand(entry["value"], params)

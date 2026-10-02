@@ -289,9 +289,12 @@ ApplyConfigChanges(changes) {
                 rebuildCustomHotkeys := true
             case "TabHotString":
                 rebuildHotStrings := true
-            case "QSearch", "QRun", "QWeb":
+            case "QSearch", "QRun":
                 rebuildHotStrings := true
                 refreshQbarIndex := true
+            case "QWeb":
+                ; QWeb remains a CapsLock+Tab expansion source, not a Qbar command.
+                rebuildHotStrings := true
             case "LLM":
                 refreshTranslation := true
                 refreshAi := true

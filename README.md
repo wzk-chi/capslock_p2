@@ -111,7 +111,7 @@ sig=——张三\n13800000000
 
 输入为空时显示最近执行的历史记录，最多保留并展示 10 条。历史记录存放在
 `%AppData%\capslock_p2\qbar-history.json`；重复执行会移到最前。回车或点击可重新执行，
-Tab 会把完整输入带回 qbar 供修改。行内添加配置等一次性设置操作不会进入历史。
+Tab 会把完整输入带回 qbar 供修改。
 
 ### 条目类型与配置
 
@@ -124,16 +124,13 @@ bd<百度>=https://www.baidu.com/s?wd={q}
 [QRun]
 vsc<VS Code>=C:\Program Files\Microsoft VS Code\Code.exe
 admincmd<管理员 CMD>=*RunAs "C:\Windows\System32\cmd.exe"
-
-[QWeb]
-gh<GitHub>=https://github.com
 ```
 
 - **QSearch**（搜索）：值里含 `{q}`。输入 `bd 关键词` 回车，关键词经 URL 编码替换进 `{q}` 打开。
   段留空时有一组内置引擎：`s`（Bing/Google）、`bd`、`g`（别名 `gg`）、`bing`、`wk`、`m`（MDN，
   别名 `mdn`）；ini 里写了同名的就覆盖那个内置项。
 - **QRun**（运行）：程序 / 文件 / 文件夹，支持 `*RunAs` 管理员前缀和参数。
-- **QWeb**（网址）：缺 `http://` 时自动补全。
+- Qbar 不再提供 `[QWeb]` 网址触发词；直接输入网址或域名仍会打开浏览器。
 - 不带触发词直接回车：像路径就打开，像网址就开浏览器；只有带触发词才算搜索。
 
 ### 路径浏览
@@ -171,7 +168,6 @@ gh<GitHub>=https://github.com
 |---|---|
 | `ai` / `q` | 打开空白 AI 聊天面板；追加问题可直接提问（使用共用 `[LLM]` 配置） |
 | `cl set` | 打开设置中心 |
-| `web 网址` | 强制按网址打开，缺 `http://` 时自动补 |
 | `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目 |
 
 **AI 问答需要显式触发**：在 qbar 输入 `ai` 或 `q` 打开空白聊天，输入 `ai 问题` 或 `q 问题` 直接提问。普通未匹配文本不会自动交给 AI。
@@ -182,26 +178,6 @@ gh<GitHub>=https://github.com
 
 笔记标题、Markdown 正文、标签和置顶状态明文保存在安装目录下的
 `data\qbar-notes\qbar-notes.db`；图片以原始文件保存在 `data\qbar-notes\media`。该目录不随安装包分发，更新或同目录重装不会覆盖；如果更换安装目录，需要手动复制整个 `data\qbar-notes` 目录。程序不会自动回退到其他路径。
-
-### 行内添加条目
-
-不用手动编辑文件，在 qbar 里按格式输入并回车，弹确认框确认后写入 ini：
-
-```
-短键 ->类型 值
-```
-
-类型：`run` / `path` / `file` / `folder` / `ftp` → `[QRun]`；`web` / `qweb` → `[QWeb]`；
-`search` / `qsearch` → `[QSearch]`；`str` / `string` / `hotstring` → `[TabHotString]`。
-`->` 后留空则按值的形态自动判断（带 `{q}` 的网址 → QSearch，可识别路径 → QRun，
-网址 → QWeb，其余 → TabHotString）。
-
-```
-vsc ->run C:\Program Files\Microsoft VS Code\Code.exe
-gh ->web https://github.com
-bd ->search https://www.baidu.com/s?wd={q}
-clp ->str capslock-plus
-```
 
 ## 翻译与本地词典（CapsLock+T / CapsLock+F3）
 

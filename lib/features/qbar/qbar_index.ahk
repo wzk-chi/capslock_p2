@@ -23,7 +23,7 @@ QbarConfigIndex() {
         return QbarConfigIndexCache
 
     items := []
-    sections := Map("QSearch", [], "QRun", [], "QWeb", [])
+    sections := Map("QSearch", [], "QRun", [])
     byShort := Map()
     configuredSearch := Map()
 
@@ -36,9 +36,9 @@ QbarConfigIndex() {
     items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", "",
         "usageKey", "builtin:notes", "aliases", ["n", "note", "w", "write"]))
 
-    ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former
-    ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun -> QWeb.
-    for section in ["QRun", "QWeb", "QSearch"]
+    ; Presence precedence stays QRun -> QSearch, matching the former
+    ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun.
+    for section in ["QRun", "QSearch"]
         for key, value in ConfigSection(section)
             QbarConfigIndexRecordPresence(byShort, QbarShortKey(key))
 
@@ -71,16 +71,6 @@ QbarConfigIndex() {
         sections["QRun"].Push(entry)
         QbarConfigIndexRecordEntry(byShort, "QRun", entry)
     }
-    for key, value in ConfigSection("QWeb") {
-        if Trim(value) = ""
-            continue
-        short := QbarShortKey(key)
-        entry := Map("short", short, "label", key, "type", "web", "value", value,
-            "usageKey", "qweb:" . StrLower(short))
-        sections["QWeb"].Push(entry)
-        QbarConfigIndexRecordEntry(byShort, "QWeb", entry)
-    }
-
     ; The dynamic s row follows the configured QSearch rows. A non-empty user
     ; entry suppresses it; an empty entry retains the previous fallback row.
     if !configuredSearch.Has("s") {
@@ -97,8 +87,6 @@ QbarConfigIndex() {
     for entry in sections["QSearch"]
         items.Push(entry)
     for entry in sections["QRun"]
-        items.Push(entry)
-    for entry in sections["QWeb"]
         items.Push(entry)
 
     QbarConfigIndexCache := Map(

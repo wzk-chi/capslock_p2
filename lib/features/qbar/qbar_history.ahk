@@ -244,10 +244,7 @@ QbarHistoryUsageKey(entry) {
         case "run":
             return QbarHistoryConfiguredUsageKey("QRun", entry["input"])
         case "url":
-            usageKey := QbarHistoryConfiguredUsageKey("QSearch", entry["input"])
-            if usageKey != ""
-                return usageKey
-            return QbarHistoryConfiguredUsageKey("QWeb", entry["input"])
+            return QbarHistoryConfiguredUsageKey("QSearch", entry["input"])
         case "path", "reveal":
             return QbarHistoryConfiguredUsageKey("QRun", entry["input"])
     }
