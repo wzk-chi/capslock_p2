@@ -215,6 +215,23 @@ QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank := 60) {
         return true
     }
 
+    ; Built-in commands may have several accepted aliases, but only their
+    ; canonical row is exposed in the list. Match those aliases here so
+    ; typing a non-canonical alias still finds that one row.
+    if item.Has("aliases") {
+        for alias in item["aliases"] {
+            aliasText := StrLower(String(alias))
+            if aliasText = lowerText {
+                matchRank := 0
+                return true
+            }
+            if SubStr(aliasText, 1, StrLen(lowerText)) = lowerText {
+                matchRank := 10
+                return true
+            }
+        }
+    }
+
     ; Pinyin and word initials intentionally only accept a plain ASCII query.
     ; Commands with arguments, paths and wildcard expressions retain the old
     ; literal/glob behavior below.

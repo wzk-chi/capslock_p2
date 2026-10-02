@@ -27,17 +27,14 @@ QbarConfigIndex() {
     byShort := Map()
     configuredSearch := Map()
 
-    ; Discoverability rows always lead the list. A configured trigger still
-    ; wins at dispatch time because configured presence is indexed separately.
-    items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", ""))
-    items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", ""))
-    items.Push(Map("short", "everything", "label", "everything <文件搜索>", "type", "everything", "value", ""))
-    items.Push(Map("short", "find", "label", "find <文件搜索>", "type", "everything", "value", ""))
-    items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", ""))
-    items.Push(Map("short", "note", "label", "note <笔记>", "type", "notes", "value", ""))
-    items.Push(Map("short", "w", "label", "w <笔记>", "type", "notes", "value", ""))
-    items.Push(Map("short", "write", "label", "write <笔记>", "type", "notes", "value", ""))
-    items.Push(Map("short", "f", "label", "f <文件搜索>", "type", "everything", "value", ""))
+    ; Discoverability rows always lead the list. Keep one row per built-in
+    ; action while retaining every alias for matching and direct dispatch.
+    items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", "",
+        "aliases", ["q", "ai"]))
+    items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", "",
+        "aliases", ["e", "everything", "find", "f"]))
+    items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", "",
+        "aliases", ["n", "note", "w", "write"]))
 
     ; Presence precedence stays QRun -> QWeb -> QSearch, matching the former
     ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun -> QWeb.
@@ -242,9 +239,10 @@ QbarFilterItems(text) {
     for entry in QbarSearchCurrentEntries() {
         item := entry["item"]
         short := item["short"]
-        ; A configured command with one of the built-in Everything names wins;
-        ; hide only the discoverability row for that same token.
-        if item["type"] = "everything" && QbarConfigShortKeyExists(short)
+        ; A configured command with a built-in alias wins; hide the single
+        ; discoverability row only while that alias is being searched.
+        if item.Has("aliases")
+            && (QbarConfigShortKeyExists(short) || QbarConfigShortKeyExists(matchStrLeft))
             continue
         matchRank := 60
         if !QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank)
