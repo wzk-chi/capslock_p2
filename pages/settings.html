@@ -219,6 +219,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 </style>
 <link rel="stylesheet" href="theme.css">
+<script src="toast.js"></script>
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="dialog.js"></script>
@@ -258,6 +259,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
             <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
             <label class="check"><input data-section="Global" data-key="runAsAdmin" type="checkbox"><span>以管理员身份运行（重启后生效）</span></label>
           </div></div>
+          <div class="card">
+            <div class="card-head"><h3>Toast 样式测试</h3><span class="hint">鼠标悬停时提示会暂停消失</span></div>
+            <div class="grid">
+              <label class="field"><span>类型</span><select id="toastTestType"><option value="success">成功</option><option value="info">提示</option><option value="warning">警告</option><option value="error">错误</option></select></label>
+              <div class="field"><span>预览</span><button id="testToast" class="btn" type="button">触发 Toast</button></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -407,11 +415,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     <div class="picker-dialog-actions"><button id="cancelWindowPicker" class="btn ghost" type="button">取消</button><button id="selectWindowPicker" class="btn" type="button" disabled>选择</button></div>
   </div>
 </dialog>
-<div id="settingsToast" class="ui-toast error" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false, pluginsDirty: false,
-  dirtyFields: new Set(), confirmAction: '', toastTimer: 0,
+  dirtyFields: new Set(), confirmAction: '',
   qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
   qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
   qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
@@ -1398,15 +1405,7 @@ function setPage(page, syncHost = true) {
   $('#pageTitle').textContent = active ? active.textContent : '设置';
   if (syncHost) post({ type: 'setSettingsPage', page });
 }
-function showToast(message) {
-  const toast = $('#settingsToast');
-  const text = String(message || '').trim();
-  if (!text) return;
-  toast.textContent = text;
-  toast.classList.add('visible');
-  clearTimeout(state.toastTimer);
-  state.toastTimer = setTimeout(() => toast.classList.remove('visible'), 5000);
-}
+function showToast(message, type = 'info') { AppToast.show(message, type); }
 function buildLlmTest() {
   return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
 }
@@ -1503,17 +1502,17 @@ window.qbarPluginSaved = function (ok, text) {
   if (ok) {
     applySavedQbarPluginToDraft();
     closeQbarToolDialog();
-    showToast(text || '工具设置已保存。');
+    showToast(text || '工具设置已保存。', 'success');
     return;
   }
   state.qbarPluginSaving = false;
   if (state.qbarPluginDialog) state.qbarPluginDialog.setBusy(false);
-  showToast(text || '工具设置保存失败。');
+  showToast(text || '工具设置保存失败。', 'error');
 };
 window.qbarPluginCreated = function (ok, text) {
   if (ok) {
     closeQbarCreateDialog();
-    showToast(text || '工具已添加。');
+    showToast(text || '工具已添加。', 'success');
     return;
   }
   state.qbarCreateSaving = false;
@@ -1526,7 +1525,7 @@ window.qbarPluginDeleted = function (ok, text, pluginId) {
       state.draft.plugins = state.draft.plugins.filter(plugin => plugin.pluginId !== pluginId);
     renderPlugins();
     if (state.qbarDeleteDialog) state.qbarDeleteDialog.close();
-    showToast(text || '工具已删除。');
+    showToast(text || '工具已删除。', 'success');
     return;
   }
   state.qbarDeleteSaving = false;
@@ -1593,6 +1592,11 @@ $('#openLlmSettings').addEventListener('click', () => setPage('llm'));
 $('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
 $('#testYoudao').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('youdao')); });
 $('#testVolcengine').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('volcengine')); });
+$('#testToast').addEventListener('click', () => {
+  const type = $('#toastTestType').value;
+  const examples = { success: '操作已成功完成。', info: '这是一条普通提示。', warning: '请留意这条警告提示。', error: '操作未能完成。' };
+  showToast(examples[type] || examples.info, type);
+});
 $('#closeTestResult').addEventListener('click', () => $('#testResultDialog').close());
 $('#testResultDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget) event.currentTarget.close();

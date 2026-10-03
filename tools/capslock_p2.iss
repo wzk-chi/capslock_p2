@@ -51,6 +51,7 @@ Source: "{#PayloadDir}\capslock_p2.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; settings.js overlay was deleted and is not part of the release payload.
 Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\theme.css"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\toast.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\qbar-search.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\icons.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\windowbar.js"; DestDir: "{app}\pages"; Flags: ignoreversion

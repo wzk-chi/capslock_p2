@@ -55,7 +55,7 @@ lib\
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
-  theme.css / icons.js / windowbar.js 共享主题、图标适配器和标题栏 DOM/交互
+  theme.css / icons.js / windowbar.js / dialog.js / toast.js 共享主题、图标、标题栏、对话框和 Toast
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
   resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
@@ -132,6 +132,20 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 - **AHK → 页面**：现有页面通常由 `PanelHostExecute()` 调用页面函数；笔记页的普通状态改用 WebView2 JSON 消息，需要传递图片写入权限时使用 `PostWebMessageAsJsonWithAdditionalObjects` 附带单文件句柄。
 - **页面数据**：在 `pages/*.html` 里声明 `window` 级函数（如 `window.setResults`、
   `window.setEntry`），AHK 用字符串调用。
+
+### 页面 Toast 通知
+
+- 所有 `pages/*.html` 页面共用 `pages/toast.js` 的 `window.AppToast`，页面通过
+  `AppToast.show(message, type, duration)` 显示通知，`AppToast.hide()` 主动关闭；类型为
+  `success`、`info`、`warning`、`error`，默认类型是 `info`，默认显示 4200 毫秒。
+- DOM 由共享脚本创建，外观和颜色由 `pages/theme.css` 统一管理，并沿用主题的明暗色变量。
+  指针悬停或 Toast 获得键盘焦点时暂停关闭计时；鼠标移出或焦点离开后继续计时，也可用关闭按钮立即收起。
+- 设置页的 `showToast()` 与笔记页的 `toast()` 是页面业务层薄封装，分别用于设置操作反馈和笔记操作反馈，
+  实际显示都委托给 `AppToast`。设置页「通用」中的 Toast 类型选择和触发按钮用于预览四种样式。
+- 新页面应加载 `theme.css` 和 `toast.js`，直接复用 `AppToast`，不要另写 Toast 标记、计时器或局部配色。
+  安装清单在 `tools/capslock_p2.iss` 中显式包含 `toast.js`。
+- `lib/app/core.ahk` 的 `ShowMsg()` 是不依赖 WebView 页面的 AHK 原生 `ToolTip`，用于全局快捷键和宿主错误反馈；
+  它与页面 Toast 属于不同通知路径。
 
 面板实例的骨架（创建 GUI → `PanelHostEnsure()` → 导航回调置 `pageReady` →
 `PanelHostShow/Hide()`）在 `panelHost.ahk` 集中实现，功能模块只处理各自职责：

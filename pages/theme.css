@@ -22,6 +22,8 @@
   --ui-button-text: #ffffff;
   --ui-success: #1f9966;
   --ui-success-soft: #e7f7ef;
+  --ui-info: #4778b8;
+  --ui-info-soft: #edf4ff;
   --ui-warning: #aa6a2a;
   --ui-warning-soft: #fff3df;
   --ui-danger: #b34d62;
@@ -86,6 +88,8 @@
     --ui-button-text: #ffffff;
     --ui-success: #73d6a5;
     --ui-success-soft: #1d3429;
+    --ui-info: #9fc2ff;
+    --ui-info-soft: #202f48;
     --ui-warning: #e5b06a;
     --ui-warning-soft: #3a2f20;
     --ui-danger: #ed9bad;
@@ -123,31 +127,68 @@ button, input, select, textarea { font-family: inherit; }
   z-index: 1000;
   top: 88px;
   left: 50%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
   max-width: min(560px, calc(100vw - 32px));
-  padding: 10px 16px;
-  border: 1px solid var(--ui-line-strong);
+  padding: 9px 11px;
+  border: 1px solid var(--ui-line);
   border-radius: 10px;
   background: var(--ui-surface-raised);
   color: var(--ui-text);
-  box-shadow: var(--ui-shadow);
+  box-shadow: var(--ui-shadow-soft);
   font-size: 13px;
   line-height: 1.45;
-  text-align: center;
+  text-align: left;
   opacity: 0;
   visibility: hidden;
-  transform: translate(-50%, -6px);
+  transform: translate(-50%, -8px);
   transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
   pointer-events: none;
 }
-.ui-toast.error {
-  border-color: var(--ui-danger);
-  background: var(--ui-danger-soft);
-  color: var(--ui-danger);
+.ui-toast--success { --ui-toast-accent: var(--ui-success); --ui-toast-icon-surface: var(--ui-success-soft); }
+.ui-toast--info { --ui-toast-accent: var(--ui-info); --ui-toast-icon-surface: var(--ui-info-soft); }
+.ui-toast--warning { --ui-toast-accent: var(--ui-warning); --ui-toast-icon-surface: var(--ui-warning-soft); }
+.ui-toast--error { --ui-toast-accent: var(--ui-danger); --ui-toast-icon-surface: var(--ui-danger-soft); }
+.ui-toast__icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--ui-toast-icon-surface, var(--ui-accent-soft));
+  color: var(--ui-toast-accent, var(--ui-accent));
+  font-size: 13px;
+  font-weight: 750;
 }
+.ui-toast__body { min-width: 0; display: grid; gap: 2px; }
+.ui-toast__label { color: var(--ui-toast-accent, var(--ui-accent)); font-size: 11px; font-weight: 700; }
+.ui-toast__message { color: var(--ui-text); overflow-wrap: anywhere; }
+.ui-toast__close {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: grid;
+  place-items: center;
+  margin: -1px -1px 0 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ui-toast__close:hover { background: var(--ui-toast-icon-surface, var(--ui-accent-soft)); color: var(--ui-toast-accent, var(--ui-text)); }
+.ui-toast__close:focus-visible { outline: 2px solid var(--ui-toast-accent, var(--ui-accent)); outline-offset: 1px; }
 .ui-toast.visible {
   opacity: 1;
   visibility: visible;
   transform: translate(-50%, 0);
+  pointer-events: auto;
 }
 
 /* Shared modal shell. Pages should use AppDialog from dialog.js and keep only
