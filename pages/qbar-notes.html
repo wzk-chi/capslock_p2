@@ -377,21 +377,47 @@ function exitCodeBlock(pre) {
   selection.addRange(range);
   editor.focus();
 }
-// Range.toString() only walks text nodes, and a contenteditable <pre> takes a
-// <br> for every Enter, so "does this block end with a line break" has to look
-// at the DOM instead of at text alone.
-function endsWithLineBreak(pre) {
-  const last = pre.lastChild;
-  if (!last) return true;
-  if (last.nodeType === Node.ELEMENT_NODE && last.tagName === 'BR') return true;
-  return /\n$/.test(String(pre.innerText ?? pre.textContent ?? ''));
+// Range.toString() only walks text nodes and cloneContents() cannot tell a
+// placeholder <br> from real content, so both the block text and the caret
+// position are computed here with the same <br>-aware walk. That makes the
+// result independent of whether Chromium parked the caret before or after the
+// trailing <br> it uses for the empty last line.
+function codeBlockText(pre) {
+  let out = '';
+  const walk = node => {
+    if (node.nodeType === Node.TEXT_NODE) { out += String(node.nodeValue || ''); return; }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.tagName === 'BR') { out += '\n'; return; }
+    Array.from(node.childNodes).forEach(walk);
+  };
+  Array.from(pre.childNodes).forEach(walk);
+  return out;
 }
-function hasContentAfter(pre, range) {
-  const rest = document.createRange();
-  rest.setStart(range.endContainer, range.endOffset);
-  rest.setEnd(pre, pre.childNodes.length);
-  const fragment = rest.cloneContents();
-  return fragment.textContent !== '' || fragment.querySelector('br') !== null;
+// Offset of the caret within codeBlockText(), or -1 when it cannot be located,
+// in which case the caller must not guess.
+function caretCodeBlockOffset(pre, range) {
+  let offset = 0, found = false;
+  const walk = node => {
+    if (found) return;
+    if (node === range.startContainer) {
+      if (node.nodeType === Node.TEXT_NODE) { offset += Math.min(range.startOffset, String(node.nodeValue || '').length); found = true; return; }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const upto = Math.min(range.startOffset, node.childNodes.length);
+        for (let i = 0; i < upto; i++) walk(node.childNodes[i]);
+        found = true;
+      }
+      return;
+    }
+    if (node.nodeType === Node.TEXT_NODE) { offset += String(node.nodeValue || '').length; return; }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.tagName === 'BR') { offset += 1; return; }
+    Array.from(node.childNodes).forEach(walk);
+  };
+  // Walk the pre itself, not just its children: when the caret sits on a
+  // boundary between two children Chromium reports the <pre> as the container,
+  // and starting from the children would never match it.
+  walk(pre);
+  return found ? offset : -1;
 }
 function handleEditorEnter(event) {
   if (event.key !== 'Enter' || event.isComposing) return;
@@ -404,11 +430,15 @@ function handleEditorEnter(event) {
   // here: the host binds it to cancel the editor.
   if (event.ctrlKey || event.metaKey) { event.preventDefault(); exitCodeBlock(pre); return; }
   if (event.shiftKey || event.altKey) return;
-  // Enter on the empty line at the very end of the block leaves it, the usual
-  // way out of a code fence. A blank line in the middle of the code still just
-  // adds a line, and a trailing blank line never reaches the Markdown because
-  // the serialiser strips it.
-  if (!hasContentAfter(pre, range) && endsWithLineBreak(pre)) { event.preventDefault(); exitCodeBlock(pre); }
+  // Enter on the empty last line leaves the block: nothing but line breaks may
+  // remain after the caret, and the block must already end on one. A blank line
+  // in the middle of the code keeps its following text, so it still just adds a
+  // line, and a trailing blank line never reaches the Markdown because the
+  // serialiser strips it.
+  const text = codeBlockText(pre);
+  const offset = caretCodeBlockOffset(pre, range);
+  if (offset < 0) return;
+  if (/^\n*$/.test(text.slice(offset)) && (text === '' || /\n$/.test(text))) { event.preventDefault(); exitCodeBlock(pre); }
 }
 async function applyTool(button) {
   saveSelection();
