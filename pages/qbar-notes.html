@@ -358,12 +358,13 @@ function ensureNoteEditor() {
 // mode (the bundle has no setMode). The ir button is removed here, leaving
 // wysiwyg and sv.
 //
-// The shortcuts the menu prints beside each entry are decoration: "⌥⌘7", "⌥⌘8"
-// and "⌥⌘9" each occur exactly once in the bundle, in that markup, and no key
-// handler tests for them, so removing the button really does put ir out of reach.
-// It is safe because _bindEvent binds the click handlers to the button elements
-// by index at build time -- item(0) wysiwyg, item(1) ir, item(2) sv -- so the two
-// that remain keep the behaviour they were given.
+// The menu's printed shortcuts are real, not decoration: Alt+Ctrl+7/8/9 switch
+// mode in Vditor's key handler. That is why the button alone is not enough -- the
+// Ctrl+Alt+8 chord is swallowed by the keydown listener registered below.
+//
+// Removing the middle button is safe because _bindEvent binds the click handlers
+// to the button elements by index at build time -- item(0) wysiwyg, item(1) ir,
+// item(2) sv -- so the two that remain keep the behaviour they were given.
 function dropIrMode() {
   const button = document.querySelector('#noteEditor [data-mode="ir"]');
   if (button) button.remove();
@@ -593,6 +594,22 @@ document.addEventListener('click', () => {
       : 'absent');
     if (state !== diagPopover) { diagPopover = state; diag('popover', state); }
   }, 80);
+}, true);
+
+// Removing the ir button from the edit-mode menu did not put ir out of reach:
+// Vditor's own key handler maps Alt+Ctrl+7/8/9 to wysiwyg/ir/sv with a
+// /^Digit[7-9]$/ test on event.code, not through its q() shortcut matcher, so
+// Alt+Ctrl+8 still switched to ir. This swallows that one chord in the capture
+// phase, before Vditor sees it, and leaves Alt+Ctrl+7 (wysiwyg) and Alt+Ctrl+9
+// (sv) working. Vditor also maps Alt+Ctrl+1..6 to heading levels 1..6, which is
+// untouched.
+let diagBlockedMode = false;
+document.addEventListener('keydown', event => {
+  if (!noteEditorReady || !noteEditor) return;
+  if (!(event.ctrlKey && event.altKey && !event.shiftKey && event.code === 'Digit8')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!diagBlockedMode) { diagBlockedMode = true; diag('mode-shortcut-blocked', 'Ctrl+Alt+8 -> ir'); }
 }, true);
 
 const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (!pending) return; state.pendingUploads.delete(String(data.requestId)); if (data.ok) { pending.assetId = String(data.assetId || ''); pending.url = String(data.url || ''); if (pending.resolve) pending.resolve({ url: pending.url, assetId: pending.assetId, name: pending.name }); } else { const message = data.error || '图片写入失败'; toast(message, 'error'); if (pending.reject) pending.reject(new Error(message)); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
