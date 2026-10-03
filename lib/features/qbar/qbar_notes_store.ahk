@@ -418,9 +418,11 @@ NotesStorePreviewBlocks(markdown, assetUrls := 0, maxRows := 12, maxCodeLines :=
             continue
         }
 
-        ; A standalone image line resolves to the media host through the asset
-        ; map; anything else keeps falling through to the text path below.
-        if RegExMatch(trimmed, "^!\[([^\]]*)\]\(([^)]+)\)$", &imageMatch) {
+        ; A line that starts with an image gives that image its own block and
+        ; renders whatever follows as a text row. Requiring the image to be
+        ; alone on the line hid the picture entirely for notes saved while the
+        ; editor still appended text straight onto the image ("![alt](asset:x)123").
+        if RegExMatch(trimmed, "^!\[([^\]]*)\]\(([^)]+)\)[ \t]*(.*)$", &imageMatch) {
             url := NotesStorePreviewAssetUrl(imageMatch[2], assetUrls)
             if url != "" {
                 if rows + imageRows > maxRows
@@ -431,6 +433,13 @@ NotesStorePreviewBlocks(markdown, assetUrls := 0, maxRows := 12, maxCodeLines :=
                     block["copy"] := alt
                 blocks.Push(block)
                 rows += imageRows
+                rest := NotesStorePreviewInline(imageMatch[3])
+                if rest != "" {
+                    if rows + 1 > maxRows
+                        break
+                    blocks.Push(Map("kind", "text", "text", rest, "copy", rest))
+                    rows += 1
+                }
                 index += 1
                 continue
             }

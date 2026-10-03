@@ -242,7 +242,32 @@ function contentMarkdown() { return serializeNode($('editorContent')).replace(/\
 function setEditorContent(html) { $('editorContent').innerHTML = html || ''; }
 function saveSelection() { const selection = window.getSelection(); if (selection.rangeCount) state.savedRange = selection.getRangeAt(0).cloneRange(); }
 function restoreSelection() { if (!state.savedRange) { $('editorContent').focus(); return; } const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(state.savedRange); $('editorContent').focus(); }
-function insertImageNode(url, assetId, name) { restoreSelection(); const img = document.createElement('img'); img.src = url; img.alt = name || '图片'; img.dataset.assetId = assetId; img.style.maxWidth = '100%'; const selection = window.getSelection(); if (selection.rangeCount) { const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(img); range.setStartAfter(img); range.collapse(true); selection.removeAllRanges(); selection.addRange(range); } else $('editorContent').appendChild(img); }
+function normalizeEditorInlineBlocks() { const editor = $('editorContent'); const blockTags = /^(DIV|P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|HR|TABLE|SECTION|ARTICLE)$/; let run = null; Array.from(editor.childNodes).forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && blockTags.test(node.tagName)) { run = null; return; } if (node.nodeType === Node.TEXT_NODE && !node.nodeValue.trim()) return; if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); } run.appendChild(node); }); }
+function insertImageNode(url, assetId, name) {
+  restoreSelection();
+  const editor = $('editorContent');
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = name || '图片';
+  img.dataset.assetId = assetId;
+  img.style.maxWidth = '100%';
+  const selection = window.getSelection();
+  if (selection.rangeCount) { const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(img); } else editor.appendChild(img);
+  normalizeEditorInlineBlocks();
+  const caret = document.createRange();
+  const block = img.parentElement;
+  const ownsBlock = block && block !== editor && block.children.length === 1 && !block.textContent.trim();
+  if (ownsBlock) {
+    const next = document.createElement('div');
+    next.appendChild(document.createElement('br'));
+    block.after(next);
+    caret.setStart(next, 0);
+  } else caret.setStartAfter(img);
+  caret.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(caret);
+  editor.focus();
+}
 async function uploadFile(file) { if (!state.editor || !file) return; const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`; saveSelection(); state.pendingUploads.set(requestId, { file, name: file.name, url: '', assetId: '', writable: null, cancelled: false, cancelRequested: false }); post({ type: 'assetStart', editorId: state.editor.editorId, requestId, mime: file.type || 'application/octet-stream', name: file.name || '' }); }
 function uploadFiles(files) { Array.from(files || []).forEach(uploadFile); }
 async function stopWritable(writable) { if (!writable) return; try { if (typeof writable.abort === 'function') await writable.abort(); else await writable.close(); } catch {} }
