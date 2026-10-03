@@ -423,15 +423,16 @@ NotesStorePreviewBlocks(markdown, assetUrls := 0, maxRows := 12, maxCodeLines :=
         ; alone on the line hid the picture entirely for notes saved while the
         ; editor still appended text straight onto the image ("![alt](asset:x)123").
         if RegExMatch(trimmed, "^!\[([^\]]*)\]\(([^)]+)\)[ \t]*(.*)$", &imageMatch) {
-            url := NotesStorePreviewAssetUrl(imageMatch[2], assetUrls)
-            if url != "" {
+            assetId := NotesStorePreviewAssetId(imageMatch[2], assetUrls)
+            if assetId != "" {
                 if rows + imageRows > maxRows
                     break
-                alt := NotesStorePreviewInline(imageMatch[1])
-                block := Map("kind", "image", "url", url, "alt", alt)
-                if alt != ""
-                    block["copy"] := alt
-                blocks.Push(block)
+                ; The row copies the picture itself, so it carries the asset id
+                ; instead of a `copy` string. The alt text is only the label used
+                ; when the asset cannot be resolved and the line falls through to
+                ; a text row.
+                blocks.Push(Map("kind", "image", "assetId", assetId, "url", assetUrls[assetId],
+                    "alt", NotesStorePreviewInline(imageMatch[1])))
                 rows += imageRows
                 rest := NotesStorePreviewInline(imageMatch[3])
                 if rest != "" {
@@ -518,10 +519,29 @@ NotesStorePreviewInline(text) {
     return Trim(value)
 }
 
-NotesStorePreviewAssetUrl(source, assetUrls) {
-    if !IsObject(assetUrls) || !RegExMatch(String(source), "^asset:([A-Za-z0-9_-]+)$", &match)
+; "asset:<id>" -> the asset id, but only when the asset resolves to a file that
+; is still on disk, so an image whose file is gone renders as its alt text
+; instead of a broken picture.
+NotesStorePreviewAssetId(source, assetUrls) {
+    if !IsObject(assetUrls) || !RegExMatch(Trim(String(source)), "^asset:([A-Za-z0-9_-]+)$", &match)
         return ""
-    return assetUrls.Has(match[1]) ? assetUrls[match[1]] : ""
+    return assetUrls.Has(match[1]) ? match[1] : ""
+}
+
+; Absolute path of an asset that still belongs to the given note, or "" when the
+; note no longer references it (a stale row) or the file is missing. Copying and
+; pasting an image both go through this, so a row can never reach a file that is
+; not part of the note it was clicked on.
+NotesStoreAssetFilePath(noteId, assetId) {
+    global NotesStoreRoot
+    asset := NotesStoreGetNoteAsset(noteId, assetId)
+    if !IsObject(asset)
+        return ""
+    relative := NotesStoreRelativeAssetPath(asset["path"])
+    if relative = ""
+        return ""
+    path := NotesStoreRoot . "\" . relative
+    return FileExist(path) ? path : ""
 }
 
 ; One query for every asset referenced by the listed notes, so the preview does

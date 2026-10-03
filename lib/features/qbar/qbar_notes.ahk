@@ -333,6 +333,10 @@ NotesHandleMessage(msg) {
             NotesHandleCopyLine(msg)
         case "pasteLine":
             NotesHandlePasteLine(msg)
+        case "copyImage":
+            NotesHandleCopyImage(msg)
+        case "pasteImage":
+            NotesHandlePasteImage(msg)
         case "copyNotes":
             NotesHandleCopyNotes(msg)
         case "pasteNote":
@@ -398,6 +402,25 @@ NotesHandleCopyLine(msg) {
     }
     NotesSetClipboard(line)
     NotesPost(Map("type", "actionResult", "action", "copyLine", "ok", JSON.true))
+}
+
+NotesHandleCopyImage(msg) {
+    path := NotesStoreAssetFilePath(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "assetId"))
+    if path = "" || !NotesSetClipboardImage(path) {
+        DebugLog("notes image copy failed")
+        NotesPost(Map("type", "actionResult", "action", "copyImage", "ok", JSON.false, "error", "图片不存在"))
+        return
+    }
+    NotesPost(Map("type", "actionResult", "action", "copyImage", "ok", JSON.true))
+}
+
+NotesHandlePasteImage(msg) {
+    global NotesTargetHwnd
+    path := NotesStoreAssetFilePath(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "assetId"))
+    if path = ""
+        return
+    NotesHide()
+    NotesPasteImageToTarget(path, NotesTargetHwnd)
 }
 
 NotesHandlePasteLine(msg) {

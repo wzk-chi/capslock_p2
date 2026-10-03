@@ -213,6 +213,73 @@ NotesAssetIdFromFileName(fileName) {
     return dot ? SubStr(fileName, 1, dot - 1) : String(fileName)
 }
 
+; Puts an image file on the clipboard as a bitmap. A_Clipboard only ever carries
+; text, so this goes through GDI+ (the token shared with the qbar icon cache)
+; and SetClipboardData. The HBITMAP handed to the clipboard becomes the system's
+; to own and must not be deleted here.
+NotesSetClipboardImage(path) {
+    global ClipboardWatcherSuspended, WhichClipboardNow
+    if path = "" || !FileExist(path) || !IconGdiplusStart()
+        return false
+    bitmap := 0
+    if DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", path, "ptr*", &bitmap, "int") != 0 || !bitmap
+        return false
+    handle := 0
+    status := DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", bitmap, "ptr*", &handle,
+        "uint", 0xFFFFFFFF, "int")   ; opaque white, so alpha images paste intact
+    DllCall("gdiplus\GdipDisposeImage", "ptr", bitmap)
+    if status != 0 || !handle
+        return false
+    if !DllCall("OpenClipboard", "ptr", 0, "int") {
+        DllCall("DeleteObject", "ptr", handle, "int")
+        return false
+    }
+    previous := ClipboardWatcherSuspended
+    ClipboardWatcherSuspended := true
+    try {
+        DllCall("EmptyClipboard", "int")
+        if !DllCall("SetClipboardData", "uint", 8, "ptr", handle, "ptr") {   ; CF_BITMAP
+            DllCall("DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
+            return false
+        }
+        WhichClipboardNow := 0
+    } finally {
+        DllCall("CloseClipboard", "int")
+        ClipboardWatcherSuspended := previous
+    }
+    return true
+}
+
+NotesPasteImageToTarget(path, targetHwnd := 0) {
+    global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
+    if path = ""
+        return false
+    previous := ClipboardWatcherSuspended
+    ClipboardWatcherSuspended := true
+    oldClipboard := ClipboardAll()
+    ownedSequence := 0
+    try {
+        if targetHwnd && !WinExist("ahk_id " . targetHwnd)
+            return false
+        if targetHwnd {
+            WinActivate("ahk_id " . targetHwnd)
+            if !WinWaitActive("ahk_id " . targetHwnd, , 0.4)
+                return false
+        }
+        if !NotesSetClipboardImage(path)
+            return false
+        ownedSequence := ClipboardSequenceNumber()
+        SendInput("^v")
+        Sleep(60)
+        WhichClipboardNow := 0
+        return !targetHwnd || WinActive("ahk_id " . targetHwnd)
+    } finally {
+        if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+            A_Clipboard := oldClipboard
+        ClipboardWatcherSuspended := previous
+    }
+}
+
 NotesSetClipboard(text) {
     global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
     previous := ClipboardWatcherSuspended
