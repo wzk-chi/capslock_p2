@@ -307,9 +307,17 @@ function ensureNoteEditor() {
     // themes. 'emoji', 'record', 'code-theme' and 'content-theme' are also left
     // out: they load assets we do not ship (emoji images, recorder, highlight.js
     // styles).
+    //
+    // 'insert-before' and 'insert-after' stay because they are the only way to
+    // add a table row while in ir mode: Vditor's row/column panel is built into
+    // e.wysiwyg.popover, and ir mode has no popover at all (the bundle mentions
+    // wysiwyg.popover 64 times and ir.popover zero times). Vditor keeps both
+    // items enabled in ir and wysiwyg and skips them only in sv, which is where
+    // there is no rendered table to insert into.
     toolbar: ['undo', 'redo', '|', 'headings', 'bold', 'italic', 'strike', 'link', '|',
               'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-              'quote', 'line', 'code', 'inline-code', 'table', 'upload', '|',
+              'quote', 'line', 'code', 'inline-code', 'insert-before', 'insert-after', '|',
+              'table', 'upload', '|',
               'edit-mode', 'both', 'fullscreen', 'outline'],
     upload: { accept: 'image/*', handler: handleEditorUpload },
     after: () => {
