@@ -69,6 +69,28 @@
     return /^H[1-6]$/.test(tag) ? Number(tag.slice(1)) : 0;
   }
 
+  // Reads a rendered table into plain rows of cell text. The Markdown separator
+  // row is gone by the time the renderer is done, so the header is whichever row
+  // it marked up with <th>.
+  function tableGrid(node) {
+    var rows = [], header = false;
+    var trs = node.querySelectorAll('tr');
+    for (var i = 0; i < trs.length; i++) {
+      var cells = [], isHeader = false;
+      var kids = trs[i].children;
+      for (var j = 0; j < kids.length; j++) {
+        var cell = kids[j];
+        if (cell.tagName === 'TH') isHeader = true;
+        if (cell.tagName !== 'TD' && cell.tagName !== 'TH') continue;
+        cells.push(plainText(cell));
+      }
+      if (!cells.length) continue;
+      if (rows.length === 0 && isHeader) header = true;
+      rows.push(cells);
+    }
+    return { rows: rows, header: header };
+  }
+
   function isBlockTag(tag) {
     return /^(P|DIV|SECTION|ARTICLE|PRE|BLOCKQUOTE|TABLE|UL|OL|H[1-6]|HR)$/.test(tag);
   }
@@ -106,7 +128,18 @@
       return;
     }
     if (tag === 'TABLE') {
-      out.push({ kind: 'table', node: node, copy: plainText(node), cost: 1 });
+      var grid = tableGrid(node);
+      if (!grid.rows.length) return;
+      out.push({
+        kind: 'table', node: node, grid: grid.rows, header: grid.header,
+        // Tab separated so it can be pasted straight into a spreadsheet, and one
+        // line per row so it stays readable anywhere else.
+        copy: grid.rows.map(function (cells) { return cells.join('\t'); }).join('\n'),
+        // A rendered table takes one line per row, so that is what it spends of
+        // the preview budget. A table that does not fit is dropped whole, like
+        // every other block.
+        cost: Math.min(grid.rows.length, DEFAULTS.maxRows)
+      });
       return;
     }
     var img = imageOf(node);

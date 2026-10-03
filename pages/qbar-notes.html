@@ -74,6 +74,10 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .preview-kind-code { align-items: flex-start; padding: 5px 7px; background: var(--ui-code); color: var(--ui-text); font-family: Consolas, monospace; }
 .preview-kind-code .preview-text { white-space: pre-wrap; word-break: break-word; }
 .preview-kind-image img { display: block; max-width: 100%; max-height: 84px; border-radius: 5px; }
+.preview-kind-table { display: block; padding: 4px 6px; }
+.preview-table { width: 100%; border-collapse: collapse; font-size: 11px; color: var(--ui-text); }
+.preview-table th, .preview-table td { padding: 2px 6px; border: 1px solid var(--ui-line); text-align: left; font-weight: 400; }
+.preview-table th { background: var(--ui-surface-soft); color: var(--ui-muted); }
 .preview-rule { height: 1px; margin: 3px 6px; background: var(--ui-line); }
 .note-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--ui-subtle); font-size: 10px; }
 .note-tag { margin-left: auto; color: var(--ui-accent-strong); }
@@ -394,13 +398,33 @@ function previewRowElement(note, row, assetByUrl) {
     }
     return element;
   }
-  if (row.marker) { const marker = document.createElement('span'); marker.className = 'preview-marker'; marker.textContent = row.marker; element.appendChild(marker); }
-  const text = document.createElement('span');
-  text.className = 'preview-text';
-  text.textContent = String(row.display != null ? row.display : row.copy || '');
-  element.appendChild(text);
+  if (row.kind === 'table') {
+    // A table is rebuilt as a real grid instead of being flattened into one line
+    // of cell text. Clicking it copies the whole table as tab separated rows.
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    (row.grid || []).forEach((cells, index) => {
+      const tr = document.createElement('tr');
+      (cells || []).forEach(value => {
+        const cell = document.createElement(row.header && index === 0 ? 'th' : 'td');
+        cell.textContent = String(value == null ? '' : value);
+        tr.appendChild(cell);
+      });
+      table.appendChild(tr);
+    });
+    element.appendChild(table);
+  } else {
+    if (row.marker) { const marker = document.createElement('span'); marker.className = 'preview-marker'; marker.textContent = row.marker; element.appendChild(marker); }
+    const text = document.createElement('span');
+    text.className = 'preview-text';
+    text.textContent = String(row.display != null ? row.display : row.copy || '');
+    element.appendChild(text);
+  }
   const send = type => post({ type, noteId: note.id, text: row.copy || '', revision: note.revision });
-  element.setAttribute('aria-label', '单击复制，双击粘贴');
+  element.setAttribute('aria-label', row.kind === 'table' ? '单击复制整个表格，双击粘贴' : row.kind === 'code' ? '单击复制整个代码块，双击粘贴' : '单击复制，双击粘贴');
+  // A code block longer than the display cap shows an ellipsis, so say plainly
+  // that the click still copies every line.
+  if (row.kind === 'code' && row.copy) element.title = `单击复制整个代码块（${String(row.copy).split('\n').length} 行）`;
   element.onclick = () => send('copyLine');
   element.ondblclick = event => { event.preventDefault(); send('pasteLine'); };
   return element;
