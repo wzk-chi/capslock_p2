@@ -350,15 +350,24 @@ NotesStoreList(searchText := "", tagName := "") {
     noteIds := []
     for raw in table.Rows
         noteIds.Push(Integer(raw[1]))
-    assetIndex := NotesStorePreviewAssetIndex(noteIds)
+    assetIndex := NotesStoreAssetUrlIndex(noteIds)
     rows := []
     for raw in table.Rows {
         noteId := Integer(raw[1])
         noteAssets := assetIndex.Has(noteId) ? assetIndex[noteId] : Map()
+        assetList := []
+        for assetId, assetUrl in noteAssets
+            assetList.Push(Map("id", assetId, "url", assetUrl))
         rows.Push(Map(
             "id", noteId,
             "title", raw[2],
-            "blocks", NotesStorePreviewBlocks(raw[3], noteAssets),
+            ; The page renders this with Vditor and walks the result, so it gets
+            ; the Markdown itself. `assets` has the same shape NotesStoreAssets
+            ; hands the editor, and `revision` is the token the page echoes back
+            ; so a click can be validated without reparsing anything here.
+            "markdown", raw[3],
+            "assets", assetList,
+            "revision", NotesNoteRevision(raw[5]),
             "pinned", Integer(raw[4]) != 0,
             "updatedAt", String(raw[5]),
             "tag", raw[6]))
@@ -366,166 +375,21 @@ NotesStoreList(searchText := "", tagName := "") {
     return rows
 }
 
-; The notes list sends rendered preview blocks instead of flat text lines so the
-; page can show images and code as they are. Every block carries both what to
-; render and the exact plain text its row copies, which keeps Markdown syntax
-; out of the clipboard without the page having to strip it.
+; Change token for a note: the page echoes it back with a click and the store
+; compares it against the note as it is now.
 ;
-; `assetUrls` maps asset id -> media host URL for the note being previewed;
-; images whose asset cannot be resolved fall back to a text row.
-;
-; `maxRows` is the preview budget: a text row costs 1, an image costs
-; `imageRows` and a code block costs its visible line count. Once the next
-; block would exceed the budget it is dropped rather than partly rendered.
-NotesStorePreviewBlocks(markdown, assetUrls := 0, maxRows := 12, maxCodeLines := 6, imageRows := 4) {
-    tick := Chr(96)
-    source := StrReplace(StrReplace(String(markdown), "`r`n", "`n"), "`r", "`n")
-    lines := StrSplit(source, "`n")
-    blocks := []
-    rows := 0
-    index := 1
-    while index <= lines.Length {
-        trimmed := Trim(lines[index])
-
-        ; Fenced code: kept verbatim (the copy text is never truncated), only
-        ; the displayed body is capped at `maxCodeLines`.
-        if RegExMatch(trimmed, "^(" . tick . "{3,}|~{3,})([A-Za-z0-9_+.#-]*)[ \t]*$", &fenceMatch) {
-            closer := fenceMatch[1]
-            code := []
-            index += 1
-            while index <= lines.Length && !RegExMatch(Trim(lines[index]), "^" . closer . "[ \t]*$") {
-                code.Push(lines[index])
-                index += 1
-            }
-            index += 1
-            while code.Length && Trim(code[code.Length]) = ""
-                code.Pop()
-            if !code.Length
-                continue
-            full := NotesStorePreviewJoin(code)
-            shown := code
-            if shown.Length > maxCodeLines {
-                cut := []
-                Loop maxCodeLines
-                    cut.Push(shown[A_Index])
-                cut.Push("…")
-                shown := cut
-            }
-            if rows + shown.Length > maxRows
-                break
-            blocks.Push(Map("kind", "code", "text", NotesStorePreviewJoin(shown), "copy", full))
-            rows += shown.Length
-            continue
-        }
-
-        ; A line that starts with an image gives that image its own block and
-        ; renders whatever follows as a text row. Requiring the image to be
-        ; alone on the line hid the picture entirely for notes saved while the
-        ; editor still appended text straight onto the image ("![alt](asset:x)123").
-        if RegExMatch(trimmed, "^!\[([^\]]*)\]\(([^)]+)\)[ \t]*(.*)$", &imageMatch) {
-            assetId := NotesStorePreviewAssetId(imageMatch[2], assetUrls)
-            if assetId != "" {
-                if rows + imageRows > maxRows
-                    break
-                ; The row copies the picture itself, so it carries the asset id
-                ; instead of a `copy` string. The alt text is only the label used
-                ; when the asset cannot be resolved and the line falls through to
-                ; a text row.
-                blocks.Push(Map("kind", "image", "assetId", assetId, "url", assetUrls[assetId],
-                    "alt", NotesStorePreviewInline(imageMatch[1])))
-                rows += imageRows
-                rest := NotesStorePreviewInline(imageMatch[3])
-                if rest != "" {
-                    if rows + 1 > maxRows
-                        break
-                    blocks.Push(Map("kind", "text", "text", rest, "copy", rest))
-                    rows += 1
-                }
-                index += 1
-                continue
-            }
-        }
-
-        if RegExMatch(trimmed, "^(#{1,6})[ \t]+(.+)$", &headingMatch) {
-            heading := NotesStorePreviewInline(headingMatch[2])
-            if heading != "" {
-                if rows + 1 > maxRows
-                    break
-                blocks.Push(Map("kind", "heading", "level", StrLen(headingMatch[1]),
-                    "text", heading, "copy", heading))
-                rows += 1
-                index += 1
-                continue
-            }
-        }
-
-        if RegExMatch(trimmed, "^(?:-{3,}|\*{3,}|_{3,})$") {
-            if rows + 1 > maxRows
-                break
-            blocks.Push(Map("kind", "rule"))
-            rows += 1
-            index += 1
-            continue
-        }
-
-        marker := ""
-        body := trimmed
-        if RegExMatch(trimmed, "^>[ \t]?(.*)$", &quoteMatch) {
-            marker := "▏"
-            body := quoteMatch[1]
-        } else if RegExMatch(trimmed, "^([-*+]|\d+[.)])[ \t]+(.+)$", &listMatch) {
-            marker := RegExMatch(listMatch[1], "^\d") ? listMatch[1] : "•"
-            body := listMatch[2]
-        }
-        body := NotesStorePreviewInline(body)
-        if body = "" {
-            index += 1
-            continue
-        }
-        body := RegExReplace(body, "[ \t]+", " ")
-        if rows + 1 > maxRows
-            break
-        block := Map("kind", "text", "text", body, "copy", body)
-        if marker != ""
-            block["marker"] := marker
-        blocks.Push(block)
-        rows += 1
-        index += 1
-    }
-    return blocks
+; Only updated_at is used. Pairing it with a content length looks stricter but
+; SQLite's length() counts characters while AHK's StrLen() counts UTF-16 code
+; units, so any note holding an emoji or an astral CJK character would compute
+; two different tokens and copying would fail outright. The window this leaves
+; open -- two saves inside the same second -- is closed in practice because the
+; list is re-sent (and the card re-rendered) after every save.
+NotesNoteRevision(updatedAt) {
+    return String(updatedAt)
 }
 
-NotesStorePreviewJoin(lines) {
-    output := ""
-    for line in lines
-        output .= (A_Index = 1 ? "" : "`n") . line
-    return output
-}
-
-; Inline Markdown -> the plain text a row copies. Links and images keep their
-; label, emphasis keeps its inner text, and code spans lose their backticks, so
-; "# 一级标题" copies "一级标题".
-NotesStorePreviewInline(text) {
-    tick := Chr(96)
-    value := String(text)
-    value := RegExReplace(value, "!\[([^\]]*)\]\([^)]*\)", "$1")
-    value := RegExReplace(value, "\[([^\]]*)\]\([^)]*\)", "$1")
-    value := RegExReplace(value, "\*\*([^*]+)\*\*", "$1")
-    value := RegExReplace(value, "__([^_]+)__", "$1")
-    value := RegExReplace(value, "\*([^*]+)\*", "$1")
-    value := RegExReplace(value, "_([^_]+)_", "$1")
-    value := RegExReplace(value, "~~([^~]+)~~", "$1")
-    value := RegExReplace(value, tick . "([^" . tick . "]+)" . tick, "$1")
-    return Trim(value)
-}
-
-; "asset:<id>" -> the asset id, but only when the asset resolves to a file that
-; is still on disk, so an image whose file is gone renders as its alt text
-; instead of a broken picture.
-NotesStorePreviewAssetId(source, assetUrls) {
-    if !IsObject(assetUrls) || !RegExMatch(Trim(String(source)), "^asset:([A-Za-z0-9_-]+)$", &match)
-        return ""
-    return assetUrls.Has(match[1]) ? match[1] : ""
+NotesNoteRevisionOf(note) {
+    return NotesNoteRevision(note["updatedAt"])
 }
 
 ; Absolute path of an asset that still belongs to the given note, or "" when the
@@ -544,11 +408,12 @@ NotesStoreAssetFilePath(noteId, assetId) {
     return FileExist(path) ? path : ""
 }
 
-; One query for every asset referenced by the listed notes, so the preview does
-; not add a lookup per image. Only assets whose file is actually on disk are
-; mapped, so an image whose file was lost falls back to a text row instead of
-; rendering a broken image.
-NotesStorePreviewAssetIndex(noteIds) {
+; One query for every asset referenced by the listed notes, so rendering the
+; list does not add a lookup per image. Assets whose file is gone are left out
+; on purpose: the page substitutes asset: references through this map and falls
+; back to the alt text when an id is missing, which is what keeps a lost image
+; from turning into a broken picture.
+NotesStoreAssetUrlIndex(noteIds) {
     global NotesStoreRoot
     index := Map()
     if !IsObject(noteIds) || !noteIds.Length
@@ -758,24 +623,19 @@ NotesStoreSetPinned(noteIds, value) {
     return true
 }
 
-; Re-derives the preview from the stored Markdown and only accepts text that
-; still exists, so a row clicked against stale content copies nothing. The
-; budget is wider than the list's so every row the page could be showing is
-; re-derived, and the comparison uses the block's plain copy text.
-NotesStoreCopyLine(noteId, line) {
-    line := String(line)
-    if line = ""
+; Only accepts a row whose note has not changed since the page rendered it.
+;
+; The page derives its copy text from the Markdown the list handed out, so while
+; the revision still matches, that text is still what the note says and nothing
+; needs reparsing on this side. A stale card copies nothing instead.
+NotesStoreCopyRow(noteId, revision, text) {
+    text := String(text)
+    if text = ""
         return ""
     note := NotesStoreReadNote(noteId)
     if !IsObject(note)
         return ""
-    assetUrls := Map()
-    for asset in NotesStoreAssets(noteId)
-        assetUrls[asset["id"]] := asset["url"]
-    for block in NotesStorePreviewBlocks(note["content"], assetUrls, 60, 20)
-        if block.Has("copy") && block["copy"] = line
-            return block["copy"]
-    return ""
+    return NotesNoteRevisionOf(note) = String(revision) ? text : ""
 }
 
 NotesStoreTagList() {

@@ -395,7 +395,7 @@ NotesHandleAssetCancel(msg) {
 }
 
 NotesHandleCopyLine(msg) {
-    line := NotesStoreCopyLine(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "text"))
+    line := NotesStoreCopyRow(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "revision"), LLMMsgField(msg, "text"))
     if line = "" {
         NotesPost(Map("type", "actionResult", "action", "copyLine", "ok", JSON.false, "error", "内容已变化"))
         return
@@ -425,7 +425,7 @@ NotesHandlePasteImage(msg) {
 
 NotesHandlePasteLine(msg) {
     global NotesTargetHwnd
-    line := NotesStoreCopyLine(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "text"))
+    line := NotesStoreCopyRow(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "revision"), LLMMsgField(msg, "text"))
     if line = ""
         return
     NotesHide()

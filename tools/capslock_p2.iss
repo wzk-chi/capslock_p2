@@ -49,15 +49,21 @@ Source: "{#PayloadDir}\capslock_p2.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Live WebView2 panels and the browser-opened usage page. The retired
 ; settings.js overlay was deleted and is not part of the release payload.
-Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+; vditor-eval.html is a local throwaway harness for trying out the Markdown
+; editor and must never ship, so it is excluded from the html glob.
+Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion; Excludes: "vditor-eval.html"
 Source: "{#ProjectRoot}\pages\theme.css"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\toast.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\dialog.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\qbar-search.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\icons.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\windowbar.js"; DestDir: "{app}\pages"; Flags: ignoreversion
+; Turns Vditor's rendered Markdown into the note card's copyable rows.
+Source: "{#ProjectRoot}\pages\notes-preview.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 
-; Markdown renderer used by the AI chat page.
+; Markdown renderer used by the AI chat page, plus the vendored Vditor build
+; (lute engine, icons, i18n and content themes) that the notes page renders
+; through. recursesubdirs is what carries vendor\vditor\dist\** into the package.
 Source: "{#ProjectRoot}\vendor\*"; DestDir: "{app}\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Dictionary, SQLite binding, Everything and tray icon.

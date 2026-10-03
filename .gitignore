@@ -1,6 +1,9 @@
 # Build & packaging outputs
-build/
-dist/
+# 前导斜杠是必须的：不加的话 build/ 和 dist/ 会匹配任意层级的同名目录，
+# 而 vendor/vditor/dist/ 正是 Vditor 的 cdn 契约要求的路径
+# （运行时按 ${cdn}/dist/js/lute/lute.min.js 取资源），会被静默忽略掉。
+/build/
+/dist/
 out.txt
 err.txt
 

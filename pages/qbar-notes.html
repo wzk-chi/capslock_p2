@@ -12,6 +12,13 @@
 <script src="windowbar.js"></script>
 <script src="../vendor/marked.min.js"></script>
 <script src="../vendor/purify.min.js"></script>
+<!-- Vditor renders both the note list preview and (later) the editor. Its
+     on-demand assets are resolved against this local copy, never a CDN. -->
+<link rel="stylesheet" href="../vendor/vditor/dist/index.css">
+<link rel="stylesheet" href="../vendor/vditor/dist/css/content-theme/light.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="../vendor/vditor/dist/css/content-theme/dark.css" media="(prefers-color-scheme: dark)">
+<script src="../vendor/vditor/dist/index.min.js"></script>
+<script src="notes-preview.js"></script>
 <style>
 :root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 * { box-sizing: border-box; }
@@ -187,6 +194,9 @@ const post = payload => { if (window.chrome && chrome.webview) chrome.webview.po
 window.setPinned = value => WindowBar.setPinned(value);
 window.setNativeWindowMode = value => WindowBar.setNativeWindowMode(value);
 const $ = id => document.getElementById(id);
+// Vditor resolves its on-demand assets (lute, icons, i18n) as `${cdn}/dist/...`,
+// so this must point at the vendored copy: a CDN default would need the network.
+const VEDITOR_CDN = '../vendor/vditor';
 const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null };
 let searchTimer = 0;
 
@@ -207,10 +217,18 @@ function submitQuery() { clearTimeout(searchTimer); state.search = $('search').v
 function requestQuery() { clearTimeout(searchTimer); searchTimer = setTimeout(submitQuery, 180); }
 function toggleEditor(on) { $('workspace').classList.toggle('edit-mode', on); $('addNote').classList.toggle('editor-hidden', on); }
 function escapeExternalImages(markdown) { return String(markdown || '').replace(/!\[([^\]]*)\]\((?!asset:)[^)]*\)/g, '$1'); }
-function editorMarkdown(markdown, assets) {
+// Turns stored "asset:<id>" image references into the media host URLs the page
+// can actually load, and drops images that have no local asset behind them
+// (external ones, or ones whose file was lost) down to their alt text. Shared
+// by the editor and the list preview so both agree on what an image is.
+function substituteAssetImages(markdown, assets) {
   const lookup = new Map((assets || []).map(asset => [String(asset.id), asset.url]));
   let source = escapeExternalImages(markdown || '');
   source = source.replace(/!\[([^\]]*)\]\(asset:([A-Za-z0-9_-]+)\)/g, (all, alt, id) => lookup.has(id) ? `![${alt}](${lookup.get(id)})` : alt);
+  return { source, lookup };
+}
+function editorMarkdown(markdown, assets) {
+  const { source, lookup } = substituteAssetImages(markdown, assets);
   let html = marked.parse(source, { breaks: true, gfm: true });
   html = DOMPurify.sanitize(html, { ADD_ATTR: ['data-asset-id'], FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'] });
   const holder = document.createElement('div'); holder.innerHTML = html;
@@ -291,34 +309,72 @@ function contextEdit() { const ids = contextIdsOrEmpty(); if (ids.length === 1) 
 function contextPin() { const ids = contextIdsOrEmpty(); if (ids.length) { const unpinned = state.notes.some(note => ids.includes(String(note.id)) && !note.pinned); post({ type: 'setPinned', noteIds: ids, value: unpinned }); } }
 async function contextDelete() { const ids = contextTargetIds(); if (ids.length && await AppDialog.confirm({ title: '删除笔记', message: `删除 ${ids.length} 篇笔记？`, confirmText: '删除', tone: 'danger' })) { hideContextMenu(); post({ type: 'deleteNotes', noteIds: ids }); } }
 function contextToggleMulti() { if (!state.multi && state.contextNoteId) { state.selectedIds.clear(); state.selectedIds.add(state.contextNoteId); } toggleMulti(); hideContextMenu(); }
-function appendPreviewBlock(container, note, block) {
-  const kind = String(block.kind || 'text');
-  if (kind === 'rule') { const rule = document.createElement('div'); rule.className = 'preview-rule'; container.appendChild(rule); return; }
-  const copy = typeof block.copy === 'string' ? block.copy : '';
-  const assetId = kind === 'image' ? String(block.assetId || '') : '';
-  const element = document.createElement(copy || assetId ? 'button' : 'div');
-  element.className = `preview-block preview-kind-${kind}`;
-  if (kind === 'heading') element.classList.add(`preview-heading-${Math.min(6, Math.max(1, Number(block.level) || 1))}`);
-  if (copy || assetId) {
-    element.type = 'button';
-    const send = type => assetId ? post({ type, noteId: note.id, assetId }) : post({ type, noteId: note.id, text: copy });
-    element.setAttribute('aria-label', assetId ? '单击复制图片，双击粘贴图片' : '单击复制，双击粘贴');
-    element.onclick = () => send(assetId ? 'copyImage' : 'copyLine');
-    element.ondblclick = event => { event.preventDefault(); send(assetId ? 'pasteImage' : 'pasteLine'); };
-  }
-  if (kind === 'image') {
+function previewRowElement(note, row, assetByUrl) {
+  if (row.kind === 'rule') { const rule = document.createElement('div'); rule.className = 'preview-rule'; return rule; }
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = `preview-block preview-kind-${row.kind}`;
+  if (row.kind === 'heading') element.classList.add(`preview-heading-${Math.min(6, Math.max(1, row.level || 1))}`);
+  if (row.kind === 'image') {
+    const assetId = assetByUrl.get(String(row.src)) || '';
     const image = document.createElement('img');
-    image.src = String(block.url || '');
-    image.alt = String(block.alt || '');
+    image.src = String(row.src || '');
+    image.alt = String(row.alt || '');
     image.loading = 'lazy';
     element.appendChild(image);
-  } else {
-    if (block.marker) { const marker = document.createElement('span'); marker.className = 'preview-marker'; marker.textContent = String(block.marker); element.appendChild(marker); }
-    const text = document.createElement('span'); text.className = 'preview-text'; text.textContent = String(block.text || ''); element.appendChild(text);
+    if (assetId) {
+      const send = type => post({ type, noteId: note.id, assetId, revision: note.revision });
+      element.setAttribute('aria-label', '单击复制图片，双击粘贴图片');
+      element.onclick = () => send('copyImage');
+      element.ondblclick = event => { event.preventDefault(); send('pasteImage'); };
+    } else {
+      element.disabled = true;
+      element.setAttribute('aria-label', String(row.alt || '图片'));
+    }
+    return element;
   }
-  container.appendChild(element);
+  if (row.marker) { const marker = document.createElement('span'); marker.className = 'preview-marker'; marker.textContent = row.marker; element.appendChild(marker); }
+  const text = document.createElement('span');
+  text.className = 'preview-text';
+  text.textContent = String(row.display != null ? row.display : row.copy || '');
+  element.appendChild(text);
+  const send = type => post({ type, noteId: note.id, text: row.copy || '', revision: note.revision });
+  element.setAttribute('aria-label', '单击复制，双击粘贴');
+  element.onclick = () => send('copyLine');
+  element.ondblclick = event => { event.preventDefault(); send('pasteLine'); };
+  return element;
 }
-function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; (note.blocks || []).forEach(block => appendPreviewBlock(lines, note, block)); entry.appendChild(lines); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
+// Rows come from the Markdown Vditor rendered, walked by notes-preview.js. A
+// row copies its own text, so no Markdown syntax can reach the clipboard and
+// there is no stripping rule to keep in sync with the renderer.
+//
+// Vditor loads its Markdown engine on first use, so this is asynchronous; the
+// card is already in the DOM and fills in when the render resolves.
+// Last resort when the renderer is unavailable or fails: show the note's text
+// rather than an empty card, keeping the markers so it is obvious that this is
+// the unrendered fallback and not the note itself.
+function previewFallback(container, source) {
+  if (container.childNodes.length) return;   // a partial render already landed
+  const line = document.createElement('div');
+  line.className = 'preview-block preview-kind-text';
+  line.textContent = String(source).split('\n').filter(part => part.trim()).slice(0, 12).join(' / ');
+  container.appendChild(line);
+}
+function fillPreview(container, note) {
+  const { source } = substituteAssetImages(note.markdown, note.assets);
+  if (!String(source).trim()) return;
+  const assetByUrl = new Map((note.assets || []).map(asset => [String(asset.url), String(asset.id)]));
+  if (typeof Vditor === 'undefined') { previewFallback(container, source); return; }
+  Vditor.md2html(source, { cdn: VEDITOR_CDN, hljs: { enable: false }, markdown: { toc: false } })
+    .then(html => {
+      const holder = document.createElement('div');
+      holder.innerHTML = html;
+      const picked = NotesPreview.budget(NotesPreview.collect(holder), { maxRows: 12 });
+      picked.rows.forEach(row => container.appendChild(previewRowElement(note, row, assetByUrl)));
+    })
+    .catch(() => previewFallback(container, source));
+}
+function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; entry.appendChild(lines); fillPreview(lines, note); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
 function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }
 function updateActionState() { updateContextMenu(); }
 function formatStamp(value) {
