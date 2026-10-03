@@ -230,21 +230,26 @@ NotesSetClipboardImage(path) {
     DllCall("gdiplus\GdipDisposeImage", "ptr", bitmap)
     if status != 0 || !handle
         return false
-    if !DllCall("OpenClipboard", "ptr", 0, "int") {
-        DllCall("DeleteObject", "ptr", handle, "int")
+    if !DllCall("user32\OpenClipboard", "ptr", 0, "int") {
+        DllCall("gdi32\DeleteObject", "ptr", handle, "int")
         return false
     }
     previous := ClipboardWatcherSuspended
     ClipboardWatcherSuspended := true
     try {
-        DllCall("EmptyClipboard", "int")
-        if !DllCall("SetClipboardData", "uint", 8, "ptr", handle, "ptr") {   ; CF_BITMAP
-            DllCall("DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
+        DllCall("user32\EmptyClipboard", "int")
+        ; CF_BITMAP (2) takes an HBITMAP. CF_DIB (8) is the neighbouring value
+        ; and takes a global memory block holding a BITMAPINFO followed by the
+        ; bits; handing it a bitmap handle makes every reader -- including this
+        ; process' own OnClipboardChange, which snapshots all formats -- treat
+        ; the handle as a pointer and corrupts the heap.
+        if !DllCall("user32\SetClipboardData", "uint", 2, "ptr", handle, "ptr") {
+            DllCall("gdi32\DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
             return false
         }
         WhichClipboardNow := 0
     } finally {
-        DllCall("CloseClipboard", "int")
+        DllCall("user32\CloseClipboard", "int")
         ClipboardWatcherSuspended := previous
     }
     return true
