@@ -295,6 +295,17 @@ function ensureNoteEditor() {
     minHeight: 300,
     placeholder: '开始输入 Markdown 内容…',
     cache: { enable: false },
+    // Vditor 3.11.2 calls options.customWysiwygToolbar unconditionally from its
+    // wysiwyg popover path -- ve() is exactly
+    // `e.options.customWysiwygToolbar(t, e.wysiwyg.popover)` -- but never gives
+    // it a default: the name occurs once in the whole bundle, at that call, and
+    // is absent from the defaults object. The call therefore throws, and the
+    // statement after it, le(), is what positions the popover and sets its
+    // display to block. The panel ends up built and permanently invisible, which
+    // is what the table row/column panel did: the diagnostic logged kids=13 with
+    // display still none and top/left unset. A no-op default lets the built-in
+    // panels appear; the option exists so an app can add its own buttons.
+    customWysiwygToolbar: () => {},
     preview: {
       hljs: { enable: false },
       theme: { current: dark ? 'dark' : 'light', path: `${VEDITOR_CDN}/dist/css/content-theme` },
