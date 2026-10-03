@@ -308,12 +308,17 @@ function ensureNoteEditor() {
     // out: they load assets we do not ship (emoji images, recorder, highlight.js
     // styles).
     //
-    // 'insert-before' and 'insert-after' stay because they are the only way to
-    // add a table row while in ir mode: Vditor's row/column panel is built into
-    // e.wysiwyg.popover, and ir mode has no popover at all (the bundle mentions
-    // wysiwyg.popover 64 times and ir.popover zero times). Vditor keeps both
-    // items enabled in ir and wysiwyg and skips them only in sv, which is where
-    // there is no rendered table to insert into.
+    // 'insert-before' and 'insert-after' are kept because they are Vditor
+    // defaults and add a paragraph around a block, which is otherwise fiddly
+    // next to a table or a code block. They are NOT table row commands: their
+    // zh_CN labels say "起始插入行" / "末尾插入行", but the implementation
+    // inserts <p data-block="0"> before or after the block holding the caret,
+    // and they are skipped in sv mode where there are no blocks.
+    //
+    // The table row/column panel is a different thing. The wysiwyg selection
+    // handler guards it with v = closest(caret, "TABLE") and builds it into
+    // e.wysiwyg.popover, so it appears when the caret is inside a table -- and
+    // only in wysiwyg, since ir mode has no popover element at all.
     toolbar: ['undo', 'redo', '|', 'headings', 'bold', 'italic', 'strike', 'link', '|',
               'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
               'quote', 'line', 'code', 'inline-code', 'insert-before', 'insert-after', '|',
