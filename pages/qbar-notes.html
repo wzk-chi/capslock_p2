@@ -161,7 +161,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
           </div>
         </div>
         <div class="editor-toolbar" aria-label="Markdown 工具栏">
-          <button class="tool" type="button" data-command="bold" aria-label="加粗" title="加粗"><i data-lucide="bold"></i></button><button class="tool" type="button" data-command="italic" aria-label="斜体" title="斜体"><i data-lucide="italic"></i></button><button class="tool" type="button" data-command="strike" aria-label="删除线" title="删除线"><i data-lucide="strikethrough"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="h2" aria-label="标题" title="标题"><i data-lucide="heading-2"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="blockquote" aria-label="引用" title="引用"><i data-lucide="quote"></i></button><button class="tool" type="button" data-command="insertUnorderedList" aria-label="无序列表" title="无序列表"><i data-lucide="list"></i></button><button class="tool" type="button" data-command="insertOrderedList" aria-label="有序列表" title="有序列表"><i data-lucide="list-ordered"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="pre" aria-label="代码块" title="代码块"><i data-lucide="code-xml"></i></button><button id="insertImage" class="tool" type="button" aria-label="插入图片" title="插入图片"><i data-lucide="image-plus"></i></button><button class="tool" type="button" data-command="createLink" aria-label="插入链接" title="插入链接"><i data-lucide="link"></i></button>
+          <button class="tool" type="button" data-command="bold" aria-label="加粗" title="加粗"><i data-lucide="bold"></i></button><button class="tool" type="button" data-command="italic" aria-label="斜体" title="斜体"><i data-lucide="italic"></i></button><button class="tool" type="button" data-command="strike" aria-label="删除线" title="删除线"><i data-lucide="strikethrough"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="h2" aria-label="标题" title="标题"><i data-lucide="heading-2"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="blockquote" aria-label="引用" title="引用"><i data-lucide="quote"></i></button><button class="tool" type="button" data-command="insertUnorderedList" aria-label="无序列表" title="无序列表"><i data-lucide="list"></i></button><button class="tool" type="button" data-command="insertOrderedList" aria-label="有序列表" title="有序列表"><i data-lucide="list-ordered"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="pre" aria-label="代码块，Ctrl+Enter 退出" title="代码块（Ctrl+Enter 或连按两次回车退出）"><i data-lucide="code-xml"></i></button><button id="insertImage" class="tool" type="button" aria-label="插入图片" title="插入图片"><i data-lucide="image-plus"></i></button><button class="tool" type="button" data-command="createLink" aria-label="插入链接" title="插入链接"><i data-lucide="link"></i></button>
         </div>
         <div id="editorContent" class="editor-content" contenteditable="true" spellcheck="false"></div>
         <div class="editor-foot"><button id="cancelEdit" class="editor-button icon-only" type="button" aria-label="取消" title="取消"><i data-lucide="x"></i></button><button id="saveEdit" class="editor-button primary icon-only" type="button" aria-label="保存" title="保存"><i data-lucide="check"></i></button></div>
@@ -360,6 +360,56 @@ async function deleteSelectedNotes() {
   if (ids.length && await AppDialog.confirm({ title: '删除笔记', message: `删除 ${ids.length} 篇笔记？`, confirmText: '删除', tone: 'danger' }))
     post({ type: 'deleteNotes', noteIds: ids });
 }
+function codeBlockOf(range) { let node = range.startContainer; if (node.nodeType === Node.TEXT_NODE) node = node.parentElement; return node && node.closest ? node.closest('pre') : null; }
+// A contenteditable <pre> keeps every Enter inside itself, so once the caret is
+// in a code block there is no way back to normal text. Leaving always means the
+// same thing: a fresh block after the code block, with the caret in it.
+function exitCodeBlock(pre) {
+  const editor = $('editorContent');
+  const next = document.createElement('div');
+  next.appendChild(document.createElement('br'));
+  pre.after(next);
+  const range = document.createRange();
+  range.setStart(next, 0);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  editor.focus();
+}
+// Range.toString() only walks text nodes, and a contenteditable <pre> takes a
+// <br> for every Enter, so "does this block end with a line break" has to look
+// at the DOM instead of at text alone.
+function endsWithLineBreak(pre) {
+  const last = pre.lastChild;
+  if (!last) return true;
+  if (last.nodeType === Node.ELEMENT_NODE && last.tagName === 'BR') return true;
+  return /\n$/.test(String(pre.innerText ?? pre.textContent ?? ''));
+}
+function hasContentAfter(pre, range) {
+  const rest = document.createRange();
+  rest.setStart(range.endContainer, range.endOffset);
+  rest.setEnd(pre, pre.childNodes.length);
+  const fragment = rest.cloneContents();
+  return fragment.textContent !== '' || fragment.querySelector('br') !== null;
+}
+function handleEditorEnter(event) {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  const pre = codeBlockOf(range);
+  if (!pre) return;
+  // Ctrl+Enter leaves the block from anywhere in it. Escape cannot be used
+  // here: the host binds it to cancel the editor.
+  if (event.ctrlKey || event.metaKey) { event.preventDefault(); exitCodeBlock(pre); return; }
+  if (event.shiftKey || event.altKey) return;
+  // Enter on the empty line at the very end of the block leaves it, the usual
+  // way out of a code fence. A blank line in the middle of the code still just
+  // adds a line, and a trailing blank line never reaches the Markdown because
+  // the serialiser strips it.
+  if (!hasContentAfter(pre, range) && endsWithLineBreak(pre)) { event.preventDefault(); exitCodeBlock(pre); }
+}
 async function applyTool(button) {
   saveSelection();
   const command = button.dataset.command;
@@ -367,12 +417,33 @@ async function applyTool(button) {
     const url = await AppDialog.prompt({ title: '插入链接', label: '链接地址', placeholder: 'https://example.com' });
     restoreSelection();
     if (url) document.execCommand('createLink', false, url);
-  } else if (command === 'formatBlock') document.execCommand(command, false, button.dataset.value);
-  else document.execCommand(command, false, null);
+  } else if (command === 'formatBlock') {
+    // Clicking 代码块 while already inside one leaves it rather than nesting, so
+    // there is always a mouse-only way out of the block.
+    const selection = window.getSelection();
+    const pre = selection.rangeCount ? codeBlockOf(selection.getRangeAt(0)) : null;
+    if (pre && button.dataset.value === 'pre') exitCodeBlock(pre);
+    else {
+      document.execCommand(command, false, button.dataset.value);
+      // A code block that ends up as the last element has nothing below it to
+      // click, so the caret could only ever go back inside. Leave it an empty
+      // block; the serialiser trims a trailing blank line away.
+      if (button.dataset.value === 'pre' && selection.rangeCount) {
+        const created = codeBlockOf(selection.getRangeAt(0));
+        const editor = $('editorContent');
+        if (created && created.parentElement === editor && !created.nextElementSibling) {
+          const next = document.createElement('div');
+          next.appendChild(document.createElement('br'));
+          created.after(next);
+        }
+      }
+    }
+  } else document.execCommand(command, false, null);
   $('editorContent').focus();
 }
 
-$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
+$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); $('editorContent').addEventListener('keydown', handleEditorEnter);
+document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
 
 const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (pending && data.ok) { pending.assetId = data.assetId; pending.url = data.url; insertImageNode(data.url, data.assetId, pending.name); state.pendingUploads.delete(String(data.requestId)); } else if (pending) { state.pendingUploads.delete(String(data.requestId)); toast(data.error || '图片写入失败', 'error'); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
