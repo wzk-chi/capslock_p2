@@ -104,10 +104,10 @@ button { color: inherit; cursor: default; }
 .multi-button.danger { color: var(--ui-danger); }
 .multi-button:disabled { opacity: .45; }
 .note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
-.context-menu { position: fixed; z-index: 50; width: 42px; min-width: 42px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.context-menu { position: fixed; z-index: 50; min-width: 148px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .context-menu.hidden { display: none; }
-.context-menu button { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); }
-.context-menu button .lucide { width: 16px; height: 16px; }
+.context-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
+.context-menu button .lucide { width: 14px; height: 14px; }
 .context-menu button:hover, .context-menu button:focus-visible { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .context-menu button:disabled { opacity: .4; }
 .context-menu button.danger { color: var(--ui-danger); }
@@ -161,13 +161,13 @@ button { color: inherit; cursor: default; }
 
 <button id="addNote" class="floating-add" type="button" aria-label="新增笔记" title="新增笔记"><i data-lucide="plus"></i></button>
 <div id="contextMenu" class="context-menu hidden" role="menu" aria-label="笔记操作">
-  <button id="contextEdit" type="button" role="menuitem" aria-label="修改" title="修改"><i data-lucide="pencil"></i></button>
-  <button id="contextCopy" type="button" role="menuitem" aria-label="复制" title="复制"><i data-lucide="copy"></i></button>
-  <button id="contextPaste" type="button" role="menuitem" aria-label="粘贴" title="粘贴"><i data-lucide="clipboard-paste"></i></button>
-  <button id="contextPin" type="button" role="menuitem" aria-label="置顶" title="置顶"><i data-lucide="pin"></i></button>
-  <button id="contextDelete" class="danger" type="button" role="menuitem" aria-label="删除" title="删除"><i data-lucide="trash"></i></button>
+  <button id="contextEdit" type="button" role="menuitem" aria-label="修改" title="修改"><i data-lucide="pencil"></i><span data-label>修改</span></button>
+  <button id="contextCopy" type="button" role="menuitem" aria-label="复制" title="复制"><i data-lucide="copy"></i><span data-label>复制</span></button>
+  <button id="contextPaste" type="button" role="menuitem" aria-label="粘贴" title="粘贴"><i data-lucide="clipboard-paste"></i><span data-label>粘贴</span></button>
+  <button id="contextPin" type="button" role="menuitem" aria-label="置顶" title="置顶"><i data-lucide="pin"></i><span data-label>置顶</span></button>
+  <button id="contextDelete" class="danger" type="button" role="menuitem" aria-label="删除" title="删除"><i data-lucide="trash"></i><span data-label>删除</span></button>
   <div class="context-separator"></div>
-  <button id="contextMulti" type="button" role="menuitem" aria-label="多选" title="多选"><i data-lucide="list-checks"></i></button>
+  <button id="contextMulti" type="button" role="menuitem" aria-label="多选" title="多选"><i data-lucide="list-checks"></i><span data-label>多选</span></button>
 </div>
 <input id="imageInput" type="file" accept="image/*" multiple hidden>
 <script>
@@ -245,7 +245,8 @@ function addEditorTagFromInput() { if (!state.editor) return; const input = $('e
 function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text == null ? '' : String(text); return div.innerHTML; }
 function contextTargetIds() { const id = state.contextNoteId; if (state.multi && id && state.selectedIds.has(id)) return Array.from(state.selectedIds); return id ? [id] : []; }
 function hideContextMenu() { $('contextMenu').classList.add('hidden'); state.contextNoteId = ''; }
-function updateContextMenu() { const ids = contextTargetIds(); const one = ids.length === 1; $('contextCopy').disabled = !ids.length; $('contextPaste').disabled = !one; $('contextEdit').disabled = !one; $('contextPin').disabled = !ids.length; $('contextDelete').disabled = !ids.length; const multiLabel = state.multi ? '退出多选' : '多选'; $('contextMulti').title = multiLabel; $('contextMulti').setAttribute('aria-label', multiLabel); }
+function setMenuItemLabel(button, text) { const label = button.querySelector('[data-label]'); if (label) label.textContent = text; button.title = text; button.setAttribute('aria-label', text); }
+function updateContextMenu() { const ids = contextTargetIds(); const one = ids.length === 1; $('contextCopy').disabled = !ids.length; $('contextPaste').disabled = !one; $('contextEdit').disabled = !one; $('contextPin').disabled = !ids.length; $('contextDelete').disabled = !ids.length; setMenuItemLabel($('contextMulti'), state.multi ? '退出多选' : '多选'); const hasUnpinned = ids.some(id => state.notes.some(note => String(note.id) === id && !note.pinned)); setMenuItemLabel($('contextPin'), ids.length && !hasUnpinned ? '取消置顶' : '置顶'); }
 function showContextMenu(event, note) { const id = String(note.id); state.contextNoteId = id; if (state.multi) { if (!state.selectedIds.has(id)) { state.selectedIds.clear(); state.selectedIds.add(id); renderNotes(); } } else state.selectedIds.clear(); const menu = $('contextMenu'); menu.classList.remove('hidden'); updateContextMenu(); const left = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8); const top = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8); menu.style.left = `${Math.max(8, left)}px`; menu.style.top = `${Math.max(8, top)}px`; }
 function contextIdsOrEmpty() { const ids = contextTargetIds(); if (ids.length) hideContextMenu(); return ids; }
 function contextCopy() { const ids = contextIdsOrEmpty(); if (ids.length) post({ type: 'copyNotes', noteIds: ids }); }
