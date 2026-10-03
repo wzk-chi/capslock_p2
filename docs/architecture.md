@@ -242,8 +242,9 @@ Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，�
 
 - **语法校验**：做法与那几个会造成假阳性的坑（`/ErrorStdOut` 不能省、要读 `$LASTEXITCODE` 而不是
   `Start-Process` 带重定向时的 `ExitCode`、不要在 Git Bash 里校验）统一记在 `AGENTS.md` 的
-  「工具坑记录」里，这里不再抄一份，免得两处各自漂移。注意 `/validate` 不输出 `#Warn` 警告，
-  只有重载脚本才暴露。
+  「工具坑记录」里，这里不再抄一份，免得两处各自漂移。**`/validate` 会照常显示 `#Warn` 警告**，
+  但警告不影响退出码，所以 `exit=0` 只说明没有错误；本项目是 MsgBox 模式，带警告的校验会弹一个
+  模态对话框一直等在那里，想不被挡住就用 `AGENTS.md` 里那段 stdin + `#Warn All, StdOut` 的查法。
 - **命名**：`#Warn` 保持开启（仅关闭 `VarUnset`）；AHK v2 类名占用全局命名空间，局部变量不要
   与内置类名（如 `File`）或库类名（`Core`、`JSON` 等）同名。
 - **翻译引擎扩展入口**：新建 `lib/features/translate/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
