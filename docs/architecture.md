@@ -8,6 +8,10 @@
   全局变量和函数在所有文件间共享。
 - **键盘层**：按住 CapsLock 进入键层，`lib/input/keymap.ahk` 做键位方案与层调度，`lib/input/keys.ahk` 提供
   `keyFunc_*` 动作函数；`lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
+  **`keyFunc_*` 是面向用户的配置 API，不能按「有没有代码引用」判断死活**：键位是由 `[Keys]` 按函数名选择并交给
+  `RunConfiguredAction()` 执行的，所以一个 `keyFunc_*` 在全部 AHK 源码和两个 ini 里都可能一次都不出现，却仍然
+  是用户可绑定、README 明确指向的接口。同理，回调是以函数引用形式传递的（`OnExit(Shutdown)`），名字后面不带
+  括号——用「函数名后面有没有 `(`」来找死代码会把它们全判成死的。
 - **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/shared/panelHost.ahk` 创建控制器并承载；临时面板的失焦隐藏共用 `PanelHostStartAutoHide()`，使用自定义标题栏的页面再共用 `windowBar.ahk` 的窗口样式切换、拖动、置顶和独立窗口抑制逻辑。
   AHK ⇄ 页面双向通信通过 thqby ahk2_lib 的绑定（`WebView2.ahk`）——页面用
   `window.chrome.webview.postMessage` 发 JSON，宿主统一接收并调用页面函数。

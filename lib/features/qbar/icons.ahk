@@ -294,14 +294,6 @@ IconGdiplusStart() {
     return true
 }
 
-IconGdiplusStop() {
-    global IconGdiplusToken
-    if IconGdiplusToken {
-        DllCall("gdiplus\GdiplusShutdown", "ptr", IconGdiplusToken)
-        IconGdiplusToken := 0
-    }
-}
-
 IconPngClsid() {
     static clsid := 0
     if !IsObject(clsid) {

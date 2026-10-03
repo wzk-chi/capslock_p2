@@ -62,12 +62,13 @@ QbarShutdown(*) {
     QbarIndexLoading := false
     PanelHostDestroy(QbarHost)
     QbarHost := 0
-    ; GDI+ stays started for the rest of the process. Shutting it down here
-    ; unloads gdiplus.dll while Shutdown() still has work to do and while AHK
-    ; and WebView2 are still tearing themselves down, and every crash dump so
-    ; far shows the access violation landing in the unloaded module
-    ; (gdiplus.DLL_unloaded). GDI+ is a process-wide singleton that the system
-    ; reclaims at exit, so IconGdiplusStop() is deliberately not called.
+    ; GDI+ stays started for the rest of the process: there is no
+    ; GdiplusShutdown call anywhere. Shutting it down here used to unload
+    ; gdiplus.dll while Shutdown() still had work to do and while AHK and
+    ; WebView2 were still tearing themselves down, and every crash dump from
+    ; that period showed the access violation landing in the unloaded module
+    ; (gdiplus.DLL_unloaded). GDI+ is a process-wide singleton the system
+    ; reclaims at exit, so it is left alone.
 }
 
 ; ---------------------------------------------------------------------------
