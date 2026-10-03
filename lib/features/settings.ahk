@@ -430,13 +430,6 @@ SettingsAllowedKey(section, key) {
     return ConfigValidateKey(section, key)
 }
 
-SettingsKeyIn(values, target) {
-    for value in values
-        if value = target
-            return true
-    return false
-}
-
 SettingsCollectSectionChanges(changes, section, values) {
     if !IsObject(values)
         return

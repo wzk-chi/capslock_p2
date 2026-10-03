@@ -851,10 +851,6 @@ getSelText() {
     return GetSelectedText()
 }
 
-runFunc(actionText) {
-    RunConfiguredAction(actionText)
-}
-
 clipSaver(clipX) {
     global WhichClipboardNow
     slot := clipX = "s" ? 0 : (clipX = "c" ? 1 : 2)

@@ -559,10 +559,6 @@ WinTransparentStart() {
     SetTimer(DisableWinTransparentToggle, -300)
 }
 
-winTransparent() {
-    WinTransparentStart()
-}
-
 DisableWinTransparentToggle(*) {
     global AllowWinTransparentToggle
     AllowWinTransparentToggle := false

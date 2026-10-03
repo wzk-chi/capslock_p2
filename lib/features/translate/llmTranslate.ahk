@@ -270,11 +270,6 @@ LLMTranslateSetNativeState(value) {
     LLMTranslateNativeWindow := !!value
 }
 
-LLMTranslateBeginDrag() {
-    global LLMTranslateHost
-    WindowBarBeginDrag(LLMTranslateHost)
-}
-
 ; The WebView2 pages post their payloads as JSON.stringify'd text, so a full
 ; parse is always safe; a malformed message just yields no fields.
 
