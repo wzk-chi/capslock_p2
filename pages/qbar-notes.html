@@ -288,7 +288,14 @@ function ensureNoteEditor() {
   diag('editor-mount', 'theme=' + (dark ? 'dark' : 'classic'));
   noteEditor = new Vditor('noteEditor', {
     cdn: VEDITOR_CDN,
-    mode: 'ir',
+    // wysiwyg rather than ir: the floating panels that carry block operations --
+    // table rows and columns above all -- are built into e.wysiwyg.popover, and
+    // ir mode has no popover element at all. In ir a table's text can be edited
+    // but there is no way to add or remove a row or column, where Typora's live
+    // preview does provide one. wysiwyg still renders as you type; what it drops
+    // relative to ir is the source markers on the block holding the caret.
+    // The toolbar's edit-mode menu switches to ir or sv at any time.
+    mode: 'wysiwyg',
     theme: dark ? 'dark' : 'classic',
     lang: 'zh_CN',
     height: '100%',
@@ -549,8 +556,8 @@ async function deleteSelectedNotes() {
 }
 // The code-block escape hatches that used to live here (codeBlockOf,
 // exitCodeBlock, codeBlockText, caretCodeBlockOffset, handleEditorEnter,
-// applyTool) are gone with the contenteditable editor: Vditor's own ir mode
-// handles Enter inside a code fence, and its toolbar replaces execCommand.
+// applyTool) are gone with the contenteditable editor: Vditor handles Enter
+// inside a code fence, and its toolbar replaces execCommand.
 
 $('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor;
 // Diagnostic only. Vditor's table row/column panel is built into the wysiwyg
