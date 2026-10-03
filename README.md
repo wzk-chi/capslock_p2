@@ -67,7 +67,7 @@ Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与�
 | CapsLock+- / = | PgUp / PgDn | CapsLock+Enter | 回车 |
 | CapsLock+Q | qbar 启动器 | CapsLock+T / F3 | 翻译 / 词典 |
 | CapsLock+Tab | 热串替换 | CapsLock+F1 | 打开使用介绍 |
-| CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载配置 |
+| CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载脚本（含配置） |
 | CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
 | CapsLock+LAlt+1~0 | 单击/双击/三击绑定窗口、窗口组、应用 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
 | CapsLock+F12 | 打开设置中心 |  |  |
@@ -280,7 +280,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 ## 配置说明
 
 - 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
-- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读，只有实际变化才应用；CapsLock+F5 可手动重载。外部修改与设置页未保存草稿冲突时，页面会提示重新载入。
+- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读，只有实际变化才应用；CapsLock+F5 可手动重载（它重载的是整个脚本，配置也一并重读，所以改完代码按它一次即可生效）。外部修改与设置页未保存草稿冲突时，页面会提示重新载入。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
 - 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`。
 - `[Global]` 常用项：

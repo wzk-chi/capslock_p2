@@ -193,6 +193,7 @@ const VEDITOR_CDN = '../vendor/vditor';
 // here: the log rules in docs/architecture.md forbid user input and content, and
 // a renderer error message can quote the Markdown it choked on.
 let diagPreviewLogged = false;
+let diagHostOld = false;
 function diag(stage, detail) {
   try { post({ type: 'diagnostic', stage: String(stage), detail: String(detail == null ? '' : detail).replace(/\s+/g, ' ').slice(0, 120) }); } catch (error) { /* never let diagnostics break the page */ }
 }
@@ -410,6 +411,14 @@ function previewHtml(note) {
     .then(html => { previewHtmlCache.set(key, { revision: note.revision, assets: note.assets, html }); return html; });
 }
 function fillPreview(container, note) {
+  // This page is read from disk every time the panel opens, so it can be newer
+  // than the running script, which only picks up code changes on reload. The
+  // older payload carried `blocks` instead of `markdown`; without this the cards
+  // would just come up silently empty and look like a rendering failure.
+  if (note.markdown === undefined) {
+    if (!diagHostOld) { diagHostOld = true; diag('host-old', 'payload has no markdown field'); toast('笔记页面与后台版本不一致，按 CapsLock+F5 重载脚本', 'error'); }
+    return;
+  }
   const assetByUrl = new Map((note.assets || []).map(asset => [String(asset.url), String(asset.id)]));
   if (typeof Vditor === 'undefined') { previewFallback(container, substituteAssetImages(note.markdown, note.assets).source); return; }
   previewHtml(note)
