@@ -167,7 +167,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
         <!-- Vditor brings its own toolbar and editing surface; the hand-written
              toolbar and the contenteditable that used to live here are gone. -->
         <div id="noteEditor" class="note-editor"></div>
-        <div class="editor-foot"><button id="cancelEdit" class="editor-button icon-only" type="button" aria-label="取消" title="取消"><i data-lucide="x"></i></button><button id="saveEdit" class="editor-button primary icon-only" type="button" aria-label="保存" title="保存"><i data-lucide="check"></i></button></div>
+        <div class="editor-foot"><button id="cancelEdit" class="editor-button icon-only" type="button" aria-label="取消" title="取消"><i data-lucide="x"></i></button><button id="saveEdit" class="editor-button primary icon-only" type="button" aria-label="保存" title="保存（Ctrl+S）"><i data-lucide="check"></i></button></div>
       </section>
     </main>
   </div>
@@ -343,6 +343,18 @@ function ensureNoteEditor() {
               'table', 'upload', '|',
               'edit-mode', 'both', 'fullscreen', 'outline'],
     upload: { accept: 'image/*', handler: handleEditorUpload },
+    // Vditor never binds Ctrl+Enter itself; it exposes it as a host callback and
+    // hands over the current markdown -- `if (e.options.ctrlEnter && q("⌘Enter",
+    // t)) return e.options.ctrlEnter(a(e)), void t.preventDefault()`. That check
+    // sits after the per-mode keydown functions, and none of them claim
+    // Ctrl+Enter: every "Enter" branch on the wysiwyg/sv paths also demands
+    // !(0,c.yl)(t) -- the platform primary, Ctrl here -- or Alt or Shift, and the
+    // shared helpers St/ft/kt/Mt do the same. So the callback is reached in all
+    // three modes, and returning from it is what stops the browser default from
+    // also inserting a newline. q() reads t.key, so plain Enter is unaffected.
+    // The markdown argument is ignored on purpose: saveEditor() re-reads through
+    // noteEditorMarkdown(), the only path that maps media URLs back to asset:<id>.
+    ctrlEnter: () => saveEditor(),
     after: () => {
       noteEditorReady = true;
       // The engine (lute) loads on demand, so this is the first proof that the
@@ -551,7 +563,7 @@ function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').valu
 function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
 async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !(await AppDialog.confirm({ title: '放弃修改', message: '放弃当前修改？', confirmText: '放弃修改', tone: 'danger' }))) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
 async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
-function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; if (!noteEditorReady) { toast('编辑器还没准备好，先不要保存', 'error'); return; } const content = noteEditorMarkdown(); if (content.includes(MEDIA_HOST)) { diag('save-refused', 'unmapped media url'); toast('正文里还有没能转回引用的图片地址，保存会丢图。请删掉那张图再保存', 'error'); return; } state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; diag('save', 'refs=' + (content.match(/asset:/g) || []).length + ' assets=' + ((state.editor.assets || []).length)); post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content }); }
+function saveEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (state.pendingUploads.size) { toast('图片还在上传，等一下再保存', 'error'); return; } if (!noteEditorReady) { toast('编辑器还没准备好，先不要保存', 'error'); return; } const content = noteEditorMarkdown(); if (content.includes(MEDIA_HOST)) { diag('save-refused', 'unmapped media url'); toast('正文里还有没能转回引用的图片地址，保存会丢图。请删掉那张图再保存', 'error'); return; } state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; diag('save', 'refs=' + (content.match(/asset:/g) || []).length + ' assets=' + ((state.editor.assets || []).length)); post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content }); }
 function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
 function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
 async function updateTag(action) {
@@ -603,9 +615,28 @@ document.addEventListener('click', () => {
 // phase, before Vditor sees it, and leaves Alt+Ctrl+7 (wysiwyg) and Alt+Ctrl+9
 // (sv) working. Vditor also maps Alt+Ctrl+1..6 to heading levels 1..6, which is
 // untouched.
+//
+// Ctrl+S saves, the same call the 保存 button makes. Vditor has no Ctrl+S binding
+// at all -- neither "⌘S" nor "KeyS" appears anywhere in the bundle -- so the page
+// handles it itself, in the capture phase on document. That way it also works
+// while the caret sits in the title or tag input, and scoping it to an open
+// editor keeps the key from being swallowed into a no-op out in the list.
+//
+// The preventDefault below is load-bearing, not decoration. WebView2 is created
+// without touching AreBrowserAcceleratorKeysEnabled, so browser accelerators stay
+// on, and a browser only runs an accelerator's default action once the renderer
+// has declined the key. Without it Ctrl+S would open the save-page flow. If that
+// ever still happens, the host-side escape hatch is
+// CoreWebView2Settings.AreBrowserAcceleratorKeysEnabled.
 let diagBlockedMode = false;
 document.addEventListener('keydown', event => {
   if (!noteEditorReady || !noteEditor) return;
+  if (state.editor && event.ctrlKey && !event.altKey && !event.shiftKey && event.code === 'KeyS') {
+    event.preventDefault();
+    event.stopPropagation();
+    saveEditor();
+    return;
+  }
   if (!(event.ctrlKey && event.altKey && !event.shiftKey && event.code === 'Digit8')) return;
   event.preventDefault();
   event.stopPropagation();
