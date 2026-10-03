@@ -32,9 +32,6 @@ Qbar 后续不再把内置命令、QSearch、QRun、路径打开、开始菜单�
 Qbar 命令不再使用 INI 作为配置来源。新架构不实现旧 QSearch/QRun 配置的兼容读取、
 导入或历史迁移。首次启用新架构时直接创建新的 qbar.db。
 
-QWeb 如果继续服务于 CapsLock+Tab 的网址展开，属于独立的热字符串来源，不注册为
-Qbar 命令插件。
-
 ## 2. 目标与非目标
 
 ### 2.1 目标
@@ -51,7 +48,7 @@ Qbar 命令插件。
 
 ### 2.2 非目标
 
-- 不保留旧 QSearch、QRun、QWeb 的 Qbar 兼容读取路径。
+- 不保留旧 INI 命令段的 Qbar 兼容读取路径。
 - 不把可执行 AHK 代码存入数据库。
 - 不允许数据库中的任意字符串直接调用任意函数。
 - 不把 Qbar 命令和 CapsLock+Tab 热字符串混成同一个运行时系统。
@@ -935,7 +932,6 @@ registry generation 是进程内递增的运行时版本，不写入 qbar.db；�
 11. 插件设置修改失败时事务回滚，旧 registry 继续服务；修改成功后旧 query snapshot 不能执行。
 12. 页面收到旧 queryId、candidateId 或 registryGeneration 时，执行被拒绝并要求重新查询。
 13. 新增一个工具插件不需要修改 Qbar 主分发器。
-14. QWeb 仍可作为 CapsLock+Tab 网址展开来源，但不会进入 Qbar 命令注册表。
 
 ## 17. 最终原则
 

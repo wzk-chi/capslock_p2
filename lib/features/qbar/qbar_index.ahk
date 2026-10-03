@@ -23,71 +23,35 @@ QbarConfigIndex() {
         return QbarConfigIndexCache
 
     items := []
-    sections := Map("QSearch", [], "QRun", [])
+    sections := Map()
     byShort := Map()
-    configuredSearch := Map()
 
-    ; Discoverability rows always lead the list. Keep one row per built-in
-    ; action while retaining every alias for matching and direct dispatch.
-    items.Push(Map("short", "q", "label", "q <AI 问答 ai>", "type", "search", "value", "",
-        "usageKey", "builtin:ai", "aliases", ["q", "ai"]))
-    items.Push(Map("short", "e", "label", "e <文件搜索>", "type", "everything", "value", "",
-        "usageKey", "builtin:everything", "aliases", ["e", "everything", "find", "f"]))
-    items.Push(Map("short", "n", "label", "n <笔记>", "type", "notes", "value", "",
-        "usageKey", "builtin:notes", "aliases", ["n", "note", "w", "write"]))
-
-    ; Presence precedence stays QRun -> QSearch, matching the former
-    ; QbarConfigShortKeyExists scan. Display order stays QSearch -> QRun.
-    for section in ["QRun", "QSearch"]
-        for key, value in ConfigSection(section)
-            QbarConfigIndexRecordPresence(byShort, QbarShortKey(key))
-
-    for key, value in ConfigSection("QSearch") {
-        short := QbarShortKey(key)
-        if Trim(value) = "" || short = "default"
-            continue
-        configuredSearch[StrLower(short)] := true
-        entry := Map("short", short, "label", key, "type", "search", "value", value,
-            "usageKey", "qsearch:" . StrLower(short))
-        sections["QSearch"].Push(entry)
-        QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
-    }
-    for key, value in ConfigSection("QRun") {
-        if Trim(value) = ""
-            continue
-        short := QbarShortKey(key)
-        runString := "", runAsAdmin := false, parameters := ""
-        resolved := ExtractSetString(value, &runString, &runAsAdmin, &parameters)
-        if resolved = ""
-            resolved := Trim(value)
-        isFolder := CheckStringType(resolved) = "folder"
-        entry := Map(
-            "short", short,
-            "label", key,
-            "type", isFolder ? "folder" : "file",
-            "value", value,
-            "usageKey", "qrun:" . StrLower(short),
-            "icon", isFolder ? "folder" : IconKeyForPath(resolved))
-        sections["QRun"].Push(entry)
-        QbarConfigIndexRecordEntry(byShort, "QRun", entry)
-    }
-    ; The dynamic s row follows the configured QSearch rows. A non-empty user
-    ; entry suppresses it; an empty entry retains the previous fallback row.
-    if !configuredSearch.Has("s") {
-        if IsChineseLanguage()
-            entry := Map("short", "s", "label", "s <搜索>", "type", "search", "value", "https://www.bing.com/search?q={q}",
-                "usageKey", "qsearch:s")
-        else
-            entry := Map("short", "s", "label", "s <search>", "type", "search", "value", "https://www.google.com/search?q={q}",
-                "usageKey", "qsearch:s")
-        sections["QSearch"].Push(entry)
-        QbarConfigIndexRecordEntry(byShort, "QSearch", entry)
+    ; Discoverability rows come from the plugin registry. The fallback values
+    ; are only used when the database could not be opened during startup.
+    for fallback in [
+        Map("commandId", "builtin.ai.ask", "pluginId", "builtin.ai", "short", "q",
+            "label", "AI 问答", "type", "search", "usageKey", "builtin:ai",
+            "aliases", ["q", "ai"]),
+        Map("commandId", "builtin.everything.search", "pluginId", "builtin.everything", "short", "e",
+            "label", "文件搜索", "type", "everything", "usageKey", "builtin:everything",
+            "aliases", ["e", "everything", "find", "f"]),
+        Map("commandId", "builtin.notes.search", "pluginId", "builtin.notes", "short", "n",
+            "label", "笔记", "type", "notes", "usageKey", "builtin:notes",
+            "aliases", ["n", "note", "w", "write"]),
+        Map("commandId", "builtin.settings.open", "pluginId", "builtin.settings", "short", "cl set",
+            "label", "设置", "type", "settings", "usageKey", "builtin:settings",
+            "aliases", ["cl set", "cl settings"])
+    ] {
+        registered := QbarRegistryBuiltinItem(fallback["commandId"], fallback)
+        if IsObject(registered)
+            items.Push(registered)
     }
 
-    for entry in sections["QSearch"]
+    registryItems := QbarRegistryUserItems()
+    for entry in registryItems
         items.Push(entry)
-    for entry in sections["QRun"]
-        items.Push(entry)
+    DebugLog("Qbar config index built registryItems=" . registryItems.Length
+        . " totalItems=" . items.Length)
 
     QbarConfigIndexCache := Map(
         "items", items,
@@ -95,28 +59,6 @@ QbarConfigIndex() {
         "byShort", byShort,
         "generation", QbarConfigIndexGeneration)
     return QbarConfigIndexCache
-}
-
-QbarConfigIndexRecordPresence(byShort, short) {
-    token := short
-    if token = ""
-        return
-    if !byShort.Has(token)
-        byShort[token] := Map("configured", true)
-    else
-        byShort[token]["configured"] := true
-}
-
-QbarConfigIndexRecordEntry(byShort, section, entry) {
-    token := entry["short"]
-    if token = ""
-        return
-    if !byShort.Has(token)
-        byShort[token] := Map("configured", false)
-    ; First entry in a section keeps the same duplicate-trigger behavior as
-    ; the former linear QbarFindByShort() scan.
-    if !byShort[token].Has(section)
-        byShort[token][section] := entry
 }
 
 QbarConfigItems() {
@@ -191,18 +133,12 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
         QbarSendResults(QbarHistoryRows(), false, "", "history", pageQueryId, querySeq)
         return
     }
-    hasArgument := QbarSplitCommand(text, &firstToken, &rest)
-    ; The four built-in Everything aliases only produce a launch row. Actual
-    ; file queries happen in the independent Everything page.
-    if hasArgument && !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
-        if rest = ""
-            results := QbarFilterItems(firstToken)
-        else
-            results := [Map("short", text,
-                "label", QbarText("Search Everything: ", "在 Everything 中搜索：") . rest,
-                "type", "everything", "pinned", true, "icon", "")]
-        QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
-        return
+    if QbarSplitCommand(text, &firstToken, &rest) {
+        resolution := QbarRegistryResolve(text)
+        if resolution["candidates"].Length {
+            QbarSendResults(QbarRegistryResolutionRows(resolution), false, "", "normal", pageQueryId, querySeq)
+            return
+        }
     }
     if QbarIsFolderQuery(text) {
         items := QbarFilterFolder(text)
@@ -215,6 +151,37 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
     }
     results := QbarFilterItems(text)
     QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
+}
+
+QbarRegistryResolutionRows(resolution) {
+    rows := []
+    for candidate in resolution["candidates"] {
+        rowType := candidate["kind"] = "search" ? "search"
+            : candidate["handlerId"] = "builtin.everything.search" ? "everything"
+            : candidate["handlerId"] = "builtin.notes.search" ? "notes"
+            : candidate["handlerId"] = "builtin.settings.open" ? "settings"
+            : candidate["kind"] = "run" ? "file" : "app"
+        label := candidate["displayName"]
+        row := Map(
+            "short", candidate["matchedAlias"],
+            "label", label,
+            "type", rowType,
+            "pinned", true,
+            "matchRank", 0,
+            "usageScore", candidate["usageScore"],
+            "usageLastUsedUtc", candidate["usageLastUsedAt"],
+            "commandId", candidate["commandId"],
+            "pluginId", candidate["pluginId"],
+            "aliases", [candidate["matchedAlias"]])
+        if rowType = "file" {
+            command := QbarRegistryCommand(candidate["commandId"])
+            iconKey := QbarRegistryCommandIconKey(command)
+            if iconKey != ""
+                row["icon"] := iconKey
+        }
+        rows.Push(row)
+    }
+    return rows
 }
 
 ; A configured trigger always wins over path browsing, matching the reference
@@ -234,11 +201,6 @@ QbarFilterItems(text) {
     for entry in QbarSearchCurrentEntries() {
         item := entry["item"]
         short := item["short"]
-        ; A configured command with a built-in alias wins; hide the single
-        ; discoverability row only while that alias is being searched.
-        if item.Has("aliases")
-            && (QbarConfigShortKeyExists(short) || QbarConfigShortKeyExists(matchStrLeft))
-            continue
         matchRank := 60
         if !QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank)
             continue
@@ -260,10 +222,39 @@ QbarFilterItems(text) {
             "matchRank", matchRank,
             "usageScore", usageScore,
             "usageLastUsedUtc", usageLastUsedUtc,
-            "searchOrder", entry["order"]
+            "searchOrder", entry["order"],
+            "commandId", item.Has("commandId") ? item["commandId"] : "",
+            "pluginId", item.Has("pluginId") ? item["pluginId"] : ""
         ))
     }
     return results
+}
+
+QbarRegistryBuiltinItem(commandId, fallback) {
+    command := QbarRegistryCommand(commandId)
+    if !IsObject(command)
+        return fallback
+    if !command["enabled"]
+        return 0
+    aliases := []
+    for alias in command["aliases"]
+        aliases.Push(alias)
+    if !aliases.Length
+        return 0
+    short := aliases[1]
+    rowType := commandId = "builtin.everything.search" ? "everything"
+        : commandId = "builtin.notes.search" ? "notes"
+        : commandId = "builtin.settings.open" ? "settings" : "search"
+    label := command["displayName"]
+    return Map(
+        "short", short,
+        "label", label,
+        "type", rowType,
+        "value", "",
+        "usageKey", command["usageKey"],
+        "commandId", command["commandId"],
+        "pluginId", command["pluginId"],
+        "aliases", aliases)
 }
 
 QbarFilterFolder(text) {
@@ -311,11 +302,12 @@ QbarFolderItemsFor(dir) {
 }
 
 QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQueryId := 0, querySeq := 0) {
-    global IconSent, QbarPageQueryId, QbarQuerySeq
+    global IconSent, QbarPageQueryId, QbarQuerySeq, QbarSessionId
     if pageQueryId = 0
         pageQueryId := QbarPageQueryId
     if querySeq = 0
         querySeq := QbarQuerySeq
+    DebugLog("Qbar results mode=" . mode . " count=" . results.Length)
     QbarCancelIconQueue()
     if mode = "history"
         QbarHistorySetDisplayed(querySeq, pageQueryId, results)
@@ -325,7 +317,16 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
     iconKeys := Map()
     for item in results {
         row := Map("short", item["short"], "label", item["label"], "type", item["type"],
-            "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false)
+            "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false,
+            "sessionId", QbarSessionId,
+            "candidateId", QbarSessionId . ":" . pageQueryId . ":" . (rows.Length + 1),
+            "registryGeneration", QbarRegistryGeneration())
+        if item.Has("commandId") && IsObject(QbarRegistryCommand(item["commandId"]))
+            row["commandId"] := item["commandId"]
+        if item.Has("pluginId")
+            row["pluginId"] := item["pluginId"]
+        if item.Has("candidateKey")
+            row["candidateKey"] := item["candidateKey"]
         if item.Has("matchRank")
             row["matchRank"] := item["matchRank"]
         if item.Has("searchOrder")
@@ -406,21 +407,7 @@ QbarFlushIconQueue(*) {
 ; ---------------------------------------------------------------------------
 
 QbarConfigShortKeyExists(token) {
-    token := Trim(token)
-    if token = ""
-        return false
-    byShort := QbarConfigIndex()["byShort"]
-    return byShort.Has(token) && byShort[token]["configured"]
-}
-
-QbarConfigEntry(section, shortKey) {
-    token := Trim(shortKey)
-    if token = ""
-        return 0
-    byShort := QbarConfigIndex()["byShort"]
-    if !byShort.Has(token) || !byShort[token].Has(section)
-        return 0
-    return byShort[token][section]
+    return QbarRegistryHasAlias(token)
 }
 
 QbarFindByShort(items, shortKey) {

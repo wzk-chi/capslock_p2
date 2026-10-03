@@ -47,6 +47,9 @@ Initialize() {
         DebugLog("Unable to create app instance mutex")
     BuildKeySet()
     ApplyGlobalSettings()
+    ; Initialize the plugin store after debug logging is enabled, but before
+    ; feature hotkeys are registered, so registration failures are observable.
+    try QbarPluginHostInitialize()
     TrayMenuInitialize()
     DebugLog("Initialize settings")
     if ConfigGlobalRead("loadingAnimation") != "0"
@@ -105,6 +108,7 @@ Shutdown(*) {
     try EverythingShutdown()
     try NotesShutdown()
     try QbarShutdown()
+    try QbarPluginHostShutdown()
     try ShowSystemCursor()
     try HideLoading()
 }
@@ -289,12 +293,6 @@ ApplyConfigChanges(changes) {
                 rebuildCustomHotkeys := true
             case "TabHotString":
                 rebuildHotStrings := true
-            case "QSearch", "QRun":
-                rebuildHotStrings := true
-                refreshQbarIndex := true
-            case "QWeb":
-                ; QWeb remains a CapsLock+Tab expansion source, not a Qbar command.
-                rebuildHotStrings := true
             case "LLM":
                 refreshTranslation := true
                 refreshAi := true
@@ -452,11 +450,10 @@ RebuildHotStringPattern() {
     global HotStringKeys
     HotStringKeys := []
     seen := Map()
-    ; The CapsLock+Tab tail match draws from all three value sections, like the
-    ; reference CLhotString: a configured run or web entry can be expanded in an
-    ; editor too. QRun/QWeb keys carry a "<display>" suffix, so they are matched
-    ; by their short key; TabHotString keys have none and pass through unchanged.
-    for section in ["TabHotString", "QRun", "QWeb"] {
+    ; The CapsLock+Tab tail match draws only from TabHotString. Keys carry a
+    ; "<display>" suffix only when the user chooses to include one; matching is
+    ; still based on the short key.
+    for section in ["TabHotString"] {
         for key, value in ConfigSection(section) {
             short := QbarShortKey(key)
             if short = "" || seen.Has(short)
@@ -487,20 +484,11 @@ GetHotStringReplacement(text, &matchedKey := "") {
     return ""
 }
 
-; The value a hotstring key expands to, searched TabHotString -> QRun -> QWeb.
-; TabHotString decoding happens once at the configuration boundary; Run and
-; web values are used as written.
+; The value a hotstring key expands to comes from TabHotString. Decoding happens
+; once at the configuration boundary.
 HotStringValue(key) {
     value := ConfigRead("TabHotString", key, "")
-    if value != ""
-        return value
-    for section in ["QRun", "QWeb"] {
-        for candidate, value in ConfigSection(section) {
-            if QbarShortKey(candidate) = key && Trim(value) != ""
-                return value
-        }
-    }
-    return ""
+    return value
 }
 
 CLhotString() {

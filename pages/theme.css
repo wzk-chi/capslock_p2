@@ -150,6 +150,72 @@ button, input, select, textarea { font-family: inherit; }
   transform: translate(-50%, 0);
 }
 
+/* Shared modal shell. Pages should use AppDialog from dialog.js and keep only
+   their form-specific content in the page stylesheet. */
+.app-dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: min(660px, calc(100vh - 40px));
+  overflow: hidden;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 18px;
+  padding: 0;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: 0 24px 70px rgba(10, 18, 32, .22);
+}
+.app-dialog::backdrop { background: rgba(10, 18, 32, .34); }
+.app-dialog-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
+  max-height: inherit;
+  padding: 0;
+}
+.app-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 16px;
+}
+.app-dialog-head h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.app-dialog-kicker {
+  margin-bottom: 4px;
+  color: var(--ui-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.app-dialog-head .icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+}
+.app-dialog-head .icon-btn:hover { border-color: var(--ui-line); background: var(--ui-surface-soft); }
+.app-dialog-editor { min-height: 0; overflow: auto; display: grid; gap: 14px; padding: 18px 24px 20px; }
+.app-dialog-error {
+  margin: 0 24px;
+  padding: 9px 11px;
+  border: 1px solid var(--ui-danger);
+  border-radius: 9px;
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 24px 18px;
+  background: var(--ui-surface);
+}
+.app-dialog-actions .btn { min-width: 76px; }
+
 /* Shared custom title bar for borderless WebView2 panels. */
 .windowbar {
   flex: 0 0 38px;

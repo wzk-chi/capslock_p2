@@ -12,9 +12,11 @@ global QbarIndexLoading := false
 global QbarPendingText := ""
 global QbarQuerySeq := 0
 global QbarPageQueryId := 0
+global QbarSessionSerial := 0
+global QbarSessionId := ""
 global QbarCurrentRows := 0
 global QbarStartMenuCache := 0      ; 0 = not scanned yet, otherwise an array
-global QbarConfigIndexCache := 0    ; lazily built QSearch/QRun index
+global QbarConfigIndexCache := 0    ; lazily built registry-backed index
 global QbarConfigIndexGeneration := 1
 global QbarFolderDir := ""
 global QbarFolderItems := []
@@ -70,8 +72,12 @@ QbarToggle(*) {
 
 QbarShow() {
     global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarTargetHwnd
+    global QbarSessionSerial, QbarSessionId
     if QbarOpen
         return
+
+    QbarSessionSerial += 1
+    QbarSessionId := "qbar-" . QbarSessionSerial . "-" . A_TickCount
 
     activeHwnd := WinGetID("A")
     if !IsObject(PanelHostGui(QbarHost)) || activeHwnd != PanelHostGui(QbarHost).Hwnd

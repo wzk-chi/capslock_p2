@@ -71,16 +71,13 @@ ConfigSchema() {
             "esMaxResults", Map("type", "int", "min", 1, "max", 500))),
         "Keys", Map("kind", "keys"),
         "TabHotString", Map("kind", "dynamic", "codec", "hotString"),
-        "QSearch", Map("kind", "dynamic", "codec", "plain"),
-        "QRun", Map("kind", "dynamic", "codec", "plain"),
-        "QWeb", Map("kind", "dynamic", "codec", "plain"),
         "CustomHotkey", Map("kind", "dynamic", "codec", "plain"))
     return schema
 }
 
 ConfigSchemaSections() {
     return ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI",
-        "QSearch", "QRun", "QWeb", "Qbar", "CustomHotkey", "TTranslate",
+        "Qbar", "CustomHotkey", "TTranslate",
         "TYoudao", "TVolcengine"]
 }
 
@@ -459,7 +456,6 @@ ConfigWriteUserOverrides(changes, &fileChanged := false, &invalidChange := "") {
     original := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
     original := StrReplace(original, "`r`n", "`n")
     content := original
-    userDocument := ConfigParseIni(SettingsFile)
     for section, values in changes {
         if !IsObject(values)
             continue
@@ -473,10 +469,7 @@ ConfigWriteUserOverrides(changes, &fileChanged := false, &invalidChange := "") {
             }
             currentValue := ConfigRead(sectionName, keyName,
                 ConfigDefaultRead(sectionName, keyName, ""))
-            hasUserValue := userDocument.Has(sectionName) && userDocument[sectionName].Has(keyName)
-            dynamicTombstone := normalized = "" && !hasUserValue
-                && (sectionName = "QSearch" || sectionName = "QRun" || sectionName = "QWeb")
-            if normalized != String(currentValue) || dynamicTombstone {
+            if normalized != String(currentValue) {
                 if !effectiveChanges.Has(sectionName)
                     effectiveChanges[sectionName] := Map()
                 effectiveChanges[sectionName][keyName] := normalized

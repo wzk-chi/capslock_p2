@@ -93,6 +93,14 @@ SettingsWebMessageReceived(sender, args) {
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     else if messageType = "saveSettings"
         SetTimer(SettingsApplyDraft.Bind(message), -1)
+    else if messageType = "saveQbarPlugin" {
+        DebugLog("Settings received saveQbarPlugin")
+        SetTimer(SettingsApplyQbarPlugin.Bind(message), -1)
+    }
+    else if messageType = "deleteQbarPlugin"
+        SetTimer(SettingsDeleteQbarPlugin.Bind(message), -1)
+    else if messageType = "createPlugin"
+        SetTimer(SettingsCreatePlugin.Bind(message), -1)
     else if messageType = "testSettings"
         SetTimer(SettingsRunTest.Bind(message), -1)
     else if messageType = "startShortcutRecording"
@@ -112,6 +120,101 @@ SettingsWebMessageReceived(sender, args) {
             SetTimer(SettingsWindowPickerSelect.Bind(index), -1)
     } else if messageType = "cancelWindowPicker"
         SetTimer(SettingsWindowPickerCancel, -1)
+}
+
+SettingsCreatePlugin(message) {
+    msg := LLMMessageParse(message)
+    kind := LLMMsgField(msg, "kind")
+    displayName := LLMMsgField(msg, "displayName")
+    aliases := msg.Has("aliases") && Type(msg["aliases"]) = "Array" ? msg["aliases"] : []
+    settings := msg.Has("settings") && Type(msg["settings"]) = "Map" ? msg["settings"] : Map()
+    DebugLog("Settings create Qbar plugin kind=" . kind)
+    ok := QbarPluginHostCreateUserPlugin(kind, displayName, aliases, settings)
+    if ok {
+        SettingsSendQbarPluginCreated(true, LLMText("Plugin created.", "插件已创建。"))
+        SettingsPushSnapshot()
+    } else {
+        DebugLog("Settings create Qbar plugin failed kind=" . kind)
+        SettingsSendQbarPluginCreated(false, LLMText("Plugin could not be created.", "插件创建失败。"))
+    }
+}
+
+SettingsApplyQbarPlugin(message) {
+    global QbarStoreError, QbarPluginHostError, QbarRegistryError
+    msg := LLMMessageParse(message)
+    if !msg.Has("plugin") || Type(msg["plugin"]) != "Map" || !msg["plugin"].Has("pluginId") {
+        DebugLog("Settings Qbar save rejected: invalid plugin payload")
+        SettingsSendQbarPluginSaved(false, LLMText("Tool data is invalid.", "工具数据无效。"))
+        return
+    }
+    plugin := msg["plugin"]
+    toolSettings := msg.Has("toolSettings") && Type(msg["toolSettings"]) = "Map"
+        ? msg["toolSettings"] : Map()
+    pluginId := String(plugin["pluginId"])
+    commandCount := plugin.Has("commands") && Type(plugin["commands"]) = "Array"
+        ? plugin["commands"].Length : 0
+    DebugLog("Settings Qbar save start plugin=" . pluginId . " commands=" . commandCount)
+    maxResults := ""
+    if pluginId = "builtin.everything" && toolSettings.Has("esMaxResults") {
+        maxResults := Trim(String(toolSettings["esMaxResults"]))
+        if !RegExMatch(maxResults, "^\d+$") || Integer(maxResults) < 1 || Integer(maxResults) > 500 {
+            DebugLog("Settings Qbar save rejected plugin=" . pluginId . " invalid esMaxResults")
+            SettingsSendQbarPluginSaved(false, "文件搜索数量必须是 1 到 500 之间的整数。")
+            return
+        }
+    }
+    try {
+        if maxResults != "" {
+            changes := Map("Qbar", Map("esMaxResults", maxResults))
+            fileChanged := false
+            invalidChange := ""
+            effectiveChanges := ConfigWriteUserOverrides(changes, &fileChanged, &invalidChange)
+            if invalidChange != "" {
+                DebugLog("Settings Qbar save rejected plugin=" . pluginId
+                    . " invalid config=" . invalidChange)
+                SettingsSendQbarPluginSaved(false, "文件搜索设置无效：" . invalidChange)
+                return
+            }
+            if effectiveChanges.Count
+                ReloadSettings(false)
+        }
+        if !QbarPluginHostApplyPluginChanges([plugin]) {
+            DebugLog("Settings Qbar save failed plugin=" . pluginId
+                . " host=" . QbarPluginHostError . " store=" . QbarStoreError
+                . " registry=" . QbarRegistryError)
+            SettingsSendQbarPluginSaved(false, LLMText(
+                "Tool settings could not be saved.", "工具设置保存失败。"))
+            return
+        }
+        DebugLog("Settings Qbar save success plugin=" . pluginId)
+        SettingsSendQbarPluginSaved(true, LLMText("Tool settings saved.", "工具设置已保存。"))
+        try SettingsPushSnapshot()
+        catch as snapshotError
+            DebugLog("Settings Qbar snapshot push failed plugin=" . pluginId
+                . " error=" . snapshotError.Message)
+    } catch as saveError {
+        DebugLog("Settings Qbar save exception plugin=" . pluginId
+            . " error=" . saveError.Message . " host=" . QbarPluginHostError
+            . " store=" . QbarStoreError . " registry=" . QbarRegistryError)
+        SettingsSendQbarPluginSaved(false, LLMText("Tool settings could not be saved.", "工具设置保存失败。"))
+    }
+}
+
+SettingsDeleteQbarPlugin(message) {
+    global QbarPluginHostError
+    msg := LLMMessageParse(message)
+    pluginId := Trim(LLMMsgField(msg, "pluginId"))
+    if pluginId = "" {
+        SettingsSendQbarPluginDeleted(false, "工具信息无效。", "")
+        return
+    }
+    if QbarPluginHostDeletePlugin(pluginId) {
+        SettingsSendQbarPluginDeleted(true, "工具已删除。", pluginId)
+        SetTimer(SettingsPushSnapshot, -1)
+        return
+    }
+    errorText := QbarPluginHostError != "" ? QbarPluginHostError : "删除工具失败。"
+    SettingsSendQbarPluginDeleted(false, errorText, pluginId)
 }
 
 SettingsStartShortcutCapture(message) {
@@ -317,7 +420,8 @@ SettingsPushSnapshot(*) {
         "sections", sections,
         "keys", SettingsKeySnapshot(),
         "bindings", SettingsBindingSnapshot(),
-        "bindingModes", WindowBindingModes())
+        "bindingModes", WindowBindingModes(),
+        "plugins", QbarRegistryPluginSnapshot())
     PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
     SettingsPendingToast := ""
 }
@@ -388,6 +492,11 @@ SettingsApplyDraft(message) {
         if effectiveChanges.Count {
             ReloadSettings(false)
         }
+        if msg.Has("plugins") && Type(msg["plugins"]) = "Array"
+            if !QbarPluginHostApplyPluginChanges(msg["plugins"]) {
+                SettingsSendSaved(false, LLMText("Plugin settings could not be saved.", "插件设置保存失败。"))
+                return
+            }
         SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
         SettingsPushSnapshot()
     } catch as saveError {
@@ -438,6 +547,33 @@ SettingsSendSaved(ok, text) {
     global SettingsHost
     script := "window.settingsSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
     PanelHostExecute(SettingsHost, script)
+}
+
+SettingsSendQbarPluginSaved(ok, text) {
+    global SettingsHost
+    DebugLog("Settings Qbar save response ok=" . (ok ? "1" : "0"))
+    script := "window.qbarPluginSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
+    try PanelHostExecute(SettingsHost, script)
+    catch as responseError
+        DebugLog("Settings Qbar save response delivery failed: " . responseError.Message)
+}
+
+SettingsSendQbarPluginCreated(ok, text) {
+    global SettingsHost
+    DebugLog("Settings Qbar create response ok=" . (ok ? "1" : "0"))
+    script := "window.qbarPluginCreated(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
+    try PanelHostExecute(SettingsHost, script)
+    catch as responseError
+        DebugLog("Settings Qbar create response delivery failed: " . responseError.Message)
+}
+
+SettingsSendQbarPluginDeleted(ok, text, pluginId) {
+    global SettingsHost
+    script := "window.qbarPluginDeleted(" . (ok ? "true" : "false") . ","
+        . LLMJsonQuote(text) . "," . LLMJsonQuote(pluginId) . ");"
+    try PanelHostExecute(SettingsHost, script)
+    catch as responseError
+        DebugLog("Settings Qbar delete response delivery failed: " . responseError.Message)
 }
 
 SettingsRunTest(message) {

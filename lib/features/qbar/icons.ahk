@@ -31,6 +31,48 @@ IconKeyForPath(path) {
     return extension = "" ? "" : "ext:" . extension
 }
 
+; Resolve the executable named by a configured run command before asking the
+; shell for its icon. SHGetFileInfo cannot reliably find bare names such as
+; "pwsh.exe" through PATH when it receives them as a relative file path.
+QbarResolveCommandIconPath(commandLine) {
+    value := Trim(String(commandLine))
+    if value = ""
+        return ""
+    if RegExMatch(value, "i)^\*RunAs\s+(.+)$", &runAsMatch)
+        value := Trim(runAsMatch[1])
+
+    executable := ""
+    if SubStr(value, 1, 1) = Chr(34) {
+        closingQuote := InStr(value, Chr(34), false, 2)
+        executable := closingQuote > 1
+            ? SubStr(value, 2, closingQuote - 2) : Trim(value, Chr(34))
+    } else {
+        executable := RegExReplace(value, "\s.*$")
+    }
+    if executable = ""
+        return ""
+
+    expanded := Buffer(32768 * 2, 0)
+    expandedLength := DllCall("kernel32\ExpandEnvironmentStringsW", "wstr", executable,
+        "ptr", expanded, "uint", 32768, "uint")
+    if expandedLength && expandedLength < 32768
+        executable := StrGet(expanded)
+    if FileExist(executable)
+        return executable
+
+    SplitPath(executable, , , &extension)
+    extensions := extension = "" ? [".exe", ".com", ".bat", ".cmd"] : [""]
+    for extensionSuffix in extensions {
+        searchBuffer := Buffer(32768 * 2, 0)
+        extensionPtr := extensionSuffix = "" ? 0 : StrPtr(extensionSuffix)
+        pathLength := DllCall("kernel32\SearchPathW", "ptr", 0, "wstr", executable,
+            "ptr", extensionPtr, "uint", 32768, "ptr", searchBuffer, "ptr", 0, "uint")
+        if pathLength && pathLength < 32768
+            return StrGet(searchBuffer)
+    }
+    return ""
+}
+
 ; data URI for a key, extracting on first use.
 IconDataURI(key) {
     global IconCache

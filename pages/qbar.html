@@ -182,9 +182,9 @@ const MAX_VISIBLE_ROWS = 12;
 const MAX_RENDERED = 60; // rows rendered into the DOM
 
 // Type ranks mirror the reference implementation's ListView column 1.
-const TYPE_RANK = { search: -1, everything: -1, notes: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
+const TYPE_RANK = { search: -1, everything: -1, notes: -1, settings: -1, folder: 0, file: 1, web: 2, app: 3, ai: 4 };
 const TYPE_ICON = {
-  search: 'search', everything: 'folder-search', notes: 'notebook-pen',
+  search: 'search', everything: 'folder-search', notes: 'notebook-pen', settings: 'settings',
   folder: 'folder', file: 'file', web: 'globe', app: 'play', ai: 'bot',
   history: 'clock-3'
 };
@@ -401,6 +401,12 @@ function execute(ctrlHeld) {
     text: input.value,
     selected: row ? row.short : '',
     selectedType: row ? row.type : '',
+    sessionId: row && row.sessionId ? row.sessionId : '',
+    candidateId: row && row.candidateId ? row.candidateId : '',
+    commandId: row && row.commandId ? row.commandId : '',
+    registryGeneration: row && Number.isInteger(row.registryGeneration)
+      ? row.registryGeneration : 0,
+    queryId: currentQueryId,
     ctrl: ctrlHeld ? 'true' : 'false'
   });
 }

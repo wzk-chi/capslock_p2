@@ -95,11 +95,23 @@ QbarWebMessageReceived(sender, args) {
         text := LLMMsgField(msg, "text")
         selected := LLMMsgField(msg, "selected")
         selectedType := LLMMsgField(msg, "selectedType")
+        sessionId := LLMMsgField(msg, "sessionId")
+        candidateId := LLMMsgField(msg, "candidateId")
+        commandId := LLMMsgField(msg, "commandId")
+        queryIdValid := false
+        queryId := LLMMsgNumber(msg, "queryId", &queryIdValid, 0, true)
+        if !queryIdValid
+            queryId := 0
+        generationValid := false
+        registryGeneration := LLMMsgNumber(msg, "registryGeneration", &generationValid, 0, true)
+        if !generationValid
+            registryGeneration := 0
         ctrlValid := false
         ctrl := LLMMsgBoolean(msg, "ctrl", &ctrlValid, false)
         if !ctrlValid
             ctrl := false
-        SetTimer(QbarExecute.Bind(text, selected, ctrl, selectedType), -1)
+        SetTimer(QbarExecute.Bind(text, selected, ctrl, selectedType, commandId,
+            registryGeneration, queryId, sessionId, candidateId), -1)
     } else if messageType = "executeHistory" {
         historyId := LLMMsgField(msg, "historyId")
         pageQueryIdValid := false

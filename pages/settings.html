@@ -108,6 +108,79 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .binding-actions .btn { padding: 6px 10px; font-size: 11px; }
 .binding-mode-hint { color: var(--muted); font-size: 11px; }
 .binding-items { display: grid; gap: 4px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.plugin-list { display: grid; gap: 10px; }
+.plugin-card { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.plugin-card-head, .plugin-command-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.plugin-card-head strong, .plugin-command-head strong { font-size: 12px; }
+.plugin-card-head .check { margin-left: auto; }
+.plugin-command { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.plugin-alias-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plugin-alias { display: inline-flex; align-items: center; gap: 3px; max-width: 220px; }
+.plugin-alias input { width: 120px; padding: 5px 7px; }
+.plugin-alias .icon-btn { padding: 3px; }
+.plugin-command-meta { color: var(--muted); font-size: 10px; }
+.plugin-list-header, .plugin-list-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .8fr) 74px;
+  gap: 12px; align-items: center;
+}
+.plugin-list-header {
+  padding: 0 12px 5px; color: var(--muted); font-size: 10px; font-weight: 650;
+}
+.plugin-list-row {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  background: var(--panel-2); color: var(--ink); font: inherit; text-align: left;
+  cursor: pointer;
+}
+.plugin-list-row:hover { border-color: var(--accent); background: var(--accent-quiet); }
+.plugin-list-name { min-width: 0; font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-list-command { min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-list-status { justify-self: end; color: var(--accent); font-size: 11px; white-space: nowrap; }
+.plugin-list-status.off { color: var(--muted); }
+.plugin-detail { display: grid; gap: 14px; }
+.plugin-detail-head { display: flex; align-items: center; gap: 10px; }
+.plugin-detail-head strong { font-size: 13px; }
+.plugin-detail-section { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.plugin-detail-section > strong { font-size: 12px; }
+.plugin-detail-section .hint { margin: 0; }
+.qbar-plugin-tables { display: grid; gap: 14px; }
+.qbar-plugin-table-card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
+.qbar-plugin-table-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.qbar-plugin-table-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.qbar-plugin-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.qbar-plugin-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.qbar-plugin-table th, .qbar-plugin-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+.qbar-plugin-table th { background: var(--panel-2); color: var(--muted); font-size: 10px; font-weight: 650; }
+.qbar-plugin-table th:nth-child(3), .qbar-plugin-table td:nth-child(3) { width: 76px; }
+.qbar-plugin-table th:last-child, .qbar-plugin-table td:last-child { width: 96px; text-align: right; }
+.qbar-plugin-table tbody tr { cursor: pointer; }
+.qbar-plugin-table tbody tr:hover td { background: var(--accent-quiet); }
+.qbar-plugin-table tbody tr:last-child td { border-bottom: 0; }
+.qbar-plugin-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbar-plugin-table td:last-child { overflow: visible; text-overflow: clip; }
+.qbar-plugin-table .tool-name { font-weight: 650; }
+.qbar-plugin-table .tool-command { color: var(--muted); }
+.qbar-plugin-table .tool-status { color: var(--accent); white-space: nowrap; }
+.qbar-plugin-table .tool-status.off { color: var(--muted); }
+.qbar-plugin-table .tool-action-empty { color: var(--muted); text-align: right; }
+.qbar-plugin-delete { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--ui-danger-soft); color: var(--ui-danger); }
+.qbar-plugin-delete:hover { filter: brightness(1.04); }
+.qbar-plugin-delete .lucide { width: 13px; height: 13px; }
+.qbar-delete-dialog .app-dialog-editor { display: block; min-height: auto; }
+.qbar-delete-message { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.qbar-delete-dialog .btn.danger { background: var(--ui-danger); color: var(--ui-button-text); }
+.app-dialog-editor > .grid,
+.app-dialog-editor > .plugin-detail-section {
+  padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+}
+.app-dialog-editor > .plugin-detail-section { border-top: 1px solid var(--line); }
+.app-dialog-editor .plugin-detail-section > strong { font-size: 12px; }
+.app-dialog-editor .plugin-detail-section .hint { margin: -2px 0 2px; line-height: 1.45; }
+.app-dialog-editor .plugin-alias-list {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  padding: 10px; border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--panel);
+}
+.app-dialog-editor .plugin-alias { max-width: none; }
+.app-dialog-editor .plugin-alias input { width: 128px; height: 34px; }
 .empty { padding: 24px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; }
 .result-dialog { width: min(460px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 13px; padding: 0; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
 .result-dialog::backdrop { background: rgba(10, 18, 32, .34); }
@@ -148,6 +221,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 <link rel="stylesheet" href="theme.css">
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="dialog.js"></script>
 </head>
 <body>
 <div class="app">
@@ -296,15 +370,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
       </section>
 
       <section class="page" data-page-view="qbar">
-        <div class="cards">
-          <div class="card"><div class="card-head"><h3>搜索引擎</h3></div><div id="qsearchList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QSearch">添加搜索</button></div></div>
-          <div class="card"><div class="card-head"><h3>运行项目</h3></div><div id="qrunList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QRun">添加项目</button></div></div>
-          <div class="card"><div class="card-head"><h3>Tab 网址展开</h3></div><div class="hint field wide">仅供 CapsLock+Tab 尾部展开使用，Qbar 不再将 QWeb 作为命令入口。</div><div id="qwebList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="QWeb">添加网址</button></div></div>
-          <div class="card"><div class="card-head"><h3>文件搜索</h3></div><div class="grid">
-            <div class="hint field wide">Everything 独立搜索页使用安装包自带的 es.exe 和 Everything 实例；资源位置由程序管理。</div>
-            <label class="field"><span>最多结果数</span><input data-section="Qbar" data-key="esMaxResults" type="number" min="1" max="500"></label>
-          </div></div>
-        </div>
+        <div id="qbarPluginTables" class="qbar-plugin-tables"></div>
       </section>
 
       <section class="page" data-page-view="windows">
@@ -344,8 +410,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 <div id="settingsToast" class="ui-toast error" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script>
 const state = {
-  draft: null, baseSections: null, page: 'general', dirty: false,
-  dirtyFields: new Set(), confirmAction: '', toastTimer: 0
+  draft: null, baseSections: null, page: 'general', dirty: false, pluginsDirty: false,
+  dirtyFields: new Set(), confirmAction: '', toastTimer: 0,
+  qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
+  qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
+  qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
+  qbarCreateSaving: false, qbarCreateDialog: null
 };
 let shortcutRecording = null;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -440,6 +510,11 @@ function markDirty(sectionName = '', key = '') {
   state.dirty = value;
   if (sectionName && key) state.dirtyFields.add(sectionName + '\u0000' + key);
   if (value) setStatus('未保存');
+}
+function markPluginsDirty() {
+  state.pluginsDirty = true;
+  state.dirty = true;
+  setStatus('未保存');
 }
 function setDraftValue(sectionName, key, value) {
   if (!state.draft.sections[sectionName]) state.draft.sections[sectionName] = {};
@@ -857,6 +932,366 @@ function renderPairs(sectionName, rootId, multiline = false) {
   if (!entries.length) entries.push(['', '']);
   entries.forEach(([key, value]) => addPairRow(sectionName, root, key, value, multiline));
 }
+function qbarToolCommands(plugin) {
+  return plugin && Array.isArray(plugin.commands) ? plugin.commands : [];
+}
+function qbarToolVisible(plugin) {
+  if (!plugin) return false;
+  if (plugin.definitionId === 'builtin.search' || plugin.definitionId === 'builtin.run') return true;
+  if (plugin.source && plugin.source !== 'builtin') return true;
+  return qbarToolCommands(plugin).some(command =>
+    Array.isArray(command.aliases) && command.aliases.some(alias => String(alias || '').trim()));
+}
+function qbarToolGroup(plugin) {
+  if (plugin.definitionId === 'builtin.search') return 'search';
+  if (plugin.definitionId === 'builtin.run') return 'run';
+  return 'builtin';
+}
+function qbarToolName(plugin) {
+  return String(plugin.name || '').trim() || '未命名工具';
+}
+function qbarToolCommandText(plugin) {
+  const aliases = [];
+  qbarToolCommands(plugin).forEach(command => (command.aliases || []).forEach(alias => {
+    const value = String(alias || '').trim();
+    if (value && !aliases.includes(value)) aliases.push(value);
+  }));
+  if (aliases.length) return aliases.join(' / ');
+  return plugin.source && plugin.source !== 'builtin'
+    || plugin.definitionId === 'builtin.search' || plugin.definitionId === 'builtin.run'
+    ? '使用工具名称' : '未设置命令';
+}
+function qbarToolEnabled(plugin) {
+  return plugin.enabled !== false && qbarToolCommands(plugin).some(command => command.enabled !== false);
+}
+function renderQbarToolAliases(command, root) {
+  command.aliases = Array.isArray(command.aliases) ? command.aliases : [];
+  root.replaceChildren();
+  command.aliases.forEach((alias, index) => {
+    const wrap = document.createElement('span'); wrap.className = 'plugin-alias';
+    const input = document.createElement('input'); input.value = alias; input.setAttribute('aria-label', '命令别名');
+    input.addEventListener('input', () => { command.aliases[index] = input.value.trim(); });
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'icon-btn'; remove.title = '删除别名';
+    remove.appendChild(createIcon('x'));
+    remove.addEventListener('click', () => {
+      command.aliases.splice(index, 1);
+      renderQbarToolAliases(command, root);
+    });
+    wrap.append(input, remove); root.append(wrap);
+  });
+  const add = document.createElement('button'); add.type = 'button'; add.className = 'btn mini'; add.textContent = '添加别名';
+  add.addEventListener('click', () => { command.aliases.push(''); renderQbarToolAliases(command, root); });
+  root.append(add);
+}
+function openQbarToolDialog(plugin) {
+  state.qbarPluginDraft = clone(plugin);
+  state.qbarPluginToolSettings = clone(plugin.toolSettings || {});
+  state.qbarPluginSaving = false;
+  renderQbarToolDialog();
+  state.qbarPluginDialog.open();
+}
+function closeQbarToolDialog() {
+  if (state.qbarPluginDialog) state.qbarPluginDialog.close();
+  state.qbarPluginDraft = null;
+  state.qbarPluginToolSettings = {};
+  state.qbarPluginSaving = false;
+}
+function openQbarDeleteDialog(plugin) {
+  if (!plugin || !plugin.deletable || !state.qbarDeleteDialog) return;
+  state.qbarDeleteTarget = { pluginId: plugin.pluginId, name: qbarToolName(plugin) };
+  state.qbarDeleteSaving = false;
+  state.qbarDeleteDialog.setTitle('删除工具');
+  state.qbarDeleteDialog.setError('');
+  state.qbarDeleteDialog.setBusy(false);
+  const editor = state.qbarDeleteDialog.editor;
+  editor.replaceChildren();
+  const message = document.createElement('p');
+  message.className = 'qbar-delete-message';
+  message.textContent = `确定删除“${state.qbarDeleteTarget.name}”吗？删除后会从 Qbar 工具列表移除。`;
+  editor.append(message);
+  state.qbarDeleteDialog.open();
+}
+function confirmQbarPluginDelete() {
+  const target = state.qbarDeleteTarget;
+  if (!target || state.qbarDeleteSaving) return;
+  state.qbarDeleteSaving = true;
+  state.qbarDeleteDialog.setError('');
+  state.qbarDeleteDialog.setBusy(true, '删除中…');
+  post({ type: 'deleteQbarPlugin', pluginId: target.pluginId });
+}
+function qbarCreateSetError(message = '') {
+  if (state.qbarCreateDialog) state.qbarCreateDialog.setError(message);
+}
+function closeQbarCreateDialog() {
+  if (state.qbarCreateDialog) state.qbarCreateDialog.close();
+  state.qbarCreateKind = '';
+  state.qbarCreateDraft = null;
+  state.qbarCreateSaving = false;
+  qbarCreateSetError('');
+}
+function qbarCreateField(labelText, value, placeholder, wide, onInput) {
+  const field = document.createElement('label');
+  field.className = 'field' + (wide ? ' wide' : '');
+  const label = document.createElement('span'); label.textContent = labelText;
+  const input = document.createElement('input');
+  input.value = value || ''; input.placeholder = placeholder || '';
+  input.addEventListener('input', () => onInput(input.value));
+  field.append(label, input);
+  return { field, input };
+}
+function openQbarCreateDialog(kind) {
+  kind = kind === 'run' ? 'run' : 'search';
+  const search = kind === 'search';
+  state.qbarCreateKind = kind;
+  state.qbarCreateDraft = {
+    displayName: search ? '新搜索' : '新项目',
+    aliases: [],
+    settings: search
+      ? { template: 'https://www.google.com/search?q={q}', encodeQuery: true }
+      : { command: '', runAs: false, argumentMode: 'append' }
+  };
+  state.qbarCreateSaving = false;
+  renderQbarCreateDialog();
+  state.qbarCreateDialog.open();
+  requestAnimationFrame(() => $('#qbarCreateName')?.focus());
+}
+function renderQbarCreateDialog() {
+  const draft = state.qbarCreateDraft;
+  if (!draft) return;
+  const search = state.qbarCreateKind === 'search';
+  state.qbarCreateDialog.setTitle(search ? '添加网页搜索' : '添加快捷命令');
+  qbarCreateSetError('');
+  const editor = state.qbarCreateDialog.editor;
+  editor.replaceChildren();
+
+  const general = document.createElement('div'); general.className = 'grid';
+  const name = qbarCreateField('工具名称', draft.displayName, search ? '例如：百度' : '例如：开发命令', false,
+    value => { draft.displayName = value; });
+  name.input.id = 'qbarCreateName';
+  general.append(name.field);
+  editor.append(general);
+
+  const detail = document.createElement('div'); detail.className = 'plugin-detail-section';
+  const title = document.createElement('strong'); title.textContent = search ? '搜索设置' : '命令设置';
+  const hint = document.createElement('div'); hint.className = 'hint';
+  hint.textContent = search ? '使用 {q} 代表用户输入的搜索内容。' : '命令会在输入别名后执行，搜索内容会作为参数追加。';
+  const grid = document.createElement('div'); grid.className = 'grid';
+  if (search) {
+    const template = qbarCreateField('搜索网址模板', draft.settings.template,
+      'https://example.com/search?q={q}', true, value => { draft.settings.template = value; });
+    grid.append(template.field);
+    const encodeField = document.createElement('label'); encodeField.className = 'check';
+    const encode = document.createElement('input'); encode.type = 'checkbox'; encode.checked = draft.settings.encodeQuery !== false;
+    encode.addEventListener('change', () => { draft.settings.encodeQuery = encode.checked; });
+    encodeField.append(encode, document.createTextNode('编码搜索内容')); grid.append(encodeField);
+  } else {
+    const command = qbarCreateField('执行命令或程序路径', draft.settings.command, '例如：code.exe', true,
+      value => { draft.settings.command = value; });
+    grid.append(command.field);
+    const runAsField = document.createElement('label'); runAsField.className = 'check';
+    const runAs = document.createElement('input'); runAs.type = 'checkbox'; runAs.checked = !!draft.settings.runAs;
+    runAs.addEventListener('change', () => { draft.settings.runAs = runAs.checked; });
+    runAsField.append(runAs, document.createTextNode('以管理员身份运行')); grid.append(runAsField);
+  }
+  detail.append(title, hint, grid); editor.append(detail);
+
+  const aliasSection = document.createElement('div'); aliasSection.className = 'plugin-detail-section';
+  const aliasTitle = document.createElement('strong'); aliasTitle.textContent = '命令别名（可选）';
+  const aliasHint = document.createElement('div'); aliasHint.className = 'hint';
+  aliasHint.textContent = '可以添加多个别名；不添加别名时，Qbar 会使用工具名称匹配。';
+  const aliasList = document.createElement('div'); aliasList.className = 'plugin-alias-list';
+  renderQbarToolAliases({ aliases: draft.aliases }, aliasList);
+  aliasSection.append(aliasTitle, aliasHint, aliasList);
+  editor.append(aliasSection);
+  refreshIcons();
+}
+function saveQbarCreateDialog() {
+  const draft = state.qbarCreateDraft;
+  if (!draft || state.qbarCreateSaving) return;
+  draft.displayName = String(draft.displayName || '').trim();
+  draft.aliases = [...new Set((draft.aliases || [])
+    .map(alias => String(alias || '').trim()).filter(Boolean))];
+  draft.settings.template = draft.settings.template == null ? '' : String(draft.settings.template).trim();
+  draft.settings.command = draft.settings.command == null ? '' : String(draft.settings.command).trim();
+  if (!draft.displayName) return qbarCreateSetError('请输入工具名称。');
+  if (state.qbarCreateKind === 'search' && !draft.settings.template.includes('{q}'))
+    return qbarCreateSetError('搜索网址模板必须包含 {q}。');
+  if (state.qbarCreateKind === 'run' && !draft.settings.command)
+    return qbarCreateSetError('请输入执行命令或程序路径。');
+
+  state.qbarCreateSaving = true;
+  state.qbarCreateDialog.setBusy(true, '添加中…');
+  qbarCreateSetError('');
+  post({ type: 'createPlugin', kind: state.qbarCreateKind, displayName: draft.displayName,
+    aliases: draft.aliases, settings: clone(draft.settings) });
+}
+function applySavedQbarPluginToDraft() {
+  if (!state.qbarPluginDraft || !state.draft) return;
+  const saved = clone(state.qbarPluginDraft);
+  saved.toolSettings = clone(state.qbarPluginToolSettings || {});
+  (saved.commands || []).forEach(command => {
+    command.aliases = [...new Set((command.aliases || [])
+      .map(alias => String(alias || '').trim()).filter(Boolean))];
+  });
+  const plugins = Array.isArray(state.draft.plugins) ? state.draft.plugins : (state.draft.plugins = []);
+  const index = plugins.findIndex(item => item && item.pluginId === saved.pluginId);
+  if (index >= 0) plugins[index] = saved;
+  else plugins.push(saved);
+  renderPlugins();
+  if (!state.dirtyFields.size && !state.pluginsDirty) {
+    state.dirty = false;
+    setStatus('');
+  }
+}
+function renderQbarToolDialog() {
+  const plugin = state.qbarPluginDraft;
+  if (!plugin) return;
+  const editor = state.qbarPluginDialog.editor;
+  editor.replaceChildren();
+  state.qbarPluginDialog.setTitle(qbarToolName(plugin) + '设置');
+  const general = document.createElement('div'); general.className = 'grid';
+  const nameField = document.createElement('label'); nameField.className = 'field';
+  const nameLabel = document.createElement('span'); nameLabel.textContent = '工具名称';
+  const nameInput = document.createElement('input'); nameInput.value = qbarToolName(plugin);
+  nameInput.addEventListener('input', () => { plugin.name = nameInput.value; });
+  nameField.append(nameLabel, nameInput); general.append(nameField);
+  const enabledField = document.createElement('label'); enabledField.className = 'check';
+  const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = plugin.enabled !== false;
+  enabled.addEventListener('change', () => { plugin.enabled = enabled.checked; });
+  enabledField.append(enabled, document.createTextNode('启用工具')); general.append(enabledField);
+  editor.append(general);
+
+  const settings = plugin.settings || (plugin.settings = {});
+  if (plugin.definitionId === 'builtin.search') {
+    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
+    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '搜索设置';
+    const grid = document.createElement('div'); grid.className = 'grid';
+    const templateField = document.createElement('label'); templateField.className = 'field wide';
+    const templateLabel = document.createElement('span'); templateLabel.textContent = '搜索网址模板';
+    const template = document.createElement('input');
+    template.value = settings.template || ''; template.placeholder = 'https://example.com/search?q={q}';
+    template.addEventListener('input', () => { settings.template = template.value; });
+    templateField.append(templateLabel, template); grid.append(templateField);
+    const encodeField = document.createElement('label'); encodeField.className = 'check';
+    const encode = document.createElement('input'); encode.type = 'checkbox'; encode.checked = settings.encodeQuery !== false;
+    encode.addEventListener('change', () => { settings.encodeQuery = encode.checked; });
+    encodeField.append(encode, document.createTextNode('编码搜索内容')); grid.append(encodeField);
+    sectionRoot.append(sectionTitle, grid); editor.append(sectionRoot);
+  } else if (plugin.definitionId === 'builtin.run') {
+    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
+    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '命令设置';
+    const grid = document.createElement('div'); grid.className = 'grid';
+    const commandField = document.createElement('label'); commandField.className = 'field wide';
+    const commandLabel = document.createElement('span'); commandLabel.textContent = '执行命令';
+    const commandInput = document.createElement('input'); commandInput.value = settings.command || '';
+    commandInput.addEventListener('input', () => { settings.command = commandInput.value; });
+    commandField.append(commandLabel, commandInput); grid.append(commandField);
+    const runAsField = document.createElement('label'); runAsField.className = 'check';
+    const runAs = document.createElement('input'); runAs.type = 'checkbox'; runAs.checked = !!settings.runAs;
+    runAs.addEventListener('change', () => { settings.runAs = runAs.checked; });
+    runAsField.append(runAs, document.createTextNode('以管理员身份运行')); grid.append(runAsField);
+    sectionRoot.append(sectionTitle, grid); editor.append(sectionRoot);
+  }
+  if (plugin.pluginId === 'builtin.everything') {
+    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
+    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '文件搜索设置';
+    const field = document.createElement('label'); field.className = 'field';
+    const label = document.createElement('span'); label.textContent = '最多结果数';
+    const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.max = '500';
+    input.value = state.qbarPluginToolSettings.esMaxResults ?? 50;
+    input.addEventListener('input', () => { state.qbarPluginToolSettings.esMaxResults = input.value; });
+    field.append(label, input); sectionRoot.append(sectionTitle, field); editor.append(sectionRoot);
+  }
+
+  const commandSection = document.createElement('div'); commandSection.className = 'plugin-detail-section';
+  const commandTitle = document.createElement('strong'); commandTitle.textContent = '命令';
+  const commandHint = document.createElement('div'); commandHint.className = 'hint';
+  commandHint.textContent = qbarToolCommandText(plugin) === '使用工具名称'
+    ? '未设置别名时，Qbar 会使用工具名称匹配。'
+    : '输入这些别名后，Qbar 会执行当前工具。';
+  commandSection.append(commandTitle, commandHint);
+  qbarToolCommands(plugin).forEach(command => {
+    const aliasList = document.createElement('div'); aliasList.className = 'plugin-alias-list';
+    renderQbarToolAliases(command, aliasList); commandSection.append(aliasList);
+  });
+  editor.append(commandSection);
+  refreshIcons();
+}
+function saveQbarToolDialog() {
+  const plugin = state.qbarPluginDraft;
+  if (!plugin || state.qbarPluginSaving) return;
+  const payloadPlugin = clone(plugin);
+  delete payloadPlugin.toolSettings;
+  (payloadPlugin.commands || []).forEach(command => {
+    command.aliases = [...new Set((command.aliases || []).map(alias => String(alias || '').trim()).filter(Boolean))];
+  });
+  state.qbarPluginSaving = true;
+  state.qbarPluginDialog.setBusy(true, '保存中…');
+  post({ type: 'saveQbarPlugin', plugin: payloadPlugin, toolSettings: clone(state.qbarPluginToolSettings || {}) });
+}
+function renderQbarToolTable(title, group, plugins) {
+  const card = document.createElement('section'); card.className = 'qbar-plugin-table-card';
+  const head = document.createElement('div'); head.className = 'qbar-plugin-table-head';
+  const heading = document.createElement('h3'); heading.textContent = title; head.append(heading);
+  if (group === 'search' || group === 'run') {
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'btn mini';
+    add.textContent = group === 'search' ? '添加搜索' : '添加快捷命令';
+    add.addEventListener('click', () => createPlugin(group));
+    head.append(add);
+  }
+  card.append(head);
+  const wrap = document.createElement('div'); wrap.className = 'qbar-plugin-table-wrap';
+  const table = document.createElement('table'); table.className = 'qbar-plugin-table';
+  const thead = document.createElement('thead'); const headRow = document.createElement('tr');
+  ['名称', '命令', '状态', '操作'].forEach(text => { const cell = document.createElement('th'); cell.textContent = text; headRow.append(cell); });
+  thead.append(headRow); table.append(thead);
+  const tbody = document.createElement('tbody');
+  if (!plugins.length) {
+    const row = document.createElement('tr'); const cell = document.createElement('td');
+    cell.colSpan = 4; cell.className = 'empty'; cell.textContent = '暂无工具'; row.append(cell); tbody.append(row);
+  } else {
+    plugins.forEach(plugin => {
+      const row = document.createElement('tr');
+      const name = document.createElement('td'); name.className = 'tool-name'; name.textContent = qbarToolName(plugin);
+      const command = document.createElement('td'); command.className = 'tool-command'; command.textContent = qbarToolCommandText(plugin);
+      const enabled = qbarToolEnabled(plugin);
+      const status = document.createElement('td'); status.className = 'tool-status' + (enabled ? '' : ' off');
+      status.textContent = enabled ? '已启用' : '已停用';
+      const actions = document.createElement('td');
+      if (plugin.deletable) {
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'btn mini qbar-plugin-delete';
+        remove.title = '删除' + qbarToolName(plugin);
+        remove.setAttribute('aria-label', remove.title);
+        remove.append(createIcon('trash-2'), document.createTextNode('删除'));
+        remove.addEventListener('click', event => {
+          event.stopPropagation();
+          openQbarDeleteDialog(plugin);
+        });
+        actions.append(remove);
+      } else {
+        actions.className = 'tool-action-empty';
+        actions.textContent = '—';
+        actions.title = '核心内置工具不可删除';
+      }
+      row.append(name, command, status, actions);
+      row.addEventListener('click', () => openQbarToolDialog(plugin));
+      tbody.append(row);
+    });
+  }
+  table.append(tbody); wrap.append(table); card.append(wrap);
+  return card;
+}
+function renderPlugins() {
+  const root = $('#qbarPluginTables');
+  if (!root) return;
+  root.replaceChildren();
+  const plugins = ((state.draft && state.draft.plugins) || []).filter(qbarToolVisible);
+  [['内置工具', 'builtin'], ['网页搜索', 'search'], ['快捷命令', 'run']].forEach(([title, group]) => {
+    root.append(renderQbarToolTable(title, group, plugins.filter(plugin => qbarToolGroup(plugin) === group)));
+  });
+}
 function addPairRow(sectionName, root, initialKey = '', initialValue = '', multiline = false) {
   const row = document.createElement('div');
   row.className = 'pair-row';
@@ -951,7 +1386,7 @@ function renderBindings() {
 function renderAll() {
   refreshStaticControls(); renderCustomHotkeys(); renderShortcuts();
   renderPairs('TabHotString', 'tabList', true);
-  renderPairs('QSearch', 'qsearchList'); renderPairs('QRun', 'qrunList'); renderPairs('QWeb', 'qwebList');
+  renderPlugins();
   renderBindings();
 }
 function setPage(page, syncHost = true) {
@@ -1003,8 +1438,9 @@ function receiveSnapshot(snapshot) {
     sections.TTranslate.targetLanguage);
   state.baseSections = sections;
   state.bindingModes = clone(snapshot.bindingModes || []);
-  state.draft = { sections: clone(sections), bindings: clone(snapshot.bindings) };
+  state.draft = { sections: clone(sections), bindings: clone(snapshot.bindings), plugins: clone(snapshot.plugins || []) };
   state.dirtyFields.clear();
+  state.pluginsDirty = false;
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   updateLanguageSelectLabels();
   renderAll();
@@ -1031,17 +1467,28 @@ function buildChangedSections() {
   }
   return changes;
 }
+function buildPluginPayload() {
+  const plugins = clone((state.draft && state.draft.plugins) || []);
+  plugins.forEach(plugin => (plugin.commands || []).forEach(command => {
+    if (!Array.isArray(command.aliases)) return;
+    command.aliases = [...new Set(command.aliases.map(alias => String(alias || '').trim()).filter(Boolean))];
+  }));
+  return plugins;
+}
 function saveDraft() {
   if (!state.draft) return;
   const changes = buildChangedSections();
-  if (!Object.keys(changes).some(name => Object.keys(changes[name]).length)) {
+  const hasSectionChanges = Object.keys(changes).some(name => Object.keys(changes[name]).length);
+  if (!hasSectionChanges && !state.pluginsDirty) {
     setStatus('没有需要保存的变化');
     state.dirty = false;
     state.dirtyFields.clear();
     return;
   }
   setStatus('保存中…');
-  post({ type: 'saveSettings', page: state.page, sections: changes, base: clone(state.baseSections || {}) });
+  const payload = { type: 'saveSettings', page: state.page, sections: changes, base: clone(state.baseSections || {}) };
+  if (state.pluginsDirty) payload.plugins = buildPluginPayload();
+  post(payload);
 }
 window.receiveSnapshot = receiveSnapshot;
 window.settingsSaved = function (ok, text) {
@@ -1049,6 +1496,43 @@ window.settingsSaved = function (ok, text) {
   if (ok) {
     state.dirty = false;
     state.dirtyFields.clear();
+    state.pluginsDirty = false;
+  }
+};
+window.qbarPluginSaved = function (ok, text) {
+  if (ok) {
+    applySavedQbarPluginToDraft();
+    closeQbarToolDialog();
+    showToast(text || '工具设置已保存。');
+    return;
+  }
+  state.qbarPluginSaving = false;
+  if (state.qbarPluginDialog) state.qbarPluginDialog.setBusy(false);
+  showToast(text || '工具设置保存失败。');
+};
+window.qbarPluginCreated = function (ok, text) {
+  if (ok) {
+    closeQbarCreateDialog();
+    showToast(text || '工具已添加。');
+    return;
+  }
+  state.qbarCreateSaving = false;
+  if (state.qbarCreateDialog) state.qbarCreateDialog.setBusy(false);
+  qbarCreateSetError(text || '工具添加失败。');
+};
+window.qbarPluginDeleted = function (ok, text, pluginId) {
+  if (ok) {
+    if (state.draft && Array.isArray(state.draft.plugins))
+      state.draft.plugins = state.draft.plugins.filter(plugin => plugin.pluginId !== pluginId);
+    renderPlugins();
+    if (state.qbarDeleteDialog) state.qbarDeleteDialog.close();
+    showToast(text || '工具已删除。');
+    return;
+  }
+  state.qbarDeleteSaving = false;
+  if (state.qbarDeleteDialog) {
+    state.qbarDeleteDialog.setBusy(false);
+    state.qbarDeleteDialog.setError(text || '删除工具失败。');
   }
 };
 window.settingsTestResult = function (ok, text) {
@@ -1069,6 +1553,38 @@ function requestSettingsExit(action) {
 }
 window.requestCloseSettings = () => requestSettingsExit('close');
 
+function setupQbarDialogs() {
+  state.qbarPluginDialog = AppDialog.create({
+    title: '工具设置', saveText: '保存',
+    onClose: () => {
+      state.qbarPluginDraft = null;
+      state.qbarPluginToolSettings = {};
+      state.qbarPluginSaving = false;
+    }
+  });
+  state.qbarCreateDialog = AppDialog.create({
+    title: '添加工具', saveText: '添加',
+    onClose: () => {
+      state.qbarCreateKind = '';
+      state.qbarCreateDraft = null;
+      state.qbarCreateSaving = false;
+    }
+  });
+  state.qbarDeleteDialog = AppDialog.create({
+    title: '删除工具', saveText: '删除', cancelText: '取消',
+    className: 'qbar-delete-dialog',
+    onClose: () => {
+      state.qbarDeleteTarget = null;
+      state.qbarDeleteSaving = false;
+    }
+  });
+  state.qbarDeleteDialog.saveButton.classList.add('danger');
+  state.qbarPluginDialog.saveButton.addEventListener('click', saveQbarToolDialog);
+  state.qbarCreateDialog.saveButton.addEventListener('click', saveQbarCreateDialog);
+  state.qbarDeleteDialog.saveButton.addEventListener('click', confirmQbarPluginDelete);
+}
+
+setupQbarDialogs();
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
 $('#cancelBtn').addEventListener('click', () => requestSettingsExit('discard'));
@@ -1119,11 +1635,14 @@ $('#windowPickerDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget)
     post({ type: 'cancelWindowPicker' });
 });
+function createPlugin(kind) {
+  openQbarCreateDialog(kind);
+}
 $('#addCustomHotkey').addEventListener('click', () => addCustomHotkeyRow($('#customHotkeyList')));
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);
 $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const sectionName = button.dataset.addPair;
-  const rootId = sectionName === 'TabHotString' ? 'tabList' : sectionName === 'QSearch' ? 'qsearchList' : sectionName === 'QRun' ? 'qrunList' : 'qwebList';
+  const rootId = 'tabList';
   addPairRow(sectionName, $('#' + rootId), '', '', sectionName === 'TabHotString');
 }));
 bindStaticControls();

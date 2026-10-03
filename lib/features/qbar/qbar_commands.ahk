@@ -1,7 +1,45 @@
 ; qbar command dispatch, configured actions, and safe launching.
 
-QbarExecute(text, selected, ctrlHeld, selectedType := "") {
+QbarExecute(text, selected, ctrlHeld, selectedType := "", commandId := "", registryGeneration := 0,
+    queryId := 0, sessionId := "", candidateId := "") {
     text := Trim(text, " `t")
+    if commandId != "" {
+        command := QbarRegistryCommand(commandId)
+        if !IsObject(command)
+            return false
+        if registryGeneration && registryGeneration != QbarRegistryGeneration()
+            return false
+        if sessionId != "" && sessionId != QbarSessionId
+            return false
+        if queryId && queryId != QbarPageQueryId
+            return false
+        if candidateId != "" && sessionId != "" {
+            candidatePrefix := sessionId . ":" . queryId . ":"
+            if SubStr(candidateId, 1, StrLen(candidatePrefix)) != candidatePrefix
+                return false
+        }
+        resolution := QbarRegistryResolve(text)
+        args := resolution["args"]
+        if command["handlerId"] = "builtin.search" && args = "" && selected != "" {
+            QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
+            return true
+        }
+        return QbarExecuteRegistered(commandId, args, ctrlHeld, registryGeneration)
+    }
+    ; Keep the settings shortcut usable when the SQLite registry could not be
+    ; opened and Qbar is showing its static fallback rows.
+    if selectedType = "settings" {
+        QbarHide()
+        QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",
+            Map("page", "general")))
+        return true
+    }
+    resolution := QbarRegistryResolve(text)
+    if resolution["candidates"].Length {
+        candidate := resolution["candidates"][1]
+        return QbarExecuteRegistered(candidate["commandId"], resolution["args"], ctrlHeld,
+            QbarRegistryGeneration())
+    }
     if QbarEsAlias(text) && !QbarConfigShortKeyExists(text) {
         QbarHide()
         if EverythingShow("", false)
@@ -121,34 +159,6 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "") {
                 QbarHistoryRemember(QbarHistoryAiEntry(rest))
             return
         }
-        ; "cl <sub>" -- a shortcut to the settings center.
-        if QbarTryClCommand(firstToken, rest)
-            return
-        ; Search engine trigger: substitute {q} with the URL-encoded argument.
-        search := QbarConfigEntry("QSearch", firstToken)
-        if !IsObject(search)
-            search := QbarConfigEntry("QSearch", QbarEngineAlias(firstToken))
-        if IsObject(search) {
-            url := QbarNormalizeUrl(StrReplace(search["value"], "{q}", UrlEncodeUtf8(rest)))
-            if QbarOpenUrl(url)
-                QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
-            return
-        }
-        runSucceeded := false
-        runCommand := ""
-        if QbarRunBy(firstToken, rest, &runSucceeded, &runCommand) {
-            if runSucceeded
-                QbarHistoryRemember(QbarHistoryRunEntry(text, runCommand))
-            return
-        }
-    }
-
-    runSucceeded := false
-    runCommand := ""
-    if QbarRunBy(text, "", &runSucceeded, &runCommand) {
-        if runSucceeded
-            QbarHistoryRemember(QbarHistoryRunEntry(text, runCommand))
-        return
     }
     app := QbarFindByShort(QbarStartMenuItems(), text)
     if IsObject(app) {
@@ -280,24 +290,6 @@ QbarHistoryExecuteEntry(entry) {
     }
 }
 
-; "cl <sub>" -- the built-in shortcut to the settings center. Returns true
-; when the line was a cl command.
-
-QbarTryClCommand(cmd, param) {
-    if cmd != "cl"
-        return false
-    if param = "set" || param = "settings" {
-        QbarHide()
-        ; Qbar commands arrive from a WebView2 callback. Defer creation of the
-        ; settings WebView until that callback has returned.
-        QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",
-            Map("page", "general")))
-        return true
-    }
-    ShowMsg(QbarText("Unknown cl command: ", "未知的 cl 命令：") . param, 2500)
-    return true
-}
-
 QbarScheduleSettingsHistory(entry) {
     SetTimer(QbarSettingsHistoryAction.Bind(entry), -1)
     return "deferred"
@@ -307,16 +299,6 @@ QbarSettingsHistoryAction(entry, *) {
     page := entry["payload"]["page"]
     if SettingsShow(page)
         QbarHistoryRemember(entry)
-}
-
-; The reference answers to a couple of alternative engine spellings (g/gg,
-; m/mdn). A configured trigger that really is "gg" or "mdn" is looked up first
-; and wins, so this only fills the gaps.
-
-QbarEngineAlias(token) {
-    static aliases := Map("gg", "g", "mdn", "m")
-    lower := StrLower(token)
-    return aliases.Has(lower) ? aliases[lower] : token
 }
 
 ; Triggers for the AI answer/explain command.
@@ -337,26 +319,6 @@ QbarAiAsk(text) {
         text := ""
     QbarHide()
     return AiChatShow(text)
-}
-
-QbarRunBy(shortKey, params := "", &didRun := false, &commandOut := "") {
-    didRun := false
-    commandOut := ""
-    entry := QbarConfigEntry("QRun", shortKey)
-    if !IsObject(entry)
-        return false
-
-    if params != "" {
-        ; The argument may itself be another QRun entry's trigger.
-        replacement := QbarConfigEntry("QRun", params)
-        if IsObject(replacement)
-            params := replacement["value"]
-    }
-
-    command := QbarRunCommand(entry["value"], params)
-    commandOut := command
-    didRun := QbarRunCommandAction(command, entry["value"])
-    return true
 }
 
 ; Build a Run()-ready command from an ini value: honours "*RunAs", quoted paths

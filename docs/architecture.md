@@ -150,7 +150,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 设置写入经过 `config.ahk` 的 schema 与字段 codec；提示词和 Tab 替换在 INI 边界使用单行编码，运行时只暴露逻辑文本。页面只发送相对基线的变更，只有有效变化才触发对应运行时应用；外部修改与未保存草稿冲突时保留草稿并提示用户。
 
-Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；QSearch/QRun/QWeb 使用 generation 缓存，配置或语言变化时统一失效。Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
+Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；Qbar 工具命令由 qbar.db 的插件注册表管理，配置变化通过 registry generation 失效旧候选。Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
 
 ## 屏幕自适应与 DPI
 

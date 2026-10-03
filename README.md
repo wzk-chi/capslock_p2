@@ -97,11 +97,9 @@ sig=——张三\n13800000000
 输入 `clp` 按 CapsLock+Tab → 替换成 `capslock-plus`。
 
 - 尾部匹配：光标左边的文字以键结尾即可命中，键前面的文字原样保留。
-- 键的来源有三个段：`[TabHotString]`、`[QRun]`、`[QWeb]`（后两者按短键匹配，比如在编辑器里
-  输 `gh` 也能展开成 GitHub 网址）。同名优先级：TabHotString > QRun > QWeb。
+- 键的来源是 `[TabHotString]`。
 - `[TabHotString]` 的值支持两个转义（C 风格）：`\n` → 真实换行，`\\` → 一个 `\`
   （所以字面的 `\n` 写成 `\\n`）；其余反斜杠组合原样保留，路径如 `D:\docs` 无需转义。
-  `[QRun]`/`[QWeb]` 的值原样展开，不做转义。
 
 ## qbar 启动器（CapsLock+Q）
 
@@ -109,28 +107,15 @@ sig=——张三\n13800000000
 选中文本唤出时会**自动预填到输入框**。文件、文件夹和程序行显示真实的 shell 图标
 （与资源管理器一致）；搜索、网址等非文件行用类型字形。
 
-输入为空时显示最近执行的历史记录，最多保留并展示 10 条。历史记录存放在
-`%AppData%\capslock_p2\qbar-history.json`；重复执行会移到最前。回车或点击可重新执行，
+输入为空时显示最近执行的历史记录，最多保留并展示 10 条。历史记录和使用频率存放在
+`%AppData%\capslock_p2\qbar.db`；重复执行会移到最前。回车或点击可重新执行，
 Tab 会把完整输入带回 qbar 供修改。
 
 ### 条目类型与配置
 
-ini 的**键名就是标签**，写成 `短键<显示名>`（`<显示名>` 可省略），值才是目标：
-
-```ini
-[QSearch]
-bd<百度>=https://www.baidu.com/s?wd={q}
-
-[QRun]
-vsc<VS Code>=C:\Program Files\Microsoft VS Code\Code.exe
-admincmd<管理员 CMD>=*RunAs "C:\Windows\System32\cmd.exe"
-```
-
-- **QSearch**（搜索）：值里含 `{q}`。输入 `bd 关键词` 回车，关键词经 URL 编码替换进 `{q}` 打开。
-  段留空时有一组内置引擎：`s`（Bing/Google）、`bd`、`g`（别名 `gg`）、`bing`、`wk`、`m`（MDN，
-  别名 `mdn`）；ini 里写了同名的就覆盖那个内置项。
-- **QRun**（运行）：程序 / 文件 / 文件夹，支持 `*RunAs` 管理员前缀和参数。
-- Qbar 不再提供 `[QWeb]` 网址触发词；直接输入网址或域名仍会打开浏览器。
+- 搜索和运行命令由 Qbar 插件管理器维护，设置保存在 `%AppData%\capslock_p2\qbar.db`。
+- 每个命令可以拥有多个别名；别名冲突会同时显示候选，候选按使用频率排序。
+- 直接输入网址或域名仍会打开浏览器。
 - 不带触发词直接回车：像路径就打开，像网址就开浏览器；只有带触发词才算搜索。
 
 ### 路径浏览
@@ -168,7 +153,7 @@ admincmd<管理员 CMD>=*RunAs "C:\Windows\System32\cmd.exe"
 |---|---|
 | `ai` / `q` | 打开空白 AI 聊天面板；追加问题可直接提问（使用共用 `[LLM]` 配置） |
 | `cl set` | 打开设置中心 |
-| `*RunAs 触发词 参数` | 以管理员身份执行 QRun 条目 |
+| `*RunAs 触发词 参数` | 以管理员身份执行运行插件命令 |
 
 **AI 问答需要显式触发**：在 qbar 输入 `ai` 或 `q` 打开空白聊天，输入 `ai 问题` 或 `q 问题` 直接提问。普通未匹配文本不会自动交给 AI。
 
@@ -293,7 +278,7 @@ systemPrompt=You are the assistant built into the capslock_p2 launcher. The user
 - 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
 - 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读，只有实际变化才应用；CapsLock+F5 可手动重载。外部修改与设置页未保存草稿冲突时，页面会提示重新载入。
 - 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
-- 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`、`QSearch`、`QRun`、`QWeb`。
+- 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`。
 - `[Global]` 常用项：
 
   | 键 | 默认 | 说明 |
