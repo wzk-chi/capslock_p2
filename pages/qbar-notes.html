@@ -270,10 +270,17 @@ function ensureNoteEditor() {
       theme: { current: dark ? 'dark' : 'light', path: `${VEDITOR_CDN}/dist/css/content-theme` },
       markdown: { toc: false, mathBlockPreview: false }
     },
+    // 'preview' and 'export' are deliberately absent: both build a separate
+    // document that pulls ${cdn}/dist/method.min.js, which is not vendored, so
+    // the button would only ever 404. The split preview is still reachable via
+    // edit-mode -> sv, which renders in this page from the vendored content
+    // themes. 'emoji', 'record', 'code-theme' and 'content-theme' are also left
+    // out: they load assets we do not ship (emoji images, recorder, highlight.js
+    // styles).
     toolbar: ['undo', 'redo', '|', 'headings', 'bold', 'italic', 'strike', 'link', '|',
               'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
               'quote', 'line', 'code', 'inline-code', 'table', 'upload', '|',
-              'edit-mode', 'both', 'preview', 'fullscreen', 'outline'],
+              'edit-mode', 'both', 'fullscreen', 'outline'],
     upload: { accept: 'image/*', handler: handleEditorUpload },
     after: () => { noteEditorReady = true; applyEditorContent(); }
   });
