@@ -379,19 +379,32 @@ function previewFallback(container, source) {
   line.textContent = String(source).split('\n').filter(part => part.trim()).slice(0, 12).join(' / ');
   container.appendChild(line);
 }
-function fillPreview(container, note) {
+// Rendering a note costs a lute parse, and the whole list is rebuilt on every
+// search keystroke. The revision identifies the note's content exactly, so the
+// rendered HTML is reused until the note actually changes. Caching the string
+// rather than nodes matters: each render needs its own DOM to move into a card.
+const previewHtmlCache = new Map();
+function previewHtml(note) {
+  const key = String(note.id);
+  const cached = previewHtmlCache.get(key);
+  if (cached && cached.revision === note.revision && cached.assets === note.assets) return Promise.resolve(cached.html);
   const { source } = substituteAssetImages(note.markdown, note.assets);
-  if (!String(source).trim()) return;
+  if (!String(source).trim()) return Promise.resolve(null);
+  return Vditor.md2html(source, { cdn: VEDITOR_CDN, hljs: { enable: false }, markdown: { toc: false } })
+    .then(html => { previewHtmlCache.set(key, { revision: note.revision, assets: note.assets, html }); return html; });
+}
+function fillPreview(container, note) {
   const assetByUrl = new Map((note.assets || []).map(asset => [String(asset.url), String(asset.id)]));
-  if (typeof Vditor === 'undefined') { previewFallback(container, source); return; }
-  Vditor.md2html(source, { cdn: VEDITOR_CDN, hljs: { enable: false }, markdown: { toc: false } })
+  if (typeof Vditor === 'undefined') { previewFallback(container, substituteAssetImages(note.markdown, note.assets).source); return; }
+  previewHtml(note)
     .then(html => {
+      if (html === null) return;
       const holder = document.createElement('div');
       holder.innerHTML = html;
       const picked = NotesPreview.budget(NotesPreview.collect(holder), { maxRows: 12 });
       picked.rows.forEach(row => container.appendChild(previewRowElement(note, row, assetByUrl)));
     })
-    .catch(() => previewFallback(container, source));
+    .catch(() => previewFallback(container, substituteAssetImages(note.markdown, note.assets).source));
 }
 function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; entry.appendChild(lines); fillPreview(lines, note); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
 function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }
