@@ -1,9 +1,9 @@
 (() => {
   const types = {
-    success: { label: '成功', icon: '✓', role: 'status', live: 'polite' },
-    info: { label: '提示', icon: 'i', role: 'status', live: 'polite' },
-    warning: { label: '注意', icon: '!', role: 'status', live: 'polite' },
-    error: { label: '错误', icon: '×', role: 'alert', live: 'assertive' }
+    success: { icon: '✓', role: 'status', live: 'polite' },
+    info: { icon: 'i', role: 'status', live: 'polite' },
+    warning: { icon: '!', role: 'status', live: 'polite' },
+    error: { icon: '×', role: 'alert', live: 'assertive' }
   };
   const defaultDuration = 4200;
   let toast = null;
@@ -61,11 +61,9 @@
 
     const body = document.createElement('span');
     body.className = 'ui-toast__body';
-    const label = document.createElement('span');
-    label.className = 'ui-toast__label';
     const message = document.createElement('span');
     message.className = 'ui-toast__message';
-    body.append(label, message);
+    body.append(message);
 
     const close = document.createElement('button');
     close.className = 'ui-toast__close';
@@ -108,7 +106,6 @@
     node.setAttribute('role', settings.role);
     node.setAttribute('aria-live', settings.live);
     node.querySelector('.ui-toast__icon').textContent = settings.icon;
-    node.querySelector('.ui-toast__label').textContent = settings.label;
     node.querySelector('.ui-toast__message').textContent = text;
     node.classList.add('visible');
 

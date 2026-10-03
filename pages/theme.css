@@ -128,7 +128,7 @@ button, input, select, textarea { font-family: inherit; }
   top: 88px;
   left: 50%;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   width: max-content;
   max-width: min(560px, calc(100vw - 32px));
@@ -163,8 +163,7 @@ button, input, select, textarea { font-family: inherit; }
   font-size: 13px;
   font-weight: 750;
 }
-.ui-toast__body { min-width: 0; display: grid; gap: 2px; }
-.ui-toast__label { color: var(--ui-toast-accent, var(--ui-accent)); font-size: 11px; font-weight: 700; }
+.ui-toast__body { min-width: 0; }
 .ui-toast__message { color: var(--ui-text); overflow-wrap: anywhere; }
 .ui-toast__close {
   width: 20px;
@@ -172,7 +171,7 @@ button, input, select, textarea { font-family: inherit; }
   flex: 0 0 20px;
   display: grid;
   place-items: center;
-  margin: -1px -1px 0 1px;
+  margin: 0 -1px 0 1px;
   padding: 0;
   border: 0;
   border-radius: 6px;
