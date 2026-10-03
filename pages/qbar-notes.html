@@ -192,7 +192,7 @@ const $ = id => document.getElementById(id);
 // Vditor resolves its on-demand assets (lute, icons, i18n) as `${cdn}/dist/...`,
 // so this must point at the vendored copy: a CDN default would need the network.
 const VEDITOR_CDN = '../vendor/vditor';
-const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null };
+const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map() };
 let searchTimer = 0;
 
 // Windows hides the pointer while typing when that system option is enabled.
@@ -408,7 +408,7 @@ function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').valu
 function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
 async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !(await AppDialog.confirm({ title: '放弃修改', message: '放弃当前修改？', confirmText: '放弃修改', tone: 'danger' }))) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
 async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
-function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: noteEditorMarkdown() }); }
+function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; if (!noteEditorReady) { toast('编辑器还没准备好，先不要保存', 'error'); return; } state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: noteEditorMarkdown() }); }
 function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
 function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
 async function updateTag(action) {
