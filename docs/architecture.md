@@ -141,7 +141,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 - DOM 由共享脚本创建，外观和颜色由 `pages/theme.css` 统一管理，并沿用主题的明暗色变量。
   指针悬停或 Toast 获得键盘焦点时暂停关闭计时；鼠标移出或焦点离开后继续计时，也可用关闭按钮立即收起。
 - 设置页的 `showToast()` 与笔记页的 `toast()` 是页面业务层薄封装，分别用于设置操作反馈和笔记操作反馈，
-  实际显示都委托给 `AppToast`。设置页「通用」中的 Toast 类型选择和触发按钮用于预览四种样式。
+  实际显示都委托给 `AppToast`。
 - 新页面应加载 `theme.css` 和 `toast.js`，直接复用 `AppToast`，不要另写 Toast 标记、计时器或局部配色。
   安装清单在 `tools/capslock_p2.iss` 中显式包含 `toast.js`。
 - `lib/app/core.ahk` 的 `ShowMsg()` 是不依赖 WebView 页面的 AHK 原生 `ToolTip`，用于全局快捷键和宿主错误反馈；

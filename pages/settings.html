@@ -259,13 +259,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
             <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
             <label class="check"><input data-section="Global" data-key="runAsAdmin" type="checkbox"><span>以管理员身份运行（重启后生效）</span></label>
           </div></div>
-          <div class="card">
-            <div class="card-head"><h3>Toast 样式测试</h3><span class="hint">鼠标悬停时提示会暂停消失</span></div>
-            <div class="grid">
-              <label class="field"><span>类型</span><select id="toastTestType"><option value="success">成功</option><option value="info">提示</option><option value="warning">警告</option><option value="error">错误</option></select></label>
-              <div class="field"><span>预览</span><button id="testToast" class="btn" type="button">触发 Toast</button></div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -1592,11 +1585,6 @@ $('#openLlmSettings').addEventListener('click', () => setPage('llm'));
 $('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
 $('#testYoudao').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('youdao')); });
 $('#testVolcengine').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('volcengine')); });
-$('#testToast').addEventListener('click', () => {
-  const type = $('#toastTestType').value;
-  const examples = { success: '操作已成功完成。', info: '这是一条普通提示。', warning: '请留意这条警告提示。', error: '操作未能完成。' };
-  showToast(examples[type] || examples.info, type);
-});
 $('#closeTestResult').addEventListener('click', () => $('#testResultDialog').close());
 $('#testResultDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget) event.currentTarget.close();
