@@ -56,6 +56,8 @@ lib\
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
   theme.css / icons.js / windowbar.js / dialog.js / toast.js 共享主题、图标、标题栏、对话框和 Toast
+  notes-preview.js                   把 Vditor 渲染出的笔记正文拍平成可复制行并算行数预算
+  vendor\                            Vditor（笔记页编辑器与预览渲染）、marked + DOMPurify（AI 回答）、图标、拼音
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
   vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
   resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
@@ -169,7 +171,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
   - 图片行点击复制的是**图片本身**：`NotesStoreAssetFilePath()` 只认仍属于该笔记且在磁盘上存在的资产，`NotesSetClipboardImage()` 用 GDI+ 把它读成 HBITMAP 交给剪贴板（`A_Clipboard` 只能放文本），双击走同一条路再向目标窗口发送 Ctrl+V。
   - **Vditor 的按需资源必须走本地**：它把 lute 引擎、工具栏图标、i18n、内容主题都按 `${cdn}/dist/...` 动态加载，默认 cdn 指向 jsDelivr。页面用 `VEDITOR_CDN = '../vendor/vditor'` 指向内置副本；`vendor/vditor/dist/` 这个路径层级是它的硬要求，也因此 `.gitignore` 里的 `dist/` 必须锚定成 `/dist/`，否则整个 vendor 包会被静默忽略。
   - **`note_assets.relative_path` 只存相对路径**（`media\<文件>`）。启动时的 `NotesStoreCleanOrphans()` 拿它和 `media\` 里的真实文件名比对，对不上就删除文件，所以这个字段写成绝对路径等于每次启动清空整个图片目录。写入统一走 `NotesAssetStoredPath()`（同时兼容上传中的 `relativePath` 和已存资产的 `path` 两种键），`NotesStoreNormalizeAssetFiles()` 会在启动时把历史遗留的绝对路径修回相对形式。清理本身还有第二道保险：只要某篇笔记的 Markdown 里仍引用某个 asset id，对应文件就不会被删，即使路径字段再次写错也不会丢图。
-  - **编辑器按「一个块 = 一行」序列化**：`serializeNode()` 里 `<div>`/`<p>` 各补一个换行，而 `<img>`、文本、`<br>` 这些行内节点本身不产生块边界。图片必须是块元素的子节点，否则下一行的文字会被直接拼到图片那一行（`![image.png](asset:x)123`）。`insertImageNode()` 插入后调用 `normalizeEditorInlineBlocks()` 把编辑器根下的裸行内节点包进 `<div>`，再把光标放进图片后面的新块；预览解析也对这种粘连行做容错——行首是图片就单独成块，其余部分当文本行。
+  - **编辑器是 Vditor（`ir` 即时渲染模式）**，页面不再自己维护 contenteditable。原先那套 `serializeNode()`（DOM→Markdown）、`execCommand` 工具栏、`insertImageNode()`、以及为 contenteditable 的 `<pre>` 打的一堆补丁（进入代码块后按回车出不来）都已删除。编辑器手上的文档就是 Markdown，所以存储格式没变：载入时把 `asset:<id>` 换成真实媒体 URL 好让图片显示，保存时用 `withAssetRefs()` 换回引用形式（用 `split/join` 而不是正则，URL 不需要转义）。图片上传仍走原来的 WebView2 桥（`assetStart` → 宿主回一个可写句柄 → 页面写盘 → 宿主回媒体 URL），`uploadFile()` 返回 Promise、由 `assetWriteResult` 结算，粘贴和拖入因此走同一条路。`pages/theme.css` 末尾把 Vditor 暴露的自定义属性（它在 `.vditor` 和 `.vditor--dark` 上各定义一套）映射到 `--ui-*`；选择器写成两层的 `.note-editor .vditor` 是因为 `theme.css` 先于 Vditor 的样式表加载，同优先级的规则会输。**未做**：预览区的正文样式来自 Vditor 的 `dist/css/content-theme/*.css`，那是编译后的字面颜色、没有自定义属性，要统一得覆盖它的标签选择器。
 - **translate**：`LLMTranslateStartRequest` 是唯一调度点——先由 `TranslateResolveDirection` 确定原语言、目标语言和
   请求代号，再按 `TranslateResolve` 的结果把请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
   过期请求的流式片段和完成回调会被丢弃；互译面板的交换按钮只改变当前请求方向，不写入配置。

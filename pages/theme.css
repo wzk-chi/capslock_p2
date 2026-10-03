@@ -364,3 +364,45 @@ a:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------------------
+   Vditor (the notes editor) folded into the app palette.
+
+   Vditor ships its own colours but exposes them as custom properties: one set on
+   .vditor for light and one on .vditor--dark, which it puts on the same element.
+   Mapping both onto the --ui-* tokens leaves the editor following theme.css
+   rather than carrying a second colour scheme, and because those tokens already
+   flip on prefers-color-scheme a single mapping covers light and dark alike.
+
+   The selectors are deliberately two classes deep: theme.css is linked before
+   Vditor's stylesheet, so an equal-specificity .vditor rule would lose to it.
+
+   Not covered here: the preview pane's prose styles come from Vditor's
+   dist/css/content-theme/*.css, which are compiled with literal colours and no
+   custom properties. Restyling those means overriding its tag selectors.
+   --------------------------------------------------------------------------- */
+.note-editor .vditor,
+.note-editor .vditor--dark {
+  --panel-background-color: var(--ui-surface);
+  --toolbar-background-color: var(--ui-surface-soft);
+  --toolbar-icon-color: var(--ui-muted);
+  --toolbar-icon-hover-color: var(--ui-accent-strong);
+  --textarea-background-color: var(--ui-bg);
+  --textarea-text-color: var(--ui-text);
+  --border-color: var(--ui-line-strong);
+  --second-color: var(--ui-line);
+  --panel-shadow: var(--ui-shadow-soft);
+  --blockquote-color: var(--ui-muted);
+  --heading-border-color: var(--ui-line);
+  --count-background-color: var(--ui-surface-muted);
+  --ir-title-color: var(--ui-subtle);
+  --ir-heading-color: var(--ui-accent-strong);
+  --ir-link-color: var(--ui-accent);
+  --ir-paren-color: var(--ui-accent);
+  --ir-bracket-color: var(--ui-accent);
+  --ir-bi-color: var(--ui-accent-strong);
+  --resize-background-color: var(--ui-surface-soft);
+  --resize-icon-color: var(--ui-muted);
+  --resize-hover-background-color: var(--ui-surface-muted);
+  --resize-hover-icon-color: var(--ui-accent-strong);
+}
