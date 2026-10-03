@@ -293,8 +293,8 @@ function ensureNoteEditor() {
     // ir mode has no popover element at all. In ir a table's text can be edited
     // but there is no way to add or remove a row or column, where Typora's live
     // preview does provide one. wysiwyg still renders as you type; what it drops
-    // relative to ir is the source markers on the block holding the caret.
-    // The toolbar's edit-mode menu switches to ir or sv at any time.
+    // relative to ir is the source markers on the block holding the caret. ir is
+    // also removed from the edit-mode menu, so sv is the only alternative.
     mode: 'wysiwyg',
     theme: dark ? 'dark' : 'classic',
     lang: 'zh_CN',
@@ -348,9 +348,25 @@ function ensureNoteEditor() {
       // The engine (lute) loads on demand, so this is the first proof that the
       // vendored cdn path actually resolved.
       diag('editor-ready', 'ms=' + (Date.now() - mountStart) + ' lute=' + (document.querySelectorAll('script[src*="lute"]').length) + ' mode=' + noteEditor.getCurrentMode());
+      dropIrMode();
       applyEditorContent();
     }
   });
+}
+// Vditor's edit-mode menu is a fixed three-button list built into the toolbar when
+// it is created; there is no option to trim it and no public API for setting the
+// mode (the bundle has no setMode). The ir button is removed here, leaving
+// wysiwyg and sv.
+//
+// The shortcuts the menu prints beside each entry are decoration: "⌥⌘7", "⌥⌘8"
+// and "⌥⌘9" each occur exactly once in the bundle, in that markup, and no key
+// handler tests for them, so removing the button really does put ir out of reach.
+// It is safe because _bindEvent binds the click handlers to the button elements
+// by index at build time -- item(0) wysiwyg, item(1) ir, item(2) sv -- so the two
+// that remain keep the behaviour they were given.
+function dropIrMode() {
+  const button = document.querySelector('#noteEditor [data-mode="ir"]');
+  if (button) button.remove();
 }
 // Images go over the WebView2 bridge the editor always used: assetStart -> the
 // host hands back a writable handle -> this page writes the file -> the host
