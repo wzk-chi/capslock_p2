@@ -170,6 +170,45 @@ NotesStoreClose() {
     NotesDBReady := false
 }
 
+; Assets reach the store from two places that do not agree on their keys: a
+; pending upload carries an absolute `path` next to its relative `relativePath`,
+; while a stored asset carries only `path`, which is the row's relative_path.
+; `note_assets.relative_path` must always be written in the relative form —
+; NotesStoreCleanOrphans compares it against "media\<file>" and deletes anything
+; that does not match, so an absolute value there wipes the media folder on the
+; next start.
+NotesAssetStoredPath(asset) {
+    if !IsObject(asset)
+        return ""
+    if asset.Has("relativePath")
+        return String(asset["relativePath"])
+    return asset.Has("path") ? String(asset["path"]) : ""
+}
+
+; Accepts either a relative "media\name" value or an absolute path pointing
+; inside the media directory, and returns the relative form. Returns "" for
+; anything else, including paths outside the media directory, so unexpected
+; values are left alone instead of being rewritten into something worse.
+NotesStoreRelativeAssetPath(stored) {
+    global NotesStoreMedia
+    value := Trim(StrReplace(String(stored), "/", "\"))
+    if value = "" || InStr(value, "..")
+        return ""
+    prefix := NotesStoreMedia . "\"
+    if SubStr(value, 1, StrLen(prefix)) = prefix
+        value := SubStr(value, StrLen(prefix) + 1)
+    else if SubStr(value, 1, 6) = "media\"
+        value := SubStr(value, 7)
+    else if RegExMatch(value, "^[A-Za-z]:\\")
+        return ""
+    if !RegExMatch(value, "^[^\\]+$")
+        return ""
+    return "media\" . value
+}
+
+; Repairs note_assets rows written by older builds: an absolute media path, and
+; a path stored without its file extension. Both forms are rewritten to
+; "media\<file>.<ext>" and the file is moved when the extension was missing.
 NotesStoreNormalizeAssetFiles() {
     global NotesStoreRoot, NotesStoreError
     if !NotesStoreQuery("SELECT id,relative_path,mime FROM note_assets;", &table)
@@ -177,17 +216,22 @@ NotesStoreNormalizeAssetFiles() {
     changes := []
     for raw in table.Rows {
         assetId := String(raw[1])
-        relative := StrReplace(String(raw[2]), "/", "\")
+        stored := StrReplace(String(raw[2]), "/", "\")
         mime := String(raw[3])
-        if assetId = "" || relative = "" || InStr(relative, "..")
+        if assetId = "" || stored = ""
             continue
-        if !RegExMatch(relative, "^media\\[^\\]+$") || RegExMatch(relative, "\.[A-Za-z0-9]+$")
+        relative := NotesStoreRelativeAssetPath(stored)
+        if relative = ""
             continue
-        extension := NotesAssetExtension(mime)
-        newRelative := relative . "." . extension
-        oldPath := NotesStoreRoot . "\" . relative
-        newPath := NotesStoreRoot . "\" . newRelative
+        if !RegExMatch(relative, "\.[A-Za-z0-9]+$")
+            relative .= "." . NotesAssetExtension(mime)
+        if relative = stored
+            continue
+        oldPath := NotesStoreRoot . "\" . stored
+        newPath := NotesStoreRoot . "\" . relative
         moved := false
+        ; Only a legacy row stored without its extension has a file to move;
+        ; an absolute path already names the same file as its relative form.
         if FileExist(oldPath) && !FileExist(newPath) {
             try {
                 FileMove(oldPath, newPath)
@@ -196,7 +240,7 @@ NotesStoreNormalizeAssetFiles() {
                 continue
         }
         changes.Push(Map("id", assetId, "oldPath", oldPath, "newPath", newPath,
-            "relative", newRelative, "moved", moved))
+            "relative", relative, "moved", moved))
     }
     if !changes.Length
         return true
@@ -472,21 +516,27 @@ NotesStorePreviewAssetUrl(source, assetUrls) {
 }
 
 ; One query for every asset referenced by the listed notes, so the preview does
-; not add a lookup per image.
+; not add a lookup per image. Only assets whose file is actually on disk are
+; mapped, so an image whose file was lost falls back to a text row instead of
+; rendering a broken image.
 NotesStorePreviewAssetIndex(noteIds) {
+    global NotesStoreRoot
     index := Map()
     if !IsObject(noteIds) || !noteIds.Length
         return index
     ids := ""
     for noteId in noteIds
         ids .= (ids = "" ? "" : ",") . Integer(noteId)
-    if ids = "" || !NotesStoreQuery("SELECT note_id,id,mime FROM note_assets WHERE note_id IN (" . ids . ");", &table)
+    if ids = "" || !NotesStoreQuery("SELECT note_id,id,relative_path,mime FROM note_assets WHERE note_id IN (" . ids . ");", &table)
         return index
     for raw in table.Rows {
+        relative := NotesStoreRelativeAssetPath(raw[3])
+        if relative = "" || !FileExist(NotesStoreRoot . "\" . relative)
+            continue
         noteId := Integer(raw[1])
         if !index.Has(noteId)
             index[noteId] := Map()
-        index[noteId][raw[2]] := NotesAssetUrl(raw[2], raw[3])
+        index[noteId][raw[2]] := NotesAssetUrl(raw[2], raw[4])
     }
     return index
 }
@@ -603,7 +653,7 @@ NotesStoreSaveNote(noteId, title, content, tagNames, editorId, &savedId := 0) {
             if !IsObject(asset)
                 throw Error("图片资产不存在或不属于当前笔记")
             if !NotesStoreExec("INSERT INTO note_assets(id,note_id,relative_path,mime,original_name,created_at) VALUES("
-                . NotesStoreSql(asset["id"]) . "," . Integer(noteId) . "," . NotesStoreSql(asset["path"])
+                . NotesStoreSql(asset["id"]) . "," . Integer(noteId) . "," . NotesStoreSql(NotesAssetStoredPath(asset))
                 . "," . NotesStoreSql(asset["mime"]) . "," . NotesStoreSql(asset["name"]) . "," . now . ");")
                 throw Error(NotesStoreError)
         }

@@ -166,6 +166,14 @@ NotesDeleteRelativeAsset(relativePath) {
     return !FileExist(path)
 }
 
+; Deletes media files that no note_assets row and no note references.
+;
+; This is the only place that removes user media, and it used to compare
+; note_assets.relative_path verbatim against "media\<file>" while older builds
+; stored an absolute path there, so every image was deleted on the next start.
+; Two things keep that from returning: the stored value is normalized before it
+; is compared, and a file is also kept when its asset id still appears in some
+; note's Markdown, which stays true even if the path column is wrong again.
 NotesStoreCleanOrphans() {
     global NotesStoreMedia, NotesPendingAssets, NotesDB, NotesDBReady
     if !IsObject(NotesDB) || !NotesDBReady || !DirExist(NotesStoreMedia)
@@ -173,18 +181,36 @@ NotesStoreCleanOrphans() {
     referenced := Map()
     if !NotesStoreQuery("SELECT relative_path FROM note_assets;", &table)
         return false
-    for row in table.Rows
-        referenced[StrReplace(row[1], "/", "\")] := true
+    for row in table.Rows {
+        relative := NotesStoreRelativeAssetPath(row[1])
+        if relative != ""
+            referenced[relative] := true
+    }
+    referencedIds := Map()
+    if NotesStoreQuery("SELECT content_md FROM notes WHERE content_md LIKE '%asset:%';", &noteTable)
+        for row in noteTable.Rows
+            for assetId in NotesAssetIdsFromMarkdown(row[1])
+                referencedIds[assetId] := true
     pendingPaths := Map()
     for assetId, asset in NotesPendingAssets
         pendingPaths[asset["relativePath"]] := true
     Loop Files, NotesStoreMedia . "\*", "F" {
-        relative := "media\" . A_LoopFileName
+        fileName := A_LoopFileName
+        relative := "media\" . fileName
         if referenced.Has(relative) || pendingPaths.Has(relative)
+            continue
+        if referencedIds.Has(NotesAssetIdFromFileName(fileName))
             continue
         try FileDelete(A_LoopFileFullPath)
     }
     return true
+}
+
+; Asset ids are generated without dots, so the id is everything before the first
+; one. Legacy rows may also have been stored without an extension at all.
+NotesAssetIdFromFileName(fileName) {
+    dot := InStr(fileName, ".")
+    return dot ? SubStr(fileName, 1, dot - 1) : String(fileName)
 }
 
 NotesSetClipboard(text) {
