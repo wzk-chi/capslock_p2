@@ -10,10 +10,8 @@
 <script src="icons.js"></script>
 <script src="dialog.js"></script>
 <script src="windowbar.js"></script>
-<script src="../vendor/marked.min.js"></script>
-<script src="../vendor/purify.min.js"></script>
-<!-- Vditor renders both the note list preview and (later) the editor. Its
-     on-demand assets are resolved against this local copy, never a CDN. -->
+<!-- Vditor renders both the note list preview and the editor. Its on-demand
+     assets are resolved against this local copy, never a CDN. -->
 <link rel="stylesheet" href="../vendor/vditor/dist/index.css">
 <link rel="stylesheet" href="../vendor/vditor/dist/css/content-theme/light.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="../vendor/vditor/dist/css/content-theme/dark.css" media="(prefers-color-scheme: dark)">
@@ -106,11 +104,10 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .tool { width: 28px; min-width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ui-muted); }
 .tool .lucide { width: 16px; height: 16px; }
 .tool:hover, .tool:focus-visible { border-color: var(--ui-line-strong); background: var(--ui-surface); color: var(--ui-accent-strong); }
-.editor-content { min-height: 0; flex: 1; overflow: auto; padding: 17px 21px; outline: 0; color: var(--ui-text); font-size: 13px; line-height: 1.65; }
-.editor-content:empty::before { content: "开始输入 Markdown 内容…"; color: var(--ui-subtle); }
-.editor-content img { max-width: 100%; height: auto; border: 1px solid var(--ui-line); border-radius: 7px; }
-.editor-content pre { padding: 8px; border-radius: 6px; background: var(--ui-code); font-family: Consolas, monospace; font-style: normal; font-weight: 400; white-space: pre-wrap; }
-.editor-content pre * { font-family: inherit; font-style: normal; font-weight: 400; }
+.note-editor { min-height: 0; flex: 1; display: flex; overflow: hidden; }
+/* Vditor draws its own frame and prose styles; the editor card already supplies
+   a border, so the inner one is dropped rather than doubled. */
+.note-editor .vditor { flex: 1; min-height: 0; border: 0; border-radius: 0; }
 .editor-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 17px; border-top: 1px solid var(--ui-line); }
 .editor-button { width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); }
 .editor-button.primary { border-color: var(--ui-button-bg); background: var(--ui-button-bg); color: var(--ui-button-text); }
@@ -167,10 +164,9 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
             <div id="editorTagOptions" class="tag-options hidden"></div>
           </div>
         </div>
-        <div class="editor-toolbar" aria-label="Markdown 工具栏">
-          <button class="tool" type="button" data-command="bold" aria-label="加粗" title="加粗"><i data-lucide="bold"></i></button><button class="tool" type="button" data-command="italic" aria-label="斜体" title="斜体"><i data-lucide="italic"></i></button><button class="tool" type="button" data-command="strike" aria-label="删除线" title="删除线"><i data-lucide="strikethrough"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="h2" aria-label="标题" title="标题"><i data-lucide="heading-2"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="blockquote" aria-label="引用" title="引用"><i data-lucide="quote"></i></button><button class="tool" type="button" data-command="insertUnorderedList" aria-label="无序列表" title="无序列表"><i data-lucide="list"></i></button><button class="tool" type="button" data-command="insertOrderedList" aria-label="有序列表" title="有序列表"><i data-lucide="list-ordered"></i></button><button class="tool" type="button" data-command="formatBlock" data-value="pre" aria-label="代码块，Ctrl+Enter 退出" title="代码块（Ctrl+Enter 或连按两次回车退出）"><i data-lucide="code-xml"></i></button><button id="insertImage" class="tool" type="button" aria-label="插入图片" title="插入图片"><i data-lucide="image-plus"></i></button><button class="tool" type="button" data-command="createLink" aria-label="插入链接" title="插入链接"><i data-lucide="link"></i></button>
-        </div>
-        <div id="editorContent" class="editor-content" contenteditable="true" spellcheck="false"></div>
+        <!-- Vditor brings its own toolbar and editing surface; the hand-written
+             toolbar and the contenteditable that used to live here are gone. -->
+        <div id="noteEditor" class="note-editor"></div>
         <div class="editor-foot"><button id="cancelEdit" class="editor-button icon-only" type="button" aria-label="取消" title="取消"><i data-lucide="x"></i></button><button id="saveEdit" class="editor-button primary icon-only" type="button" aria-label="保存" title="保存"><i data-lucide="check"></i></button></div>
       </section>
     </main>
@@ -187,7 +183,6 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
   <div class="context-separator"></div>
   <button id="contextMulti" type="button" role="menuitem" aria-label="多选" title="多选"><i data-lucide="list-checks"></i><span data-label>多选</span></button>
 </div>
-<input id="imageInput" type="file" accept="image/*" multiple hidden>
 <script>
 WindowBar.init();
 const post = payload => { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload)); };
@@ -227,69 +222,86 @@ function substituteAssetImages(markdown, assets) {
   source = source.replace(/!\[([^\]]*)\]\(asset:([A-Za-z0-9_-]+)\)/g, (all, alt, id) => lookup.has(id) ? `![${alt}](${lookup.get(id)})` : alt);
   return { source, lookup };
 }
-function editorMarkdown(markdown, assets) {
-  const { source, lookup } = substituteAssetImages(markdown, assets);
-  let html = marked.parse(source, { breaks: true, gfm: true });
-  html = DOMPurify.sanitize(html, { ADD_ATTR: ['data-asset-id'], FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'] });
-  const holder = document.createElement('div'); holder.innerHTML = html;
-  holder.querySelectorAll('img').forEach(img => { const src = img.getAttribute('src') || ''; if (!src.startsWith('https://qbar-notes.local/')) { img.replaceWith(document.createTextNode(img.alt || '[图片]')); return; } for (const [id, url] of lookup) if (src === url) img.dataset.assetId = id; });
-  return holder.innerHTML;
+// --- Vditor editor -----------------------------------------------------------
+// Vditor owns the editing surface, the toolbar and the code-block behaviour that
+// used to be hand-written here (serializeNode, the <pre> escape hatches, the
+// execCommand toolbar). The document it holds is Markdown, so the stored format
+// is unchanged. Real media URLs are substituted in so images render, and the
+// reference form is restored on save because the store must keep seeing
+// asset:<id>.
+let noteEditor = null;
+let noteEditorReady = false;
+
+function withAssetRefs(markdown) {
+  const assets = (state.editor && state.editor.assets) || [];
+  let out = String(markdown || '');
+  // split/join rather than a regex: the URL needs no escaping this way.
+  assets.forEach(asset => { if (asset.url) out = out.split(`(${asset.url})`).join(`(asset:${asset.id})`); });
+  return out;
 }
-function serializeNode(node, parentTag = '') {
-  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\u00a0/g, ' ');
-  if (node.nodeType !== Node.ELEMENT_NODE) return '';
-  const tag = node.tagName.toLowerCase();
-  const children = () => Array.from(node.childNodes).map(child => serializeNode(child, tag)).join('');
-  if (tag === 'br') return '\n';
-  if (tag === 'img') return node.dataset.assetId ? `![${node.alt || ''}](asset:${node.dataset.assetId})` : (node.alt || '[图片]');
-  if (tag === 'strong' || tag === 'b') return `**${children()}**`;
-  if (tag === 'em' || tag === 'i') return `*${children()}*`;
-  if (tag === 'del' || tag === 's') return `~~${children()}~~`;
-  if (tag === 'code' && parentTag !== 'pre') return `\`${node.textContent}\``;
-  if (tag === 'pre') { const code = String(node.innerText || node.textContent || '').replace(/\r\n/g, '\n').replace(/\n+$/, ''); return `\n\`\`\`\n${code}\n\`\`\`\n`; }
-  if (/^h[1-6]$/.test(tag)) return `\n${'#'.repeat(Number(tag[1]))} ${children().trim()}\n`;
-  if (tag === 'blockquote') return `\n${children().trim().split('\n').map(line => line ? `> ${line}` : '>').join('\n')}\n`;
-  if (tag === 'li') return children().trim();
-  if (tag === 'ul' || tag === 'ol') return `\n${Array.from(node.children).map((li, index) => `${tag === 'ol' ? `${index + 1}.` : '-'} ${serializeNode(li, tag)}`).join('\n')}\n`;
-  if (tag === 'a') return `[${children()}](${node.getAttribute('href') || ''})`;
-  if (['p', 'div', 'section', 'article'].includes(tag)) return `${children().trim()}\n`;
-  if (tag === 'hr') return '\n---\n';
-  return children();
+function noteEditorMarkdown() {
+  if (noteEditor && noteEditorReady) return withAssetRefs(noteEditor.getValue());
+  // Before the engine finishes loading the editor holds nothing yet; report the
+  // content that is about to be put in it so the dirty check stays honest.
+  return state.editor && typeof state.editor.pendingMarkdown === 'string' ? state.editor.pendingMarkdown : '';
 }
-function contentMarkdown() { return serializeNode($('editorContent')).replace(/\n{3,}/g, '\n\n').trim(); }
-function setEditorContent(html) { $('editorContent').innerHTML = html || ''; }
-function saveSelection() { const selection = window.getSelection(); if (selection.rangeCount) state.savedRange = selection.getRangeAt(0).cloneRange(); }
-function restoreSelection() { if (!state.savedRange) { $('editorContent').focus(); return; } const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(state.savedRange); $('editorContent').focus(); }
-function normalizeEditorInlineBlocks() { const editor = $('editorContent'); const blockTags = /^(DIV|P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|HR|TABLE|SECTION|ARTICLE)$/; let run = null; Array.from(editor.childNodes).forEach(node => { if (node.nodeType === Node.ELEMENT_NODE && blockTags.test(node.tagName)) { run = null; return; } if (node.nodeType === Node.TEXT_NODE && !node.nodeValue.trim()) return; if (!run) { run = document.createElement('div'); editor.insertBefore(run, node); } run.appendChild(node); }); }
-function insertImageNode(url, assetId, name) {
-  restoreSelection();
-  const editor = $('editorContent');
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = name || '图片';
-  img.dataset.assetId = assetId;
-  img.style.maxWidth = '100%';
-  const selection = window.getSelection();
-  if (selection.rangeCount) { const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(img); } else editor.appendChild(img);
-  normalizeEditorInlineBlocks();
-  const caret = document.createRange();
-  const block = img.parentElement;
-  const ownsBlock = block && block !== editor && block.children.length === 1 && !block.textContent.trim();
-  if (ownsBlock) {
-    const next = document.createElement('div');
-    next.appendChild(document.createElement('br'));
-    block.after(next);
-    caret.setStart(next, 0);
-  } else caret.setStartAfter(img);
-  caret.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(caret);
-  editor.focus();
+function applyEditorContent() {
+  if (!noteEditorReady || !state.editor) return;
+  const { source } = substituteAssetImages(state.editor.content || '', state.editor.assets || []);
+  state.editor.pendingMarkdown = source;
+  noteEditor.setValue(source, true);
+  state.editor.originalSnapshot = editorSnapshot();
 }
-async function uploadFile(file) { if (!state.editor || !file) return; const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`; saveSelection(); state.pendingUploads.set(requestId, { file, name: file.name, url: '', assetId: '', writable: null, cancelled: false, cancelRequested: false }); post({ type: 'assetStart', editorId: state.editor.editorId, requestId, mime: file.type || 'application/octet-stream', name: file.name || '' }); }
-function uploadFiles(files) { Array.from(files || []).forEach(uploadFile); }
+function ensureNoteEditor() {
+  if (noteEditor) return;
+  if (typeof Vditor === 'undefined') { toast('Markdown 编辑器加载失败', 'error'); return; }
+  const dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  noteEditor = new Vditor('noteEditor', {
+    cdn: VEDITOR_CDN,
+    mode: 'ir',
+    theme: dark ? 'dark' : 'classic',
+    lang: 'zh_CN',
+    height: '100%',
+    minHeight: 300,
+    placeholder: '开始输入 Markdown 内容…',
+    cache: { enable: false },
+    preview: {
+      hljs: { enable: false },
+      theme: { current: dark ? 'dark' : 'light', path: `${VEDITOR_CDN}/dist/css/content-theme` },
+      markdown: { toc: false, mathBlockPreview: false }
+    },
+    toolbar: ['undo', 'redo', '|', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+              'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+              'quote', 'line', 'code', 'inline-code', 'table', 'upload', '|',
+              'edit-mode', 'both', 'preview', 'fullscreen', 'outline'],
+    upload: { accept: 'image/*', handler: handleEditorUpload },
+    after: () => { noteEditorReady = true; applyEditorContent(); }
+  });
+}
+// Images go over the WebView2 bridge the editor always used: assetStart -> the
+// host hands back a writable handle -> this page writes the file -> the host
+// answers with the media URL. Replacing Vditor's own reader with it means paste
+// and drag-and-drop land in the same place.
+function uploadFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!state.editor) { reject(new Error('没有正在编辑的笔记')); return; }
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    state.pendingUploads.set(requestId, { file, name: file.name, url: '', assetId: '', writable: null, cancelled: false, cancelRequested: false, resolve, reject });
+    post({ type: 'assetStart', editorId: state.editor.editorId, requestId, mime: file.type || 'application/octet-stream', name: file.name || '' });
+  });
+}
+function handleEditorUpload(files) {
+  const list = Array.from(files || []);
+  if (!list.length) return null;
+  Promise.all(list.map(uploadFile))
+    .then(results => results.filter(Boolean).forEach(result => {
+      if (noteEditorReady && result.url) noteEditor.insertValue(`![${result.name || '图片'}](${result.url})`);
+    }))
+    .catch(error => toast(String((error && error.message) || error || '图片写入失败'), 'error'));
+  return null;
+}
 async function stopWritable(writable) { if (!writable) return; try { if (typeof writable.abort === 'function') await writable.abort(); else await writable.close(); } catch {} }
-async function cancelPendingUploads(editorId) { const pendingItems = Array.from(state.pendingUploads.entries()); for (const [requestId, pending] of pendingItems) { pending.cancelled = true; await stopWritable(pending.writable); pending.writable = null; if (!pending.cancelRequested) { pending.cancelRequested = true; post({ type: 'assetCancel', editorId, requestId, assetId: pending.assetId || '' }); } } }
+async function cancelPendingUploads(editorId) { const pendingItems = Array.from(state.pendingUploads.entries()); for (const [requestId, pending] of pendingItems) { pending.cancelled = true; await stopWritable(pending.writable); pending.writable = null; state.pendingUploads.delete(requestId); if (pending.reject) pending.reject(new Error('图片上传已取消')); if (!pending.cancelRequested) { pending.cancelRequested = true; post({ type: 'assetCancel', editorId, requestId, assetId: pending.assetId || '' }); } } }
 async function receiveAssetHandle(data, objects) { const requestId = String(data.requestId || ''); const pending = state.pendingUploads.get(requestId); const handle = objects && objects[0]; if (!pending || !handle || !state.editor || data.editorId !== state.editor.editorId) return; pending.assetId = String(data.assetId || ''); try { const writable = await handle.createWritable(); pending.writable = writable; if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.write(pending.file); if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.close(); pending.writable = null; if (pending.cancelled || !state.pendingUploads.has(requestId)) { post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: true }); } catch (error) { pending.writable = null; if (!pending.cancelled && state.pendingUploads.has(requestId)) post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: false }); } }
 function renderTags() { const root = $('tags'); root.textContent = ''; const all = document.createElement('button'); all.className = `tag-row${state.currentTag === '' ? ' active' : ''}`; all.type = 'button'; all.innerHTML = '<span>全部笔记</span><span class="tag-count">' + state.notes.length + '</span>'; all.onclick = () => { state.currentTag = ''; requestQuery(); renderTags(); }; root.appendChild(all); const none = document.createElement('button'); none.className = `tag-row${state.currentTag === '__none__' ? ' active' : ''}`; none.type = 'button'; none.innerHTML = '<span>无标签</span><span class="tag-count"> </span>'; none.onclick = () => { state.currentTag = '__none__'; requestQuery(); renderTags(); }; root.appendChild(none); state.tags.forEach(tag => { const row = document.createElement('button'); row.className = `tag-row${state.currentTag === tag.name ? ' active' : ''}`; row.type = 'button'; row.innerHTML = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.count}</span>`; row.onclick = () => { state.currentTag = tag.name; requestQuery(); renderTags(); }; root.appendChild(row); }); $('tagCount').textContent = `${state.tags.reduce((sum, tag) => sum + Number(tag.count || 0), 0)} 篇`; }
 function editorHasTag(name) { return !!state.editor && (state.editor.tags || []).some(tag => String(tag).toLowerCase() === String(name).toLowerCase()); }
@@ -391,12 +403,12 @@ function formatStamp(value) {
   ));
   return `${utc.getFullYear()}-${pad(utc.getMonth() + 1)}-${pad(utc.getDate())} ${pad(utc.getHours())}:${pad(utc.getMinutes())}`;
 }
-function openEditor(payload) { state.editor = payload.editor; state.editor.tags = Array.isArray(state.editor.tags) ? state.editor.tags.slice() : []; $('editorTitle').value = state.editor.title || ''; $('editorTagInput').value = ''; renderEditorTags(); setEditorContent(editorMarkdown(state.editor.content || '', state.editor.assets || [])); state.editor.originalSnapshot = editorSnapshot(); toggleEditor(true); $('editorTitle').focus(); }
-function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').value, tags: state.editor.tags || [], content: contentMarkdown() }); }
+function openEditor(payload) { state.editor = payload.editor; state.editor.tags = Array.isArray(state.editor.tags) ? state.editor.tags.slice() : []; state.editor.pendingMarkdown = ''; $('editorTitle').value = state.editor.title || ''; $('editorTagInput').value = ''; renderEditorTags(); toggleEditor(true); ensureNoteEditor(); applyEditorContent(); $('editorTitle').focus(); }
+function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').value, tags: state.editor.tags || [], content: noteEditorMarkdown() }); }
 function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
 async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !(await AppDialog.confirm({ title: '放弃修改', message: '放弃当前修改？', confirmText: '放弃修改', tone: 'danger' }))) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
 async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
-function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: contentMarkdown() }); }
+function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: noteEditorMarkdown() }); }
 function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
 function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
 async function updateTag(action) {
@@ -416,122 +428,13 @@ async function deleteSelectedNotes() {
   if (ids.length && await AppDialog.confirm({ title: '删除笔记', message: `删除 ${ids.length} 篇笔记？`, confirmText: '删除', tone: 'danger' }))
     post({ type: 'deleteNotes', noteIds: ids });
 }
-function codeBlockOf(range) { let node = range.startContainer; if (node.nodeType === Node.TEXT_NODE) node = node.parentElement; return node && node.closest ? node.closest('pre') : null; }
-// A contenteditable <pre> keeps every Enter inside itself, so once the caret is
-// in a code block there is no way back to normal text. Leaving always means the
-// same thing: a fresh block after the code block, with the caret in it.
-function exitCodeBlock(pre) {
-  const editor = $('editorContent');
-  const next = document.createElement('div');
-  next.appendChild(document.createElement('br'));
-  pre.after(next);
-  const range = document.createRange();
-  range.setStart(next, 0);
-  range.collapse(true);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
-  editor.focus();
-}
-// Range.toString() only walks text nodes and cloneContents() cannot tell a
-// placeholder <br> from real content, so both the block text and the caret
-// position are computed here with the same <br>-aware walk. That makes the
-// result independent of whether Chromium parked the caret before or after the
-// trailing <br> it uses for the empty last line.
-function codeBlockText(pre) {
-  let out = '';
-  const walk = node => {
-    if (node.nodeType === Node.TEXT_NODE) { out += String(node.nodeValue || ''); return; }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (node.tagName === 'BR') { out += '\n'; return; }
-    Array.from(node.childNodes).forEach(walk);
-  };
-  Array.from(pre.childNodes).forEach(walk);
-  return out;
-}
-// Offset of the caret within codeBlockText(), or -1 when it cannot be located,
-// in which case the caller must not guess.
-function caretCodeBlockOffset(pre, range) {
-  let offset = 0, found = false;
-  const walk = node => {
-    if (found) return;
-    if (node === range.startContainer) {
-      if (node.nodeType === Node.TEXT_NODE) { offset += Math.min(range.startOffset, String(node.nodeValue || '').length); found = true; return; }
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const upto = Math.min(range.startOffset, node.childNodes.length);
-        for (let i = 0; i < upto; i++) walk(node.childNodes[i]);
-        found = true;
-      }
-      return;
-    }
-    if (node.nodeType === Node.TEXT_NODE) { offset += String(node.nodeValue || '').length; return; }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (node.tagName === 'BR') { offset += 1; return; }
-    Array.from(node.childNodes).forEach(walk);
-  };
-  // Walk the pre itself, not just its children: when the caret sits on a
-  // boundary between two children Chromium reports the <pre> as the container,
-  // and starting from the children would never match it.
-  walk(pre);
-  return found ? offset : -1;
-}
-function handleEditorEnter(event) {
-  if (event.key !== 'Enter' || event.isComposing) return;
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const range = selection.getRangeAt(0);
-  const pre = codeBlockOf(range);
-  if (!pre) return;
-  // Ctrl+Enter leaves the block from anywhere in it. Escape cannot be used
-  // here: the host binds it to cancel the editor.
-  if (event.ctrlKey || event.metaKey) { event.preventDefault(); exitCodeBlock(pre); return; }
-  if (event.shiftKey || event.altKey) return;
-  // Enter on the empty last line leaves the block: nothing but line breaks may
-  // remain after the caret, and the block must already end on one. A blank line
-  // in the middle of the code keeps its following text, so it still just adds a
-  // line, and a trailing blank line never reaches the Markdown because the
-  // serialiser strips it.
-  const text = codeBlockText(pre);
-  const offset = caretCodeBlockOffset(pre, range);
-  if (offset < 0) return;
-  if (/^\n*$/.test(text.slice(offset)) && (text === '' || /\n$/.test(text))) { event.preventDefault(); exitCodeBlock(pre); }
-}
-async function applyTool(button) {
-  saveSelection();
-  const command = button.dataset.command;
-  if (command === 'createLink') {
-    const url = await AppDialog.prompt({ title: '插入链接', label: '链接地址', placeholder: 'https://example.com' });
-    restoreSelection();
-    if (url) document.execCommand('createLink', false, url);
-  } else if (command === 'formatBlock') {
-    // Clicking 代码块 while already inside one leaves it rather than nesting, so
-    // there is always a mouse-only way out of the block.
-    const selection = window.getSelection();
-    const pre = selection.rangeCount ? codeBlockOf(selection.getRangeAt(0)) : null;
-    if (pre && button.dataset.value === 'pre') exitCodeBlock(pre);
-    else {
-      document.execCommand(command, false, button.dataset.value);
-      // A code block that ends up as the last element has nothing below it to
-      // click, so the caret could only ever go back inside. Leave it an empty
-      // block; the serialiser trims a trailing blank line away.
-      if (button.dataset.value === 'pre' && selection.rangeCount) {
-        const created = codeBlockOf(selection.getRangeAt(0));
-        const editor = $('editorContent');
-        if (created && created.parentElement === editor && !created.nextElementSibling) {
-          const next = document.createElement('div');
-          next.appendChild(document.createElement('br'));
-          created.after(next);
-        }
-      }
-    }
-  } else document.execCommand(command, false, null);
-  $('editorContent').focus();
-}
+// The code-block escape hatches that used to live here (codeBlockOf,
+// exitCodeBlock, codeBlockText, caretCodeBlockOffset, handleEditorEnter,
+// applyTool) are gone with the contenteditable editor: Vditor's own ir mode
+// handles Enter inside a code fence, and its toolbar replaces execCommand.
 
-$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); $('editorContent').addEventListener('keydown', handleEditorEnter);
-document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
-
-const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (pending && data.ok) { pending.assetId = data.assetId; pending.url = data.url; insertImageNode(data.url, data.assetId, pending.name); state.pendingUploads.delete(String(data.requestId)); } else if (pending) { state.pendingUploads.delete(String(data.requestId)); toast(data.error || '图片写入失败', 'error'); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
+$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor;
+const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (!pending) return; state.pendingUploads.delete(String(data.requestId)); if (data.ok) { pending.assetId = String(data.assetId || ''); pending.url = String(data.url || ''); if (pending.resolve) pending.resolve({ url: pending.url, assetId: pending.assetId, name: pending.name }); } else { const message = data.error || '图片写入失败'; toast(message, 'error'); if (pending.reject) pending.reject(new Error(message)); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
 
 setTimeout(() => post({ type: 'ready' }), 0);
