@@ -406,3 +406,35 @@ a:focus-visible {
   --resize-hover-background-color: var(--ui-surface-muted);
   --resize-hover-icon-color: var(--ui-accent-strong);
 }
+
+/* The prose styles. Vditor's content themes (dist/css/content-theme/*.css) are
+   compiled with literal colours and no custom properties, and Vditor loads one
+   at runtime from preview.theme.path -- later than index.css, so their rules win
+   over the variable mapping above wherever both set a property. That is visible
+   in ir mode, not just the preview pane: the dark theme colours .vditor-ir__link
+   directly. Each rule is repeated verbatim under .note-editor, which adds one
+   class of specificity and so beats the original in every case.
+
+   Only the surfaces this app actually renders are remapped. The speech, abc and
+   graphviz rules are left as shipped: those features are not enabled. */
+.note-editor .vditor-reset { color: var(--ui-text); }
+.note-editor .vditor-reset a,
+.note-editor .vditor-ir__link { color: var(--ui-accent-strong); }
+.note-editor .vditor-reset h1,
+.note-editor .vditor-reset h2 { border-bottom: 1px solid var(--ui-line); }
+.note-editor .vditor-reset hr { background-color: var(--ui-line); }
+.note-editor .vditor-reset blockquote { color: var(--ui-muted); border-left: .25em solid var(--ui-line-strong); }
+.note-editor .vditor-reset iframe { border: 1px solid var(--ui-line); }
+.note-editor .vditor-reset table tr { border-top: 1px solid var(--ui-line); background-color: var(--ui-surface-soft); }
+.note-editor .vditor-reset table td,
+.note-editor .vditor-reset table th { border: 1px solid var(--ui-line); }
+.note-editor .vditor-reset table tbody tr:nth-child(2n) { background-color: var(--ui-surface-muted); }
+.note-editor .vditor-reset code:not(.hljs):not(.highlight-chroma) { background-color: var(--ui-code); }
+.note-editor .vditor-reset kbd { color: var(--ui-text); background-color: var(--ui-surface-soft); border: solid 1px var(--ui-line); box-shadow: inset 0 -1px 0 var(--ui-line); }
+.note-editor .vditor-copy svg { color: var(--ui-muted); }
+.note-editor .vditor-linkcard a { background-color: var(--ui-surface-soft); }
+.note-editor .vditor-linkcard a:visited .vditor-linkcard__abstract { color: var(--ui-subtle); }
+.note-editor .vditor-linkcard__title { color: var(--ui-text); }
+.note-editor .vditor-linkcard__abstract { color: var(--ui-muted); }
+.note-editor .vditor-linkcard__site { color: var(--ui-accent-strong); }
+.note-editor .vditor-linkcard__image { background-color: var(--ui-surface-muted); }
