@@ -28,6 +28,10 @@ capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
   config.ahk                       schema、字段 codec、INI 解析、默认覆盖层、类型读取与原子写入
   core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
+  clipboard/clipboard_store.ahk   安装目录下 SQLite 剪贴板历史数据库与事务
+  clipboard/clipboard_formats.ahk ClipboardAll 白名单格式解析、校验与恢复
+  clipboard/clipboard_history.ahk 历史采集队列、去重、收藏、容量和回放
+  clipboard/clipboard_panel.ahk   剪贴板历史 WebView2 面板与消息协议
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
   customHotkeys.ahk                [CustomHotkey] 全局快捷键重映射
@@ -204,8 +208,9 @@ Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，�
 
 ## 剪贴板、选区与独立剪贴板
 
-- `ClipboardAll()` 快照 + 恢复是唯一可靠的选择文本读取方式；`ClipboardWatcherSuspended`
-  在读取期间挂起独立剪贴板监听，防止把自己读到的内容当成用户的复制行为。
+- `ClipboardAll()` 快照 + 恢复是唯一可靠的选择文本读取方式；`ClipboardSuspendDepth` 与带
+  reason 的 token 在读取期间挂起独立剪贴板监听，防止把自己读到的内容当成用户的复制行为；
+  `ClipboardWatcherSuspended` 仅保留为管理器维护的兼容镜像。
 - `GetSelectedText(mode)` 三种模式继承自参考实现的「整行复制」规则：
   - `strict`：以换行结尾则视为「在 IDE 复制了整行」，丢弃（原版行为，编辑器无选中时会取到当前行）；
   - `multiline`：有内部换行（≥2 个）则保留——翻译面板用它，让多段文本能进翻译；
@@ -213,6 +218,10 @@ Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，�
   代价是：在完整选中当前行的编辑器里，qbar 会把当前行预填进去（可见、可编辑）。
 - 独立剪贴板在 `[Global] allowClipboard` 开关下于系统之外维护 3 组槽位，复制/剪切/粘贴键
   跟随 `allowClipboard` 与 `keyFunc_switchClipboard` 选择的「粘贴来源」。
+- 剪贴板历史由独立服务监听所有外部剪贴板变化，并将文本、图片、CF_HDROP 文件列表和常见
+  HTML/RTF 格式的白名单数据写入 `{app}\data\clipboard-history\clipboard-history.db`。
+  公共回调只登记序号；已有的槽位 `ClipboardAll()` 快照会被历史采集复用，内部临时写入由带
+  reason 的嵌套挂起 token 排除。历史回放会同步系统槽位，不重新抓取一次全量剪贴板。
 
 ## 与原版 capslock-plus 的主要差异
 
@@ -231,16 +240,10 @@ Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，�
 不重复造轮子；`capslock-plus/` 子目录只读参考，禁止修改。本轮仅按用户的明确授权删除了已确认
 无活动引用的退役文件，后续删除仍需单独授权。
 
-- **语法校验**：必须用 PowerShell 原生调用并等待退出码（Git Bash 的 MSYS 会把 `/validate`
-  改写成 Unix 路径，且管道 `head` 会制造 exit 0 假阳性）：
-
-  ```powershell
-  $p = Start-Process "D:\utils\AutoHotkey\v2\AutoHotkey64.exe" -ArgumentList `
-    '/ErrorStdOut','/validate','capslock_p2.ahk' -Wait -PassThru -RedirectStandardOutput out.txt
-  $p.ExitCode   # 0 = 通过；2 = 语法错误（详情在 out.txt）
-  ```
-
-  注意 `/validate` 不输出 `#Warn` 警告，只有重载脚本才暴露。
+- **语法校验**：做法与那几个会造成假阳性的坑（`/ErrorStdOut` 不能省、要读 `$LASTEXITCODE` 而不是
+  `Start-Process` 带重定向时的 `ExitCode`、不要在 Git Bash 里校验）统一记在 `AGENTS.md` 的
+  「工具坑记录」里，这里不再抄一份，免得两处各自漂移。注意 `/validate` 不输出 `#Warn` 警告，
+  只有重载脚本才暴露。
 - **命名**：`#Warn` 保持开启（仅关闭 `VarUnset`）；AHK v2 类名占用全局命名空间，局部变量不要
   与内置类名（如 `File`）或库类名（`Core`、`JSON` 等）同名。
 - **翻译引擎扩展入口**：新建 `lib/features/translate/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
