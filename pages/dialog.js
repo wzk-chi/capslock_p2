@@ -9,6 +9,7 @@
   function create(options = {}) {
     const dialog = document.createElement('dialog');
     dialog.className = 'app-dialog' + (options.className ? ' ' + options.className : '');
+    if (options.id) dialog.id = options.id;
 
     const body = document.createElement('div');
     body.className = 'app-dialog-body';
@@ -44,27 +45,40 @@
     actions.className = 'app-dialog-actions';
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.className = 'btn ghost';
-    cancelButton.textContent = options.cancelText || '取消';
+    cancelButton.className = options.cancelClassName || 'btn ghost';
+    cancelButton.hidden = options.cancelText === false;
+    cancelButton.textContent = cancelButton.hidden ? '' : (options.cancelText || '取消');
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'btn';
-    saveButton.textContent = options.saveText || '保存';
+    saveButton.className = options.saveClassName || 'btn';
+    saveButton.hidden = options.saveText === false;
+    saveButton.textContent = saveButton.hidden ? '' : (options.saveText || '保存');
     actions.append(cancelButton, saveButton);
+    actions.hidden = cancelButton.hidden && saveButton.hidden;
     body.append(head, editor, error, actions);
     dialog.appendChild(body);
     document.body.appendChild(dialog);
     dialog.setAttribute('aria-labelledby', title.id);
+    if (options.descriptionId)
+      dialog.setAttribute('aria-describedby', options.descriptionId);
+
+    const initialFocus = options.initialFocus === 'save'
+      ? saveButton : options.initialFocus === 'close' ? closeButton
+        : (cancelButton.hidden ? saveButton : cancelButton);
 
     let closeNotified = false;
+    let closeEventsToIgnore = 0;
     const notifyClosed = () => {
       if (closeNotified) return;
       closeNotified = true;
       if (typeof options.onClose === 'function') options.onClose(api);
     };
     const close = () => {
-      if (dialog.open) dialog.close();
-      else notifyClosed();
+      if (dialog.open) {
+        closeEventsToIgnore++;
+        dialog.close();
+      }
+      notifyClosed();
     };
     const api = {
       dialog,
@@ -77,6 +91,10 @@
       open() {
         closeNotified = false;
         if (!dialog.open) dialog.showModal();
+        requestAnimationFrame(() => {
+          if (dialog.open && !initialFocus.hidden && !initialFocus.disabled)
+            initialFocus.focus();
+        });
       },
       close,
       setTitle(value) {
@@ -88,11 +106,18 @@
       },
       setBusy(busy, label = '') {
         saveButton.disabled = !!busy;
-        saveButton.textContent = busy ? (label || '处理中…') : (options.saveText || '保存');
+        saveButton.textContent = busy ? (label || '处理中…')
+          : (options.saveText === false ? '' : (options.saveText || '保存'));
       }
     };
 
-    dialog.addEventListener('close', notifyClosed);
+    dialog.addEventListener('close', () => {
+      if (closeEventsToIgnore > 0) {
+        closeEventsToIgnore--;
+        return;
+      }
+      notifyClosed();
+    });
     dialog.addEventListener('cancel', event => {
       event.preventDefault();
       close();

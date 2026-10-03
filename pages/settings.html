@@ -166,8 +166,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .qbar-plugin-delete:hover { filter: brightness(1.04); }
 .qbar-plugin-delete .lucide { width: 13px; height: 13px; }
 .qbar-delete-dialog .app-dialog-editor { display: block; min-height: auto; }
-.qbar-delete-message { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.qbar-delete-dialog .btn.danger { background: var(--ui-danger); color: var(--ui-button-text); }
 .app-dialog-editor > .grid,
 .app-dialog-editor > .plugin-detail-section {
   padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
@@ -182,22 +180,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .app-dialog-editor .plugin-alias { max-width: none; }
 .app-dialog-editor .plugin-alias input { width: 128px; height: 34px; }
 .empty { padding: 24px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; }
-.result-dialog { width: min(460px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 13px; padding: 0; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
-.result-dialog::backdrop { background: rgba(10, 18, 32, .34); }
-.result-dialog-body { padding: 20px; }
-.result-dialog h3 { margin: 0 0 8px; font-size: 15px; }
-.result-dialog p { margin: 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.result-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.picker-dialog {
-  width: min(900px, calc(100% - 32px)); max-width: none; max-height: min(700px, calc(100% - 32px));
-  border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--panel); color: var(--ink); box-shadow: var(--shadow);
-}
-.picker-dialog::backdrop { background: rgba(10, 18, 32, .34); }
-.picker-dialog-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 20px; }
-.picker-dialog-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.picker-dialog-head h3 { margin: 0; font-size: 17px; }
-.picker-dialog-head span { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.picker-description { margin: -5px 0 0; color: var(--muted); font-size: 12px; }
+.picker-dialog .app-dialog-editor { grid-template-rows: auto minmax(0, 1fr); }
+.picker-dialog-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.picker-dialog-meta span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.picker-description { margin: 0; color: var(--muted); font-size: 12px; }
 .picker-table-wrap { min-height: 180px; max-height: 430px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
 .picker-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
 .picker-table th { position: sticky; top: 0; z-index: 1; padding: 9px 10px; border-bottom: 1px solid var(--line-strong); background: var(--panel-2); color: var(--muted); text-align: left; font-size: 11px; font-weight: 650; }
@@ -208,7 +194,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .picker-table tbody tr:last-child td { border-bottom: 0; }
 .picker-empty { display: none; padding: 34px 16px; color: var(--muted); text-align: center; font-size: 12px; }
 .picker-empty.visible { display: block; }
-.picker-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 820px) {
   .side { width: 178px; }
   .topbar { padding: 0 20px; }
@@ -380,38 +365,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     </div>
   </main>
 </div>
-<dialog id="testResultDialog" class="result-dialog">
-  <div class="result-dialog-body">
-    <h3 id="testResultTitle"></h3>
-    <p id="testResultMessage"></p>
-    <div class="result-dialog-actions"><button id="closeTestResult" class="btn">确定</button></div>
-  </div>
-</dialog>
-<dialog id="confirmDialog" class="result-dialog">
-  <div class="result-dialog-body">
-    <h3>未保存的修改</h3>
-    <p>当前有未保存的修改，确定放弃吗？</p>
-    <div class="result-dialog-actions"><button id="cancelConfirm" class="btn" autofocus>取消</button><button id="confirmAction" class="btn ghost">确定</button></div>
-  </div>
-</dialog>
-<dialog id="windowPickerDialog" class="picker-dialog">
-  <div class="picker-dialog-body">
-    <div class="picker-dialog-head"><h3 id="windowPickerTitle">选择</h3><span id="windowPickerCount"></span></div>
-    <p id="windowPickerDescription" class="picker-description"></p>
-    <div class="picker-table-wrap">
-      <table class="picker-table">
-        <thead><tr id="windowPickerHead"></tr></thead>
-        <tbody id="windowPickerRows"></tbody>
-      </table>
-      <div id="windowPickerEmpty" class="picker-empty">没有可选择的项目。</div>
-    </div>
-    <div class="picker-dialog-actions"><button id="cancelWindowPicker" class="btn ghost" type="button">取消</button><button id="selectWindowPicker" class="btn" type="button" disabled>选择</button></div>
-  </div>
-</dialog>
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false, pluginsDirty: false,
   dirtyFields: new Set(), confirmAction: '',
+  testResultDialog: null, confirmDialog: null, windowPickerDialog: null,
+  windowPickerClosedByHost: false,
   qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
   qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
   qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
@@ -439,25 +398,31 @@ const windowApplicationName = item => applicationName(item && item.exe) || compa
 
 function setWindowPickerSelection(index) {
   pickerState.selectedIndex = index;
-  $$('#windowPickerRows tr').forEach(row => row.classList.toggle('selected', Number(row.dataset.index) === index));
-  const selectButton = $('#selectWindowPicker');
+  const dialog = state.windowPickerDialog.dialog;
+  $$('#windowPickerRows tr', dialog).forEach(row => row.classList.toggle('selected', Number(row.dataset.index) === index));
+  const selectButton = state.windowPickerDialog.saveButton;
   selectButton.disabled = index < 1;
   if (index > 0) selectButton.focus();
 }
 
 function closeWindowPickerDialog() {
-  const dialog = $('#windowPickerDialog');
-  if (dialog.open) dialog.close();
+  if (!state.windowPickerDialog.dialog.open) {
+    state.windowPickerClosedByHost = false;
+    return;
+  }
+  state.windowPickerClosedByHost = true;
   pickerState.selectedIndex = 0;
-  $('#selectWindowPicker').disabled = true;
+  state.windowPickerDialog.saveButton.disabled = true;
+  state.windowPickerDialog.close();
 }
 
 window.receiveWindowPicker = function (payload) {
   const isApplication = payload && payload.kind === 'application';
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
   const columns = isApplication ? ['应用', '窗口数', '程序路径'] : ['窗口标题', '应用', '窗口类'];
-  const head = $('#windowPickerHead');
-  const body = $('#windowPickerRows');
+  const dialog = state.windowPickerDialog;
+  const head = $('#windowPickerHead', dialog.dialog);
+  const body = $('#windowPickerRows', dialog.dialog);
   head.replaceChildren();
   body.replaceChildren();
   columns.forEach(column => {
@@ -484,13 +449,13 @@ window.receiveWindowPicker = function (payload) {
   });
   pickerState.kind = payload && payload.kind || '';
   pickerState.selectedIndex = 0;
-  $('#windowPickerTitle').textContent = payload && payload.title || '选择';
-  $('#windowPickerDescription').textContent = payload && payload.description || '';
-  $('#windowPickerCount').textContent = rows.length ? rows.length + ' 项' : '';
-  $('#windowPickerEmpty').classList.toggle('visible', rows.length === 0);
-  $('#selectWindowPicker').disabled = true;
-  const dialog = $('#windowPickerDialog');
-  if (!dialog.open) dialog.showModal();
+  dialog.setTitle(payload && payload.title || '选择');
+  $('#windowPickerDescription', dialog.dialog).textContent = payload && payload.description || '';
+  $('#windowPickerCount', dialog.dialog).textContent = rows.length ? rows.length + ' 项' : '';
+  $('#windowPickerEmpty', dialog.dialog).classList.toggle('visible', rows.length === 0);
+  $('#windowPickerTable', dialog.dialog).hidden = rows.length === 0;
+  dialog.saveButton.disabled = true;
+  if (!dialog.dialog.open) dialog.open();
 };
 
 window.closeWindowPicker = closeWindowPickerDialog;
@@ -1529,9 +1494,9 @@ window.qbarPluginDeleted = function (ok, text, pluginId) {
 };
 window.settingsTestResult = function (ok, text) {
   setStatus('');
-  $('#testResultTitle').textContent = ok ? '测试正常' : '测试失败';
-  $('#testResultMessage').textContent = ok ? '连接正常' : (text || '未知错误');
-  $('#testResultDialog').showModal();
+  state.testResultDialog.setTitle(ok ? '测试正常' : '测试失败');
+  $('#testResultMessage', state.testResultDialog.dialog).textContent = ok ? '连接正常' : (text || '未知错误');
+  state.testResultDialog.open();
 };
 function requestSettingsExit(action) {
   if (!state.dirty) {
@@ -1539,11 +1504,88 @@ function requestSettingsExit(action) {
     return;
   }
   state.confirmAction = action;
-  const dialog = $('#confirmDialog');
-  if (!dialog.open) dialog.showModal();
-  requestAnimationFrame(() => $('#cancelConfirm').focus());
+  if (!state.confirmDialog.dialog.open) state.confirmDialog.open();
 }
 window.requestCloseSettings = () => requestSettingsExit('close');
+
+function setupSettingsDialogs() {
+  state.testResultDialog = AppDialog.create({
+    title: '测试结果', cancelText: false, saveText: false, initialFocus: 'close'
+  });
+  const resultMessage = document.createElement('p');
+  resultMessage.id = 'testResultMessage';
+  resultMessage.className = 'app-dialog-message';
+  state.testResultDialog.editor.appendChild(resultMessage);
+  state.testResultDialog.dialog.setAttribute('aria-describedby', resultMessage.id);
+
+  state.confirmDialog = AppDialog.create({
+    title: '未保存的修改', cancelText: '继续编辑', saveText: '放弃更改',
+    saveClassName: 'btn danger', initialFocus: 'cancel',
+    onClose: () => { state.confirmAction = ''; }
+  });
+  const confirmMessage = document.createElement('p');
+  confirmMessage.id = 'confirmDialogMessage';
+  confirmMessage.className = 'app-dialog-message';
+  confirmMessage.textContent = '当前有未保存的修改，确定放弃吗？';
+  state.confirmDialog.editor.appendChild(confirmMessage);
+  state.confirmDialog.dialog.setAttribute('aria-describedby', confirmMessage.id);
+  state.confirmDialog.saveButton.addEventListener('click', () => {
+    const action = state.confirmAction;
+    state.confirmAction = '';
+    state.confirmDialog.close();
+    state.dirty = false;
+    post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
+  });
+
+  state.windowPickerDialog = AppDialog.create({
+    title: '选择', className: 'picker-dialog app-dialog--wide',
+    cancelText: '取消', saveText: '选择',
+    onClose: () => {
+      const closedByHost = state.windowPickerClosedByHost;
+      state.windowPickerClosedByHost = false;
+      pickerState.selectedIndex = 0;
+      pickerState.kind = '';
+      state.windowPickerDialog.saveButton.disabled = true;
+      if (!closedByHost) post({ type: 'cancelWindowPicker' });
+    }
+  });
+  const pickerEditor = state.windowPickerDialog.editor;
+  const pickerMeta = document.createElement('div');
+  pickerMeta.className = 'picker-dialog-meta';
+  const pickerDescription = document.createElement('p');
+  pickerDescription.id = 'windowPickerDescription';
+  pickerDescription.className = 'picker-description';
+  const pickerCount = document.createElement('span');
+  pickerCount.id = 'windowPickerCount';
+  pickerMeta.append(pickerDescription, pickerCount);
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'picker-table-wrap';
+  const pickerTable = document.createElement('table');
+  pickerTable.id = 'windowPickerTable';
+  pickerTable.className = 'picker-table';
+  const tableHead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.id = 'windowPickerHead';
+  tableHead.appendChild(headRow);
+  const tableBody = document.createElement('tbody');
+  tableBody.id = 'windowPickerRows';
+  pickerTable.append(tableHead, tableBody);
+  const empty = document.createElement('div');
+  empty.id = 'windowPickerEmpty';
+  empty.className = 'picker-empty';
+  empty.textContent = '没有可选择的项目。';
+  tableWrap.append(pickerTable, empty);
+  pickerEditor.append(pickerMeta, tableWrap);
+  state.windowPickerDialog.dialog.setAttribute('aria-describedby', pickerDescription.id);
+  state.windowPickerDialog.saveButton.disabled = true;
+  state.windowPickerDialog.saveButton.addEventListener('click', confirmWindowPickerSelection);
+  state.windowPickerDialog.dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || event.target === state.windowPickerDialog.cancelButton || pickerState.selectedIndex < 1)
+      return;
+    event.preventDefault();
+    confirmWindowPickerSelection();
+  });
+}
 
 function setupQbarDialogs() {
   state.qbarPluginDialog = AppDialog.create({
@@ -1576,6 +1618,7 @@ function setupQbarDialogs() {
   state.qbarDeleteDialog.saveButton.addEventListener('click', confirmQbarPluginDelete);
 }
 
+setupSettingsDialogs();
 setupQbarDialogs();
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
@@ -1585,48 +1628,6 @@ $('#openLlmSettings').addEventListener('click', () => setPage('llm'));
 $('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
 $('#testYoudao').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('youdao')); });
 $('#testVolcengine').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('volcengine')); });
-$('#closeTestResult').addEventListener('click', () => $('#testResultDialog').close());
-$('#testResultDialog').addEventListener('click', event => {
-  if (event.target === event.currentTarget) event.currentTarget.close();
-});
-$('#cancelConfirm').addEventListener('click', () => {
-  state.confirmAction = '';
-  $('#confirmDialog').close();
-});
-$('#confirmAction').addEventListener('click', () => {
-  const action = state.confirmAction;
-  state.confirmAction = '';
-  $('#confirmDialog').close();
-  state.dirty = false;
-  post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
-});
-$('#confirmDialog').addEventListener('cancel', event => {
-  event.preventDefault();
-  state.confirmAction = '';
-  event.currentTarget.close();
-});
-$('#confirmDialog').addEventListener('click', event => {
-  if (event.target === event.currentTarget) {
-    state.confirmAction = '';
-    event.currentTarget.close();
-  }
-});
-$('#selectWindowPicker').addEventListener('click', confirmWindowPickerSelection);
-$('#cancelWindowPicker').addEventListener('click', () => post({ type: 'cancelWindowPicker' }));
-$('#windowPickerDialog').addEventListener('cancel', event => {
-  event.preventDefault();
-  post({ type: 'cancelWindowPicker' });
-});
-$('#windowPickerDialog').addEventListener('keydown', event => {
-  if (event.key !== 'Enter' || event.target === $('#cancelWindowPicker') || pickerState.selectedIndex < 1)
-    return;
-  event.preventDefault();
-  confirmWindowPickerSelection();
-});
-$('#windowPickerDialog').addEventListener('click', event => {
-  if (event.target === event.currentTarget)
-    post({ type: 'cancelWindowPicker' });
-});
 function createPlugin(kind) {
   openQbarCreateDialog(kind);
 }

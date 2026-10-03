@@ -8,6 +8,7 @@
 <script src="toast.js"></script>
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
+<script src="dialog.js"></script>
 <script src="windowbar.js"></script>
 <script src="../vendor/marked.min.js"></script>
 <script src="../vendor/purify.min.js"></script>
@@ -102,6 +103,9 @@ button { color: inherit; cursor: default; }
 .multi-button:hover, .multi-button:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
 .multi-button.danger { color: var(--ui-danger); }
 .multi-button:disabled { opacity: .45; }
+.note-action-dialog .app-dialog-editor { min-height: auto; align-content: start; }
+.note-dialog-field { display: grid; gap: 6px; color: var(--ui-muted); font-size: 11px; }
+.note-dialog-input { width: 100%; border: 1px solid var(--ui-line-strong); border-radius: 8px; padding: 9px 10px; background: var(--ui-surface); color: var(--ui-text); font: inherit; }
 .note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
 .context-menu { position: fixed; z-index: 50; width: 42px; min-width: 42px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .context-menu.hidden { display: none; }
@@ -175,8 +179,91 @@ const post = payload => { if (window.chrome && chrome.webview) chrome.webview.po
 window.setPinned = value => WindowBar.setPinned(value);
 window.setNativeWindowMode = value => WindowBar.setNativeWindowMode(value);
 const $ = id => document.getElementById(id);
-const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null };
+const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), savedRange: null, actionDialog: null, actionDialogResolve: null, actionDialogInput: null };
 let searchTimer = 0;
+let noteDialogContentSequence = 0;
+
+function settleNoteActionDialog(value) {
+  const resolve = state.actionDialogResolve;
+  state.actionDialogResolve = null;
+  state.actionDialogInput = null;
+  if (resolve) resolve(value);
+}
+
+function openNoteActionDialog({ title, message = '', fieldLabel = '', value = '', confirmText = '确定', danger = false }) {
+  if (state.actionDialogResolve) return Promise.resolve(null);
+  const dialog = state.actionDialog;
+  dialog.setTitle(title);
+  dialog.setError('');
+  dialog.saveButton.disabled = false;
+  dialog.saveButton.textContent = confirmText;
+  dialog.saveButton.classList.toggle('danger', danger);
+  const content = [];
+  let input = null;
+  if (message) {
+    const paragraph = document.createElement('p');
+    paragraph.id = `note-action-message-${++noteDialogContentSequence}`;
+    paragraph.className = 'app-dialog-message';
+    paragraph.textContent = message;
+    dialog.dialog.setAttribute('aria-describedby', paragraph.id);
+    content.push(paragraph);
+  } else {
+    dialog.dialog.removeAttribute('aria-describedby');
+  }
+  if (fieldLabel) {
+    const field = document.createElement('label');
+    field.className = 'note-dialog-field';
+    const label = document.createElement('span');
+    label.textContent = fieldLabel;
+    input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'note-dialog-input';
+    input.value = String(value ?? '');
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        dialog.saveButton.click();
+      }
+    });
+    field.append(label, input);
+    content.push(field);
+  }
+  dialog.editor.replaceChildren(...content);
+  state.actionDialogInput = input;
+  const result = new Promise(resolve => { state.actionDialogResolve = resolve; });
+  dialog.open();
+  if (input) requestAnimationFrame(() => {
+    if (dialog.dialog.open) {
+      input.focus();
+      input.select();
+    }
+  });
+  return result;
+}
+
+function confirmNoteAction(title, message, confirmText = '删除') {
+  return openNoteActionDialog({ title, message, confirmText, danger: true })
+    .then(result => result === true);
+}
+
+function requestNoteText(title, fieldLabel, value = '') {
+  return openNoteActionDialog({ title, fieldLabel, value, confirmText: '确定' });
+}
+
+function setupNoteActionDialog() {
+  state.actionDialog = AppDialog.create({
+    title: '确认', className: 'note-action-dialog', cancelText: '取消', saveText: '确定',
+    onClose: () => settleNoteActionDialog(null)
+  });
+  state.actionDialog.saveButton.addEventListener('click', () => {
+    if (!state.actionDialogResolve) return;
+    const value = state.actionDialogInput ? state.actionDialogInput.value : true;
+    settleNoteActionDialog(value);
+    state.actionDialog.close();
+  });
+}
+
+setupNoteActionDialog();
 
 // Windows hides the pointer while typing when that system option is enabled.
 // Native edit controls show it again on mouse movement; report that movement
@@ -251,7 +338,7 @@ function contextCopy() { const ids = contextIdsOrEmpty(); if (ids.length) post({
 function contextPaste() { const ids = contextIdsOrEmpty(); if (ids.length === 1) post({ type: 'pasteNote', noteId: ids[0] }); }
 function contextEdit() { const ids = contextIdsOrEmpty(); if (ids.length === 1) beginEdit(ids[0]); }
 function contextPin() { const ids = contextIdsOrEmpty(); if (ids.length) { const unpinned = state.notes.some(note => ids.includes(String(note.id)) && !note.pinned); post({ type: 'setPinned', noteIds: ids, value: unpinned }); } }
-function contextDelete() { const ids = contextTargetIds(); if (ids.length && confirm(`删除 ${ids.length} 篇笔记？`)) { hideContextMenu(); post({ type: 'deleteNotes', noteIds: ids }); } }
+async function contextDelete() { const ids = contextTargetIds(); if (ids.length && await confirmNoteAction('删除笔记', `删除 ${ids.length} 篇笔记？`)) { hideContextMenu(); post({ type: 'deleteNotes', noteIds: ids }); } }
 function contextToggleMulti() { if (!state.multi && state.contextNoteId) { state.selectedIds.clear(); state.selectedIds.add(state.contextNoteId); } toggleMulti(); hideContextMenu(); }
 function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; (note.lines || []).forEach(line => { const button = document.createElement('button'); button.type = 'button'; button.className = 'preview-line'; button.textContent = line; button.setAttribute('aria-label', '单击复制，双击粘贴'); button.onclick = () => post({ type: 'copyLine', noteId: note.id, text: line }); button.ondblclick = event => { event.preventDefault(); post({ type: 'pasteLine', noteId: note.id, text: line }); }; lines.appendChild(button); }); entry.appendChild(lines); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
 function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }
@@ -273,15 +360,41 @@ function formatStamp(value) {
 function openEditor(payload) { state.editor = payload.editor; state.editor.tags = Array.isArray(state.editor.tags) ? state.editor.tags.slice() : []; $('editorTitle').value = state.editor.title || ''; $('editorTagInput').value = ''; renderEditorTags(); setEditorContent(editorMarkdown(state.editor.content || '', state.editor.assets || [])); state.editor.originalSnapshot = editorSnapshot(); toggleEditor(true); $('editorTitle').focus(); }
 function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').value, tags: state.editor.tags || [], content: contentMarkdown() }); }
 function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
-async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !confirm('放弃当前修改？')) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
+async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !(await confirmNoteAction('放弃修改', '放弃当前修改？', '放弃修改'))) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
 async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
 function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: contentMarkdown() }); }
 function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
 function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
-function updateTag(action) { const current = state.currentTag && state.currentTag !== '__none__' ? state.tags.find(tag => tag.name === state.currentTag) : null; if (action === 'add') { const name = prompt('标签名称'); if (name) post({ type: 'addTag', name }); } else if (action === 'rename' && current) { const name = prompt('标签名称', current.name); if (name) post({ type: 'renameTag', tagId: current.id, name }); } else if (action === 'delete' && current && confirm(`删除标签“${current.name}”？`)) post({ type: 'deleteTag', tagId: current.id }); }
-function applyTool(button) { saveSelection(); const command = button.dataset.command; if (command === 'createLink') { const url = prompt('链接地址'); if (url) document.execCommand('createLink', false, url); } else if (command === 'formatBlock') document.execCommand(command, false, button.dataset.value); else document.execCommand(command, false, null); $('editorContent').focus(); }
+async function updateTag(action) {
+  const current = state.currentTag && state.currentTag !== '__none__' ? state.tags.find(tag => tag.name === state.currentTag) : null;
+  if (action === 'add') {
+    const name = await requestNoteText('添加标签', '标签名称');
+    if (name !== null && name.trim()) post({ type: 'addTag', name: name.trim() });
+  } else if (action === 'rename' && current) {
+    const name = await requestNoteText('修改标签', '标签名称', current.name);
+    if (name !== null && name.trim()) post({ type: 'renameTag', tagId: current.id, name: name.trim() });
+  } else if (action === 'delete' && current && await confirmNoteAction('删除标签', `删除标签“${current.name}”？`)) {
+    post({ type: 'deleteTag', tagId: current.id });
+  }
+}
+async function deleteSelectedNotes() {
+  const ids = Array.from(state.selectedIds);
+  if (ids.length && await confirmNoteAction('删除笔记', `删除 ${ids.length} 篇笔记？`))
+    post({ type: 'deleteNotes', noteIds: ids });
+}
+async function applyTool(button) {
+  saveSelection();
+  const command = button.dataset.command;
+  if (command === 'createLink') {
+    const url = await requestNoteText('插入链接', '链接地址');
+    restoreSelection();
+    if (url) document.execCommand('createLink', false, url);
+  } else if (command === 'formatBlock') document.execCommand(command, false, button.dataset.value);
+  else document.execCommand(command, false, null);
+  $('editorContent').focus();
+}
 
-$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = () => { const ids = Array.from(state.selectedIds); if (ids.length && confirm(`删除 ${ids.length} 篇笔记？`)) post({ type: 'deleteNotes', noteIds: ids }); }; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
+$('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor; $('insertImage').onclick = () => { saveSelection(); $('imageInput').click(); }; $('imageInput').addEventListener('change', event => { uploadFiles(event.target.files); event.target.value = ''; }); $('editorContent').addEventListener('paste', event => { const files = Array.from(event.clipboardData.files || []).filter(file => file.type.startsWith('image/')); event.preventDefault(); if (files.length) uploadFiles(files); else document.execCommand('insertText', false, event.clipboardData.getData('text/plain') || ''); }); document.querySelectorAll('.tool').forEach(button => { if (button.id !== 'insertImage') button.onclick = () => applyTool(button); });
 
 const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (pending && data.ok) { pending.assetId = data.assetId; pending.url = data.url; insertImageNode(data.url, data.assetId, pending.name); state.pendingUploads.delete(String(data.requestId)); } else if (pending) { state.pendingUploads.delete(String(data.requestId)); toast(data.error || '图片写入失败', 'error'); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);

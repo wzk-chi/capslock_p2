@@ -147,6 +147,14 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 - `lib/app/core.ahk` 的 `ShowMsg()` 是不依赖 WebView 页面的 AHK 原生 `ToolTip`，用于全局快捷键和宿主错误反馈；
   它与页面 Toast 属于不同通知路径。
 
+### 统一弹窗
+
+- 所有 WebView2 页面弹窗统一由 `pages/dialog.js` 的 `AppDialog.create(options)` 创建，窗口外框、标题栏、关闭按钮、遮罩、按钮区、焦点行为及忙碌/错误状态由共享组件负责；外观和主题变量集中在 `pages/theme.css`。
+- 页面只创建弹窗正文并绑定业务回调；允许通过 `className` 添加语义尺寸修饰（修饰类及共用样式放在 `theme.css`），页面局部样式仅负责正文布局，不得重新实现独立弹窗外框、遮罩、按钮区或颜色主题。
+- 统一弹窗负责关闭按钮、Esc 和点击遮罩的关闭行为，并通过 `onClose` 让页面清理业务状态；需要提交/取消的弹窗使用共享操作按钮，纯提示弹窗可隐藏按钮区。动态正文应使用文本节点写入，并为有说明的弹窗设置 `aria-describedby`。
+- 页面不得调用浏览器原生 `alert()`、`confirm()` 或 `prompt()`；确认、文本输入等交互也必须用 `AppDialog` 实现，避免出现不受应用控制的浏览器弹框。
+- 新增弹窗不得直接声明原生 `<dialog>` 或在页面自行调用 `showModal()`；应复用 `AppDialog`，以保证设置、选择器、确认和工具配置弹窗的交互与视觉一致。使用 `AppDialog` 的页面须加载 `dialog.js`，安装清单 `tools/capslock_p2.iss` 也须包含该共享脚本。
+
 面板实例的骨架（创建 GUI → `PanelHostEnsure()` → 导航回调置 `pageReady` →
 `PanelHostShow/Hide()`）在 `panelHost.ahk` 集中实现，功能模块只处理各自职责：
 
