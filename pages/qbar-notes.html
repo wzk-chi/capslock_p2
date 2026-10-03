@@ -179,6 +179,16 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
   <div class="context-separator"></div>
   <button id="contextMulti" type="button" role="menuitem" aria-label="多选" title="多选"><i data-lucide="list-checks"></i><span data-label>多选</span></button>
 </div>
+<!-- Vditor decides how to draw its toolbar icons by asking whether an element
+     with this exact id exists: if it does it emits <use xlink:href="#vditor-icon-x">
+     against the SVG sprite, otherwise it falls back to inline paths. The sprite
+     is what this file injects into the body, so loading it here keeps both the
+     element and the sprite present. It also short-circuits Vditor's own loader:
+     that one ends in a synchronous XMLHttpRequest, which file:// blocks, and the
+     blocked response left an empty element behind -- the toolbar rendered its
+     dividers with no icons at all. It has to sit after <body> exists because the
+     file writes into document.body, and before the script below runs. -->
+<script src="../vendor/vditor/dist/js/icons/ant.js" id="vditorIconScript"></script>
 <script>
 WindowBar.init();
 const post = payload => { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload)); };
@@ -188,6 +198,11 @@ const $ = id => document.getElementById(id);
 // Vditor resolves its on-demand assets (lute, icons, i18n) as `${cdn}/dist/...`,
 // so this must point at the vendored copy: a CDN default would need the network.
 const VEDITOR_CDN = '../vendor/vditor';
+// The media host every asset URL is built from. Any occurrence of it left in
+// the editor content at save time is an image the reverse substitution could not
+// map back to an asset:<id> reference, and storing that URL would lose the
+// picture.
+const MEDIA_HOST = 'https://qbar-notes.local/';
 // Editor and renderer lifecycle facts, forwarded by the host into
 // capslock_p2-debug.log. Only stage names, counts, timings and error *names* go
 // here: the log rules in docs/architecture.md forbid user input and content, and
@@ -319,6 +334,16 @@ function handleEditorUpload(files) {
   if (!list.length) return null;
   Promise.all(list.map(uploadFile))
     .then(results => results.filter(Boolean).forEach(result => {
+      // Register the upload before inserting it. withAssetRefs() turns the media
+      // URL back into asset:<id> on save, and it only knows the assets the note
+      // started with -- which is an empty list for a brand new note. Without
+      // this the URL would be stored as-is, no asset row would be created, and
+      // the image file would be deleted for being unreferenced.
+      if (state.editor && result.assetId && result.url) {
+        const assets = (state.editor.assets || []).filter(asset => String(asset.id) !== String(result.assetId));
+        assets.push({ id: result.assetId, url: result.url });
+        state.editor.assets = assets;
+      }
       if (noteEditorReady && result.url) noteEditor.insertValue(`![${result.name || '图片'}](${result.url})`);
     }))
     .catch(error => { diagError('upload-failed', error); toast(String((error && error.message) || error || '图片写入失败'), 'error'); });
@@ -454,7 +479,7 @@ function editorSnapshot() { return JSON.stringify({ title: $('editorTitle').valu
 function editorIsDirty() { return !!state.editor && (state.pendingUploads.size > 0 || editorSnapshot() !== state.editor.originalSnapshot); }
 async function requestCancelEditor() { if (!state.editor || state.editor.saving || state.editor.canceling) return; if (editorIsDirty() && !(await AppDialog.confirm({ title: '放弃修改', message: '放弃当前修改？', confirmText: '放弃修改', tone: 'danger' }))) return; const editorId = state.editor.editorId; state.editor.canceling = true; await cancelPendingUploads(editorId); if (state.editor && state.editor.editorId === editorId) post({ type: 'cancelEdit', editorId }); }
 async function closeEditor() { const editorId = state.editor ? state.editor.editorId : ''; if (editorId) await cancelPendingUploads(editorId); state.pendingUploads.clear(); state.editor = null; toggleEditor(false); }
-function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; if (!noteEditorReady) { toast('编辑器还没准备好，先不要保存', 'error'); return; } state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content: noteEditorMarkdown() }); }
+function saveEditor() { if (!state.editor || state.pendingUploads.size || state.editor.saving || state.editor.canceling) return; if (!noteEditorReady) { toast('编辑器还没准备好，先不要保存', 'error'); return; } const content = noteEditorMarkdown(); if (content.includes(MEDIA_HOST)) { diag('save-refused', 'unmapped media url'); toast('正文里还有没能转回引用的图片地址，保存会丢图。请删掉那张图再保存', 'error'); return; } state.editor.saving = true; $('saveEdit').disabled = true; state.editor.saveSeq = Number(state.editor.saveSeq || 0) + 1; diag('save', 'refs=' + (content.match(/asset:/g) || []).length + ' assets=' + ((state.editor.assets || []).length)); post({ type: 'saveNote', editorId: state.editor.editorId, saveSeq: state.editor.saveSeq, noteId: state.editor.noteId || '', title: $('editorTitle').value.trim(), tags: state.editor.tags || [], content }); }
 function beginEdit(noteId = '') { post({ type: 'beginEdit', noteId }); }
 function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.selectedIds.clear(); renderNotes(); updateSelection(); }
 async function updateTag(action) {
