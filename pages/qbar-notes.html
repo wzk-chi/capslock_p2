@@ -188,6 +188,18 @@ const $ = id => document.getElementById(id);
 // Vditor resolves its on-demand assets (lute, icons, i18n) as `${cdn}/dist/...`,
 // so this must point at the vendored copy: a CDN default would need the network.
 const VEDITOR_CDN = '../vendor/vditor';
+// Editor and renderer lifecycle facts, forwarded by the host into
+// capslock_p2-debug.log. Only stage names, counts, timings and error *names* go
+// here: the log rules in docs/architecture.md forbid user input and content, and
+// a renderer error message can quote the Markdown it choked on.
+let diagPreviewLogged = false;
+function diag(stage, detail) {
+  try { post({ type: 'diagnostic', stage: String(stage), detail: String(detail == null ? '' : detail).replace(/\s+/g, ' ').slice(0, 120) }); } catch (error) { /* never let diagnostics break the page */ }
+}
+function diagError(prefix, error) {
+  diag(prefix, 'name=' + ((error && error.name) || 'unknown') + ' msgLen=' + String((error && error.message) || '').length);
+}
+diag('page-load', 'vditor=' + typeof Vditor + ' preview=' + typeof NotesPreview);
 const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map() };
 let searchTimer = 0;
 
@@ -250,8 +262,10 @@ function applyEditorContent() {
 }
 function ensureNoteEditor() {
   if (noteEditor) return;
-  if (typeof Vditor === 'undefined') { toast('Markdown 编辑器加载失败', 'error'); return; }
+  if (typeof Vditor === 'undefined') { diag('editor-missing', 'Vditor global absent'); toast('Markdown 编辑器加载失败', 'error'); return; }
   const dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const mountStart = Date.now();
+  diag('editor-mount', 'theme=' + (dark ? 'dark' : 'classic'));
   noteEditor = new Vditor('noteEditor', {
     cdn: VEDITOR_CDN,
     mode: 'ir',
@@ -278,7 +292,13 @@ function ensureNoteEditor() {
               'quote', 'line', 'code', 'inline-code', 'table', 'upload', '|',
               'edit-mode', 'both', 'fullscreen', 'outline'],
     upload: { accept: 'image/*', handler: handleEditorUpload },
-    after: () => { noteEditorReady = true; applyEditorContent(); }
+    after: () => {
+      noteEditorReady = true;
+      // The engine (lute) loads on demand, so this is the first proof that the
+      // vendored cdn path actually resolved.
+      diag('editor-ready', 'ms=' + (Date.now() - mountStart) + ' lute=' + (document.querySelectorAll('script[src*="lute"]').length));
+      applyEditorContent();
+    }
   });
 }
 // Images go over the WebView2 bridge the editor always used: assetStart -> the
@@ -300,7 +320,7 @@ function handleEditorUpload(files) {
     .then(results => results.filter(Boolean).forEach(result => {
       if (noteEditorReady && result.url) noteEditor.insertValue(`![${result.name || '图片'}](${result.url})`);
     }))
-    .catch(error => toast(String((error && error.message) || error || '图片写入失败'), 'error'));
+    .catch(error => { diagError('upload-failed', error); toast(String((error && error.message) || error || '图片写入失败'), 'error'); });
   return null;
 }
 async function stopWritable(writable) { if (!writable) return; try { if (typeof writable.abort === 'function') await writable.abort(); else await writable.close(); } catch {} }
@@ -398,9 +418,10 @@ function fillPreview(container, note) {
       const holder = document.createElement('div');
       holder.innerHTML = html;
       const picked = NotesPreview.budget(NotesPreview.collect(holder), { maxRows: 12 });
+      if (!diagPreviewLogged) { diagPreviewLogged = true; diag('preview-ok', 'rows=' + picked.rows.length + ' truncated=' + picked.truncated); }
       picked.rows.forEach(row => container.appendChild(previewRowElement(note, row, assetByUrl)));
     })
-    .catch(() => previewFallback(container, substituteAssetImages(note.markdown, note.assets).source));
+    .catch(error => { diagError('preview-failed', error); previewFallback(container, substituteAssetImages(note.markdown, note.assets).source); });
 }
 function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; entry.appendChild(lines); fillPreview(lines, note); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
 function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }

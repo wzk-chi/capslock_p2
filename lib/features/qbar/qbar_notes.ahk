@@ -365,6 +365,12 @@ NotesHandleMessage(msg) {
             ; mouse-vanish-on-typing behavior. Restore it on page mouse moves,
             ; matching the behavior of native edit controls.
             ShowSystemCursor()
+        case "diagnostic":
+            ; The page reports editor and renderer lifecycle facts so a WebView2
+            ; failure can be diagnosed from this log instead of from a
+            ; screenshot. The page is responsible for keeping content out of
+            ; them; see the log rules in docs/architecture.md.
+            DebugLog("notes " . LLMMsgField(msg, "stage") . " " . LLMMsgField(msg, "detail"))
         case "hide":
             NotesHide()
     }
