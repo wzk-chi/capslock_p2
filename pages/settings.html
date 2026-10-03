@@ -368,9 +368,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false, pluginsDirty: false,
-  dirtyFields: new Set(), confirmAction: '',
-  testResultDialog: null, confirmDialog: null, windowPickerDialog: null,
-  windowPickerClosedByHost: false,
+  dirtyFields: new Set(), windowPickerDialog: null,
   qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
   qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
   qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
@@ -383,7 +381,7 @@ const post = payload => {
   if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload));
 };
 const clone = value => JSON.parse(JSON.stringify(value || {}));
-const pickerState = { selectedIndex: 0, kind: '' };
+const pickerState = { selectedIndex: 0, kind: '', root: null };
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const compactWindowText = value => {
@@ -398,64 +396,87 @@ const windowApplicationName = item => applicationName(item && item.exe) || compa
 
 function setWindowPickerSelection(index) {
   pickerState.selectedIndex = index;
-  const dialog = state.windowPickerDialog.dialog;
-  $$('#windowPickerRows tr', dialog).forEach(row => row.classList.toggle('selected', Number(row.dataset.index) === index));
-  const selectButton = state.windowPickerDialog.saveButton;
-  selectButton.disabled = index < 1;
-  if (index > 0) selectButton.focus();
+  if (pickerState.root)
+    $$('#windowPickerRows tr', pickerState.root).forEach(row => row.classList.toggle('selected', Number(row.dataset.index) === index));
+  if (state.windowPickerDialog) {
+    state.windowPickerDialog.setActionEnabled('select', index >= 1);
+    if (index > 0) state.windowPickerDialog.focusAction('select');
+  }
 }
 
 function closeWindowPickerDialog() {
-  if (!state.windowPickerDialog.dialog.open) {
-    state.windowPickerClosedByHost = false;
-    return;
-  }
-  state.windowPickerClosedByHost = true;
+  if (!state.windowPickerDialog) return;
+  const dialog = state.windowPickerDialog;
+  state.windowPickerDialog = null;
   pickerState.selectedIndex = 0;
-  state.windowPickerDialog.saveButton.disabled = true;
-  state.windowPickerDialog.close();
+  pickerState.root = null;
+  dialog.close({ action: 'host' });
 }
 
 window.receiveWindowPicker = function (payload) {
+  closeWindowPickerDialog();
   const isApplication = payload && payload.kind === 'application';
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
   const columns = isApplication ? ['应用', '窗口数', '程序路径'] : ['窗口标题', '应用', '窗口类'];
-  const dialog = state.windowPickerDialog;
-  const head = $('#windowPickerHead', dialog.dialog);
-  const body = $('#windowPickerRows', dialog.dialog);
-  head.replaceChildren();
-  body.replaceChildren();
-  columns.forEach(column => {
-    const cell = document.createElement('th');
-    cell.textContent = column;
-    head.appendChild(cell);
-  });
-  rows.forEach((item, offset) => {
-    const index = offset + 1;
-    const row = document.createElement('tr');
-    row.dataset.index = String(index);
-    const values = isApplication ? [item.name, item.count, item.path] : [item.title, item.exe, item.class];
-    values.forEach(value => {
-      const cell = document.createElement('td');
-      cell.textContent = value == null ? '' : String(value);
-      row.appendChild(cell);
-    });
-    row.addEventListener('click', () => setWindowPickerSelection(index));
-    row.addEventListener('dblclick', () => {
-      setWindowPickerSelection(index);
-      confirmWindowPickerSelection();
-    });
-    body.appendChild(row);
-  });
   pickerState.kind = payload && payload.kind || '';
   pickerState.selectedIndex = 0;
-  dialog.setTitle(payload && payload.title || '选择');
-  $('#windowPickerDescription', dialog.dialog).textContent = payload && payload.description || '';
-  $('#windowPickerCount', dialog.dialog).textContent = rows.length ? rows.length + ' 项' : '';
-  $('#windowPickerEmpty', dialog.dialog).classList.toggle('visible', rows.length === 0);
-  $('#windowPickerTable', dialog.dialog).hidden = rows.length === 0;
-  dialog.saveButton.disabled = true;
-  if (!dialog.dialog.open) dialog.open();
+  let controller;
+  controller = AppDialog.open({
+    title: payload && payload.title || '选择',
+    size: 'wide',
+    className: 'picker-dialog',
+    actions: [
+      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'select', text: '选择', disabled: true }
+    ],
+    initialFocus: 'cancel',
+    render(root, api) {
+      pickerState.root = root;
+      const meta = document.createElement('div'); meta.className = 'picker-dialog-meta';
+      const description = document.createElement('p'); description.className = 'picker-description';
+      description.id = 'app-dialog-picker-description';
+      description.textContent = payload && payload.description || '';
+      api.setDescriptionId(description.id);
+      const count = document.createElement('span'); count.className = 'picker-count';
+      count.textContent = rows.length ? rows.length + ' 项' : '';
+      meta.append(description, count);
+      const tableWrap = document.createElement('div'); tableWrap.className = 'picker-table-wrap';
+      const table = document.createElement('table'); table.className = 'picker-table';
+      const head = document.createElement('thead'); const headRow = document.createElement('tr');
+      columns.forEach(column => { const cell = document.createElement('th'); cell.textContent = column; headRow.appendChild(cell); });
+      head.appendChild(headRow);
+      const body = document.createElement('tbody');
+      rows.forEach((item, offset) => {
+        const index = offset + 1;
+        const row = document.createElement('tr'); row.dataset.index = String(index);
+        const values = isApplication ? [item.name, item.count, item.path] : [item.title, item.exe, item.class];
+        values.forEach(value => { const cell = document.createElement('td'); cell.textContent = value == null ? '' : String(value); row.appendChild(cell); });
+        row.addEventListener('click', () => setWindowPickerSelection(index));
+        row.addEventListener('dblclick', () => { setWindowPickerSelection(index); confirmWindowPickerSelection(); });
+        body.appendChild(row);
+      });
+      const empty = document.createElement('div'); empty.className = 'picker-empty';
+      empty.textContent = '没有可选择的项目。'; empty.classList.toggle('visible', rows.length === 0);
+      if (!rows.length) table.hidden = true;
+      table.append(head, body); tableWrap.append(table, empty);
+      root.append(meta, tableWrap);
+    },
+    onAction(id, api) {
+      if (id === 'select') {
+        confirmWindowPickerSelection();
+        return api.keepOpen();
+      }
+    },
+    onClose(result) {
+      if (state.windowPickerDialog === controller) state.windowPickerDialog = null;
+      pickerState.selectedIndex = 0;
+      pickerState.kind = '';
+      pickerState.root = null;
+      if (!result || (result.action !== 'host' && result.action !== 'select'))
+        post({ type: 'cancelWindowPicker' });
+    }
+  });
+  state.windowPickerDialog = controller;
 };
 
 window.closeWindowPicker = closeWindowPickerDialog;
@@ -953,43 +974,75 @@ function openQbarToolDialog(plugin) {
   state.qbarPluginDraft = clone(plugin);
   state.qbarPluginToolSettings = clone(plugin.toolSettings || {});
   state.qbarPluginSaving = false;
-  renderQbarToolDialog();
-  state.qbarPluginDialog.open();
+  state.qbarPluginDialog = AppDialog.open({
+    title: qbarToolName(plugin) + '设置',
+    actions: [
+      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'save', text: '保存' }
+    ],
+    render(root) { renderQbarToolDialog(root); },
+    onAction(id, api) {
+      if (id === 'save') {
+        saveQbarToolDialog(api);
+        return api.keepOpen();
+      }
+    },
+    onClose() {
+      state.qbarPluginDraft = null;
+      state.qbarPluginToolSettings = {};
+      state.qbarPluginSaving = false;
+      state.qbarPluginDialog = null;
+    }
+  });
 }
 function closeQbarToolDialog() {
-  if (state.qbarPluginDialog) state.qbarPluginDialog.close();
+  const dialog = state.qbarPluginDialog;
+  state.qbarPluginDialog = null;
+  if (dialog) dialog.close({ action: 'cancel' });
   state.qbarPluginDraft = null;
   state.qbarPluginToolSettings = {};
   state.qbarPluginSaving = false;
 }
 function openQbarDeleteDialog(plugin) {
-  if (!plugin || !plugin.deletable || !state.qbarDeleteDialog) return;
+  if (!plugin || !plugin.deletable) return;
   state.qbarDeleteTarget = { pluginId: plugin.pluginId, name: qbarToolName(plugin) };
   state.qbarDeleteSaving = false;
-  state.qbarDeleteDialog.setTitle('删除工具');
-  state.qbarDeleteDialog.setError('');
-  state.qbarDeleteDialog.setBusy(false);
-  const editor = state.qbarDeleteDialog.editor;
-  editor.replaceChildren();
-  const message = document.createElement('p');
-  message.className = 'qbar-delete-message';
-  message.textContent = `确定删除“${state.qbarDeleteTarget.name}”吗？删除后会从 Qbar 工具列表移除。`;
-  editor.append(message);
-  state.qbarDeleteDialog.open();
+  state.qbarDeleteDialog = AppDialog.open({
+    title: '删除工具',
+    className: 'qbar-delete-dialog',
+    message: `确定删除“${state.qbarDeleteTarget.name}”吗？删除后会从 Qbar 工具列表移除。`,
+    actions: [
+      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'delete', text: '删除', kind: 'danger' }
+    ],
+    onAction(id, api) {
+      if (id === 'delete') {
+        confirmQbarPluginDelete(api);
+        return api.keepOpen();
+      }
+    },
+    onClose() {
+      state.qbarDeleteTarget = null;
+      state.qbarDeleteSaving = false;
+      state.qbarDeleteDialog = null;
+    }
+  });
 }
-function confirmQbarPluginDelete() {
+function confirmQbarPluginDelete(dialog = state.qbarDeleteDialog) {
   const target = state.qbarDeleteTarget;
-  if (!target || state.qbarDeleteSaving) return;
+  if (!target || state.qbarDeleteSaving || !dialog) return;
   state.qbarDeleteSaving = true;
-  state.qbarDeleteDialog.setError('');
-  state.qbarDeleteDialog.setBusy(true, '删除中…');
+  dialog.setError('');
+  dialog.setBusy(true, '删除中…', 'delete');
   post({ type: 'deleteQbarPlugin', pluginId: target.pluginId });
 }
 function qbarCreateSetError(message = '') {
   if (state.qbarCreateDialog) state.qbarCreateDialog.setError(message);
 }
 function closeQbarCreateDialog() {
-  if (state.qbarCreateDialog) state.qbarCreateDialog.close();
+  const dialog = state.qbarCreateDialog;
+  state.qbarCreateDialog = null;
+  if (dialog) dialog.close({ action: 'cancel' });
   state.qbarCreateKind = '';
   state.qbarCreateDraft = null;
   state.qbarCreateSaving = false;
@@ -1017,23 +1070,39 @@ function openQbarCreateDialog(kind) {
       : { command: '', runAs: false, argumentMode: 'append' }
   };
   state.qbarCreateSaving = false;
-  renderQbarCreateDialog();
-  state.qbarCreateDialog.open();
-  requestAnimationFrame(() => $('#qbarCreateName')?.focus());
+  state.qbarCreateDialog = AppDialog.open({
+    title: search ? '添加网页搜索' : '添加快捷命令',
+    initialFocus: 'content',
+    actions: [
+      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'create', text: '添加' }
+    ],
+    render(root) { renderQbarCreateDialog(root); },
+    onAction(id, api) {
+      if (id === 'create') {
+        saveQbarCreateDialog(api);
+        return api.keepOpen();
+      }
+    },
+    onClose() {
+      state.qbarCreateKind = '';
+      state.qbarCreateDraft = null;
+      state.qbarCreateSaving = false;
+      state.qbarCreateDialog = null;
+    }
+  });
 }
-function renderQbarCreateDialog() {
+function renderQbarCreateDialog(editor) {
   const draft = state.qbarCreateDraft;
   if (!draft) return;
   const search = state.qbarCreateKind === 'search';
-  state.qbarCreateDialog.setTitle(search ? '添加网页搜索' : '添加快捷命令');
   qbarCreateSetError('');
-  const editor = state.qbarCreateDialog.editor;
   editor.replaceChildren();
 
   const general = document.createElement('div'); general.className = 'grid';
   const name = qbarCreateField('工具名称', draft.displayName, search ? '例如：百度' : '例如：开发命令', false,
     value => { draft.displayName = value; });
-  name.input.id = 'qbarCreateName';
+  name.input.autofocus = true;
   general.append(name.field);
   editor.append(general);
 
@@ -1071,9 +1140,9 @@ function renderQbarCreateDialog() {
   editor.append(aliasSection);
   refreshIcons();
 }
-function saveQbarCreateDialog() {
+function saveQbarCreateDialog(dialog = state.qbarCreateDialog) {
   const draft = state.qbarCreateDraft;
-  if (!draft || state.qbarCreateSaving) return;
+  if (!draft || state.qbarCreateSaving || !dialog) return;
   draft.displayName = String(draft.displayName || '').trim();
   draft.aliases = [...new Set((draft.aliases || [])
     .map(alias => String(alias || '').trim()).filter(Boolean))];
@@ -1086,7 +1155,7 @@ function saveQbarCreateDialog() {
     return qbarCreateSetError('请输入执行命令或程序路径。');
 
   state.qbarCreateSaving = true;
-  state.qbarCreateDialog.setBusy(true, '添加中…');
+  dialog.setBusy(true, '添加中…', 'create');
   qbarCreateSetError('');
   post({ type: 'createPlugin', kind: state.qbarCreateKind, displayName: draft.displayName,
     aliases: draft.aliases, settings: clone(draft.settings) });
@@ -1109,12 +1178,10 @@ function applySavedQbarPluginToDraft() {
     setStatus('');
   }
 }
-function renderQbarToolDialog() {
+function renderQbarToolDialog(editor) {
   const plugin = state.qbarPluginDraft;
   if (!plugin) return;
-  const editor = state.qbarPluginDialog.editor;
   editor.replaceChildren();
-  state.qbarPluginDialog.setTitle(qbarToolName(plugin) + '设置');
   const general = document.createElement('div'); general.className = 'grid';
   const nameField = document.createElement('label'); nameField.className = 'field';
   const nameLabel = document.createElement('span'); nameLabel.textContent = '工具名称';
@@ -1183,16 +1250,16 @@ function renderQbarToolDialog() {
   editor.append(commandSection);
   refreshIcons();
 }
-function saveQbarToolDialog() {
+function saveQbarToolDialog(dialog = state.qbarPluginDialog) {
   const plugin = state.qbarPluginDraft;
-  if (!plugin || state.qbarPluginSaving) return;
+  if (!plugin || state.qbarPluginSaving || !dialog) return;
   const payloadPlugin = clone(plugin);
   delete payloadPlugin.toolSettings;
   (payloadPlugin.commands || []).forEach(command => {
     command.aliases = [...new Set((command.aliases || []).map(alias => String(alias || '').trim()).filter(Boolean))];
   });
   state.qbarPluginSaving = true;
-  state.qbarPluginDialog.setBusy(true, '保存中…');
+  dialog.setBusy(true, '保存中…', 'save');
   post({ type: 'saveQbarPlugin', plugin: payloadPlugin, toolSettings: clone(state.qbarPluginToolSettings || {}) });
 }
 function renderQbarToolTable(title, group, plugins) {
@@ -1494,132 +1561,28 @@ window.qbarPluginDeleted = function (ok, text, pluginId) {
 };
 window.settingsTestResult = function (ok, text) {
   setStatus('');
-  state.testResultDialog.setTitle(ok ? '测试正常' : '测试失败');
-  $('#testResultMessage', state.testResultDialog.dialog).textContent = ok ? '连接正常' : (text || '未知错误');
-  state.testResultDialog.open();
+  AppDialog.alert({
+    title: ok ? '测试正常' : '测试失败',
+    message: ok ? '连接正常' : (text || '未知错误')
+  });
 };
 function requestSettingsExit(action) {
   if (!state.dirty) {
     post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
     return;
   }
-  state.confirmAction = action;
-  if (!state.confirmDialog.dialog.open) state.confirmDialog.open();
-}
-window.requestCloseSettings = () => requestSettingsExit('close');
-
-function setupSettingsDialogs() {
-  state.testResultDialog = AppDialog.create({
-    title: '测试结果', cancelText: false, saveText: false, initialFocus: 'close'
-  });
-  const resultMessage = document.createElement('p');
-  resultMessage.id = 'testResultMessage';
-  resultMessage.className = 'app-dialog-message';
-  state.testResultDialog.editor.appendChild(resultMessage);
-  state.testResultDialog.dialog.setAttribute('aria-describedby', resultMessage.id);
-
-  state.confirmDialog = AppDialog.create({
-    title: '未保存的修改', cancelText: '继续编辑', saveText: '放弃更改',
-    saveClassName: 'btn danger', initialFocus: 'cancel',
-    onClose: () => { state.confirmAction = ''; }
-  });
-  const confirmMessage = document.createElement('p');
-  confirmMessage.id = 'confirmDialogMessage';
-  confirmMessage.className = 'app-dialog-message';
-  confirmMessage.textContent = '当前有未保存的修改，确定放弃吗？';
-  state.confirmDialog.editor.appendChild(confirmMessage);
-  state.confirmDialog.dialog.setAttribute('aria-describedby', confirmMessage.id);
-  state.confirmDialog.saveButton.addEventListener('click', () => {
-    const action = state.confirmAction;
-    state.confirmAction = '';
-    state.confirmDialog.close();
+  AppDialog.confirm({
+    title: '未保存的修改',
+    message: '当前有未保存的修改，确定放弃吗？',
+    confirmText: '放弃更改',
+    tone: 'danger'
+  }).then(ok => {
+    if (!ok) return;
     state.dirty = false;
     post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
   });
-
-  state.windowPickerDialog = AppDialog.create({
-    title: '选择', className: 'picker-dialog app-dialog--wide',
-    cancelText: '取消', saveText: '选择',
-    onClose: () => {
-      const closedByHost = state.windowPickerClosedByHost;
-      state.windowPickerClosedByHost = false;
-      pickerState.selectedIndex = 0;
-      pickerState.kind = '';
-      state.windowPickerDialog.saveButton.disabled = true;
-      if (!closedByHost) post({ type: 'cancelWindowPicker' });
-    }
-  });
-  const pickerEditor = state.windowPickerDialog.editor;
-  const pickerMeta = document.createElement('div');
-  pickerMeta.className = 'picker-dialog-meta';
-  const pickerDescription = document.createElement('p');
-  pickerDescription.id = 'windowPickerDescription';
-  pickerDescription.className = 'picker-description';
-  const pickerCount = document.createElement('span');
-  pickerCount.id = 'windowPickerCount';
-  pickerMeta.append(pickerDescription, pickerCount);
-  const tableWrap = document.createElement('div');
-  tableWrap.className = 'picker-table-wrap';
-  const pickerTable = document.createElement('table');
-  pickerTable.id = 'windowPickerTable';
-  pickerTable.className = 'picker-table';
-  const tableHead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  headRow.id = 'windowPickerHead';
-  tableHead.appendChild(headRow);
-  const tableBody = document.createElement('tbody');
-  tableBody.id = 'windowPickerRows';
-  pickerTable.append(tableHead, tableBody);
-  const empty = document.createElement('div');
-  empty.id = 'windowPickerEmpty';
-  empty.className = 'picker-empty';
-  empty.textContent = '没有可选择的项目。';
-  tableWrap.append(pickerTable, empty);
-  pickerEditor.append(pickerMeta, tableWrap);
-  state.windowPickerDialog.dialog.setAttribute('aria-describedby', pickerDescription.id);
-  state.windowPickerDialog.saveButton.disabled = true;
-  state.windowPickerDialog.saveButton.addEventListener('click', confirmWindowPickerSelection);
-  state.windowPickerDialog.dialog.addEventListener('keydown', event => {
-    if (event.key !== 'Enter' || event.target === state.windowPickerDialog.cancelButton || pickerState.selectedIndex < 1)
-      return;
-    event.preventDefault();
-    confirmWindowPickerSelection();
-  });
 }
-
-function setupQbarDialogs() {
-  state.qbarPluginDialog = AppDialog.create({
-    title: '工具设置', saveText: '保存',
-    onClose: () => {
-      state.qbarPluginDraft = null;
-      state.qbarPluginToolSettings = {};
-      state.qbarPluginSaving = false;
-    }
-  });
-  state.qbarCreateDialog = AppDialog.create({
-    title: '添加工具', saveText: '添加',
-    onClose: () => {
-      state.qbarCreateKind = '';
-      state.qbarCreateDraft = null;
-      state.qbarCreateSaving = false;
-    }
-  });
-  state.qbarDeleteDialog = AppDialog.create({
-    title: '删除工具', saveText: '删除', cancelText: '取消',
-    className: 'qbar-delete-dialog',
-    onClose: () => {
-      state.qbarDeleteTarget = null;
-      state.qbarDeleteSaving = false;
-    }
-  });
-  state.qbarDeleteDialog.saveButton.classList.add('danger');
-  state.qbarPluginDialog.saveButton.addEventListener('click', saveQbarToolDialog);
-  state.qbarCreateDialog.saveButton.addEventListener('click', saveQbarCreateDialog);
-  state.qbarDeleteDialog.saveButton.addEventListener('click', confirmQbarPluginDelete);
-}
-
-setupSettingsDialogs();
-setupQbarDialogs();
+window.requestCloseSettings = () => requestSettingsExit('close');
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
 $('#cancelBtn').addEventListener('click', () => requestSettingsExit('discard'));

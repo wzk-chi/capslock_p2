@@ -248,6 +248,16 @@ button, input, select, textarea { font-family: inherit; }
 }
 .app-dialog-head .icon-btn:hover { border-color: var(--ui-line); background: var(--ui-surface-soft); }
 .app-dialog-editor { min-height: 0; overflow: auto; display: grid; gap: 14px; padding: 18px 24px 20px; }
+.app-dialog-field { display: grid; gap: 6px; color: var(--ui-muted); font-size: 11px; }
+.app-dialog-input {
+  width: 100%;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+}
 .app-dialog-message {
   margin: 0;
   color: var(--ui-muted);
