@@ -324,7 +324,7 @@ function ensureNoteEditor() {
       noteEditorReady = true;
       // The engine (lute) loads on demand, so this is the first proof that the
       // vendored cdn path actually resolved.
-      diag('editor-ready', 'ms=' + (Date.now() - mountStart) + ' lute=' + (document.querySelectorAll('script[src*="lute"]').length));
+      diag('editor-ready', 'ms=' + (Date.now() - mountStart) + ' lute=' + (document.querySelectorAll('script[src*="lute"]').length) + ' mode=' + noteEditor.getCurrentMode());
       applyEditorContent();
     }
   });
@@ -537,6 +537,25 @@ async function deleteSelectedNotes() {
 // handles Enter inside a code fence, and its toolbar replaces execCommand.
 
 $('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor;
+// Diagnostic only. Vditor's table row/column panel is built into the wysiwyg
+// popover, which is a different element from the ir one (the bundle creates a
+// popover for wysiwyg and none for ir), and it is display:none until something
+// shows it. A click therefore reports the mode and the panel's state once per
+// change, so why the panel is missing can be read from the log rather than
+// guessed at. Counts and pixels only, no content.
+let diagPopover = '';
+document.addEventListener('click', () => {
+  if (!noteEditorReady || !noteEditor) return;
+  setTimeout(() => {
+    let panel = null;
+    try { panel = document.querySelector('.vditor-wysiwyg .vditor-panel'); } catch (error) { panel = null; }
+    const state = 'mode=' + noteEditor.getCurrentMode() + ' panel=' + (panel
+      ? (panel.style.display || 'unset') + ' kids=' + panel.children.length + ' top=' + panel.style.top + ' left=' + panel.style.left
+      : 'absent');
+    if (state !== diagPopover) { diagPopover = state; diag('popover', state); }
+  }, 80);
+}, true);
+
 const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (!pending) return; state.pendingUploads.delete(String(data.requestId)); if (data.ok) { pending.assetId = String(data.assetId || ''); pending.url = String(data.url || ''); if (pending.resolve) pending.resolve({ url: pending.url, assetId: pending.assetId, name: pending.name }); } else { const message = data.error || '图片写入失败'; toast(message, 'error'); if (pending.reject) pending.reject(new Error(message)); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
 
