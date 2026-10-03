@@ -164,6 +164,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
   `window.resetRows` 让下一次渲染重报行数（否则隐藏期间残留的 `reportedRows` 会让窗口
    保持收拢、列表只剩半行）。
 - **qbar notes**：`n`、`note`、`w`、`write` 由 qbar 延迟调度到独立窗口；顶部只保留搜索框和搜索按钮，页面主体是标签/预览两栏，新增使用右下角圆形悬浮按钮，卡片右键菜单提供复制、粘贴、修改、删除、多选和置顶；单击预览行复制、双击预览行粘贴，标题直接进入共用编辑态，保存或返回后回到列表。正文以 Markdown 明文存入 SQLite，图片以原始文件写入安装目录 `data\qbar-notes\media`，页面只获得专用虚拟主机 URL 和单文件写句柄。
+  - 列表预览由 `NotesStorePreviewBlocks()` 把 Markdown 解析成块（`heading` / `text` / `code` / `image` / `rule`）后推给页面，页面只负责渲染，不再自己拆 Markdown。每块都同时带渲染内容和它的纯文本 `copy`，所以点击复制拿到的永远是没有 Markdown 语法的文本；`NotesStoreCopyLine()` 重新解析一次并按 `copy` 匹配，行对不上（内容已变）就不复制。`maxRows` 是预览行数上限，超出预算的块直接不渲染。图片 URL 由一次 `note_assets` 批量查询解析，不给每张图加一次查询。
 - **translate**：`LLMTranslateStartRequest` 是唯一调度点——先由 `TranslateResolveDirection` 确定原语言、目标语言和
   请求代号，再按 `TranslateResolve` 的结果把请求分给流式引擎（onDelta 逐片段追加）或一次性引擎（完成后整段 `SetResult`）。
   过期请求的流式片段和完成回调会被丢弃；互译面板的交换按钮只改变当前请求方向，不写入配置。

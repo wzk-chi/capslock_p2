@@ -303,12 +303,18 @@ NotesStoreList(searchText := "", tagName := "") {
         . " ORDER BY n.pinned DESC,n.updated_at DESC,n.id DESC;"
     if !NotesStoreQuery(sql, &table)
         return 0
+    noteIds := []
+    for raw in table.Rows
+        noteIds.Push(Integer(raw[1]))
+    assetIndex := NotesStorePreviewAssetIndex(noteIds)
     rows := []
     for raw in table.Rows {
+        noteId := Integer(raw[1])
+        noteAssets := assetIndex.Has(noteId) ? assetIndex[noteId] : Map()
         rows.Push(Map(
-            "id", Integer(raw[1]),
+            "id", noteId,
             "title", raw[2],
-            "lines", NotesStorePreviewLines(raw[3]),
+            "blocks", NotesStorePreviewBlocks(raw[3], noteAssets),
             "pinned", Integer(raw[4]) != 0,
             "updatedAt", String(raw[5]),
             "tag", raw[6]))
@@ -316,26 +322,173 @@ NotesStoreList(searchText := "", tagName := "") {
     return rows
 }
 
-NotesStorePreviewLines(markdown, maxLines := 12) {
-    markdown := StrReplace(StrReplace(String(markdown), "`r`n", "`n"), "`r", "`n")
-    fence := Chr(96) . Chr(96) . Chr(96)
-    markdown := RegExReplace(markdown, "(?s)" . fence . ".*?" . fence, "[代码]")
-    markdown := RegExReplace(markdown, "!\[[^\]]*\]\([^\)]*\)", "[图片]")
-    markdown := RegExReplace(markdown, "\[[^\]]*\]\([^\)]*\)", "$0")
-    lines := []
-    for line in StrSplit(markdown, "`n") {
-        line := RegExReplace(line, "^\s*[#>*" . Chr(96) . "~\-+]\s*", "")
-        line := RegExReplace(line, "^\s*\d+[.)]\s+", "")
-        line := Trim(line)
-        line := RegExReplace(line, "[*_~]", "")
-        line := RegExReplace(line, "\s+", " ")
-        if line = ""
+; The notes list sends rendered preview blocks instead of flat text lines so the
+; page can show images and code as they are. Every block carries both what to
+; render and the exact plain text its row copies, which keeps Markdown syntax
+; out of the clipboard without the page having to strip it.
+;
+; `assetUrls` maps asset id -> media host URL for the note being previewed;
+; images whose asset cannot be resolved fall back to a text row.
+;
+; `maxRows` is the preview budget: a text row costs 1, an image costs
+; `imageRows` and a code block costs its visible line count. Once the next
+; block would exceed the budget it is dropped rather than partly rendered.
+NotesStorePreviewBlocks(markdown, assetUrls := 0, maxRows := 12, maxCodeLines := 6, imageRows := 4) {
+    tick := Chr(96)
+    source := StrReplace(StrReplace(String(markdown), "`r`n", "`n"), "`r", "`n")
+    lines := StrSplit(source, "`n")
+    blocks := []
+    rows := 0
+    index := 1
+    while index <= lines.Length {
+        trimmed := Trim(lines[index])
+
+        ; Fenced code: kept verbatim (the copy text is never truncated), only
+        ; the displayed body is capped at `maxCodeLines`.
+        if RegExMatch(trimmed, "^(" . tick . "{3,}|~{3,})([A-Za-z0-9_+.#-]*)[ \t]*$", &fenceMatch) {
+            closer := fenceMatch[1]
+            code := []
+            index += 1
+            while index <= lines.Length && !RegExMatch(Trim(lines[index]), "^" . closer . "[ \t]*$") {
+                code.Push(lines[index])
+                index += 1
+            }
+            index += 1
+            while code.Length && Trim(code[code.Length]) = ""
+                code.Pop()
+            if !code.Length
+                continue
+            full := NotesStorePreviewJoin(code)
+            shown := code
+            if shown.Length > maxCodeLines {
+                cut := []
+                Loop maxCodeLines
+                    cut.Push(shown[A_Index])
+                cut.Push("…")
+                shown := cut
+            }
+            if rows + shown.Length > maxRows
+                break
+            blocks.Push(Map("kind", "code", "text", NotesStorePreviewJoin(shown), "copy", full))
+            rows += shown.Length
             continue
-        lines.Push(line)
-        if lines.Length >= maxLines
+        }
+
+        ; A standalone image line resolves to the media host through the asset
+        ; map; anything else keeps falling through to the text path below.
+        if RegExMatch(trimmed, "^!\[([^\]]*)\]\(([^)]+)\)$", &imageMatch) {
+            url := NotesStorePreviewAssetUrl(imageMatch[2], assetUrls)
+            if url != "" {
+                if rows + imageRows > maxRows
+                    break
+                alt := NotesStorePreviewInline(imageMatch[1])
+                block := Map("kind", "image", "url", url, "alt", alt)
+                if alt != ""
+                    block["copy"] := alt
+                blocks.Push(block)
+                rows += imageRows
+                index += 1
+                continue
+            }
+        }
+
+        if RegExMatch(trimmed, "^(#{1,6})[ \t]+(.+)$", &headingMatch) {
+            heading := NotesStorePreviewInline(headingMatch[2])
+            if heading != "" {
+                if rows + 1 > maxRows
+                    break
+                blocks.Push(Map("kind", "heading", "level", StrLen(headingMatch[1]),
+                    "text", heading, "copy", heading))
+                rows += 1
+                index += 1
+                continue
+            }
+        }
+
+        if RegExMatch(trimmed, "^(?:-{3,}|\*{3,}|_{3,})$") {
+            if rows + 1 > maxRows
+                break
+            blocks.Push(Map("kind", "rule"))
+            rows += 1
+            index += 1
+            continue
+        }
+
+        marker := ""
+        body := trimmed
+        if RegExMatch(trimmed, "^>[ \t]?(.*)$", &quoteMatch) {
+            marker := "▏"
+            body := quoteMatch[1]
+        } else if RegExMatch(trimmed, "^([-*+]|\d+[.)])[ \t]+(.+)$", &listMatch) {
+            marker := RegExMatch(listMatch[1], "^\d") ? listMatch[1] : "•"
+            body := listMatch[2]
+        }
+        body := NotesStorePreviewInline(body)
+        if body = "" {
+            index += 1
+            continue
+        }
+        body := RegExReplace(body, "[ \t]+", " ")
+        if rows + 1 > maxRows
             break
+        block := Map("kind", "text", "text", body, "copy", body)
+        if marker != ""
+            block["marker"] := marker
+        blocks.Push(block)
+        rows += 1
+        index += 1
     }
-    return lines
+    return blocks
+}
+
+NotesStorePreviewJoin(lines) {
+    output := ""
+    for line in lines
+        output .= (A_Index = 1 ? "" : "`n") . line
+    return output
+}
+
+; Inline Markdown -> the plain text a row copies. Links and images keep their
+; label, emphasis keeps its inner text, and code spans lose their backticks, so
+; "# 一级标题" copies "一级标题".
+NotesStorePreviewInline(text) {
+    tick := Chr(96)
+    value := String(text)
+    value := RegExReplace(value, "!\[([^\]]*)\]\([^)]*\)", "$1")
+    value := RegExReplace(value, "\[([^\]]*)\]\([^)]*\)", "$1")
+    value := RegExReplace(value, "\*\*([^*]+)\*\*", "$1")
+    value := RegExReplace(value, "__([^_]+)__", "$1")
+    value := RegExReplace(value, "\*([^*]+)\*", "$1")
+    value := RegExReplace(value, "_([^_]+)_", "$1")
+    value := RegExReplace(value, "~~([^~]+)~~", "$1")
+    value := RegExReplace(value, tick . "([^" . tick . "]+)" . tick, "$1")
+    return Trim(value)
+}
+
+NotesStorePreviewAssetUrl(source, assetUrls) {
+    if !IsObject(assetUrls) || !RegExMatch(String(source), "^asset:([A-Za-z0-9_-]+)$", &match)
+        return ""
+    return assetUrls.Has(match[1]) ? assetUrls[match[1]] : ""
+}
+
+; One query for every asset referenced by the listed notes, so the preview does
+; not add a lookup per image.
+NotesStorePreviewAssetIndex(noteIds) {
+    index := Map()
+    if !IsObject(noteIds) || !noteIds.Length
+        return index
+    ids := ""
+    for noteId in noteIds
+        ids .= (ids = "" ? "" : ",") . Integer(noteId)
+    if ids = "" || !NotesStoreQuery("SELECT note_id,id,mime FROM note_assets WHERE note_id IN (" . ids . ");", &table)
+        return index
+    for raw in table.Rows {
+        noteId := Integer(raw[1])
+        if !index.Has(noteId)
+            index[noteId] := Map()
+        index[noteId][raw[2]] := NotesAssetUrl(raw[2], raw[3])
+    }
+    return index
 }
 
 NotesStoreReadNote(noteId) {
@@ -526,13 +679,23 @@ NotesStoreSetPinned(noteIds, value) {
     return true
 }
 
+; Re-derives the preview from the stored Markdown and only accepts text that
+; still exists, so a row clicked against stale content copies nothing. The
+; budget is wider than the list's so every row the page could be showing is
+; re-derived, and the comparison uses the block's plain copy text.
 NotesStoreCopyLine(noteId, line) {
+    line := String(line)
+    if line = ""
+        return ""
     note := NotesStoreReadNote(noteId)
     if !IsObject(note)
         return ""
-    for candidate in NotesStorePreviewLines(note["content"], 20)
-        if candidate = line
-            return candidate
+    assetUrls := Map()
+    for asset in NotesStoreAssets(noteId)
+        assetUrls[asset["id"]] := asset["url"]
+    for block in NotesStorePreviewBlocks(note["content"], assetUrls, 60, 20)
+        if block.Has("copy") && block["copy"] = line
+            return block["copy"]
     return ""
 }
 
