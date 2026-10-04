@@ -11,6 +11,8 @@ global LayerKeyNames := Map(
 LayerKeyNames["SC029"] := "backquote"
 
 global PasteSystemHotkeyRunning := false
+global CapsLockTargetPath := ""
+global CapsLockTargetHwnd := 0
 
 BuildKeySet() {
     global KeySet
@@ -40,7 +42,6 @@ RegisterCapsHotkeys() {
     RegisterCapsLayerHotkey("CapsLock", CapsLockPress)
     RegisterCapsLayerHotkey("<!CapsLock", CapsLockWithAltPress)
 
-    Hotkey("$^v", PasteSystemHotkey)
     RegisterCapsLayerHotkeys()
 }
 
@@ -108,6 +109,7 @@ CapsLockWithAltPress(*) {
 
 HandleCapsLockPress(runTapAction) {
     global CapsLockHeld, CapsLockUsed, CtrlZPending, KeySet
+    global CapsLockTargetPath, CapsLockTargetHwnd
     if CapsLockHeld {
         DebugLog("CapsLock press ignored: layer already held")
         KeyWait("CapsLock")
@@ -117,6 +119,9 @@ HandleCapsLockPress(runTapAction) {
     CapsLockHeld := true
     CapsLockUsed := false
     CtrlZPending := true
+    targetWindow := GetActiveWindowInfo()
+    CapsLockTargetPath := targetWindow ? targetWindow.path : ""
+    CapsLockTargetHwnd := targetWindow ? targetWindow.id : 0
     ; The reference implementation only treats a release within 300ms as a
     ; tap (setCapsLock2 timer), so a long hold never fires press_caps.
     tapPending := runTapAction
@@ -132,8 +137,16 @@ HandleCapsLockPress(runTapAction) {
         CapsLockHeld := false
         DebugLog("CapsLockUp used=" . CapsLockUsed . " tapAction=" . tapPending)
 
-        if tapPending && !CapsLockUsed
-            RunConfiguredAction(KeySet.Has("press_caps") ? KeySet["press_caps"] : "keyFunc_toggleCapsLock")
+        if tapPending && !CapsLockUsed && CapsLockTapTargetStillActive() {
+            fallbackAction := KeySet.Has("press_caps") ? KeySet["press_caps"] : "keyFunc_toggleCapsLock"
+            action := AppProfileResolveAction("Keys", "press_caps", fallbackAction, CapsLockTargetPath)
+            if action != "@block" && action != "@native"
+                RunConfiguredAction(action)
+        } else if tapPending && !CapsLockUsed {
+            DebugLog("CapsLock tap cancelled: active window changed")
+        }
+        CapsLockTargetPath := ""
+        CapsLockTargetHwnd := 0
         CapsLockUsed := false
     }
 }
@@ -142,6 +155,19 @@ RunLayerAction(actionKey) {
     global CapsLockUsed, KeySet
     CapsLockUsed := true
     DebugLog("Layer action=" . actionKey)
-    action := KeySet.Has(actionKey) ? KeySet[actionKey] : "keyFunc_doNothing"
+    fallbackAction := KeySet.Has(actionKey) ? KeySet[actionKey] : "keyFunc_doNothing"
+    action := AppProfileResolveAction("Keys", actionKey, fallbackAction)
+    if action = "@block" || action = "@native"
+        return
     RunConfiguredAction(action)
+}
+
+CapsLockTapTargetStillActive() {
+    global CapsLockTargetPath, CapsLockTargetHwnd
+    currentWindow := GetActiveWindowInfo()
+    if !currentWindow
+        return false
+    if CapsLockTargetHwnd
+        return currentWindow.id = CapsLockTargetHwnd
+    return CapsLockTargetPath != "" && StrLower(String(currentWindow.path)) = StrLower(String(CapsLockTargetPath))
 }

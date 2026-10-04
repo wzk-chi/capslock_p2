@@ -43,6 +43,7 @@ Initialize() {
     SetCapsLockState("Off")
 
     ConfigLoad()
+    AppProfilesLoad()
     EnsureConfiguredElevation()
     try ClipboardHistoryInitialize()
     AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
@@ -161,14 +162,22 @@ ClipboardSuspendReason() {
     return reason
 }
 
-ReloadSettings(notifySettingsPage := true, *) {
+ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false, *) {
     global SettingsVisible
     previous := ConfigSnapshot()
     ConfigLoad()
-    ApplyConfigChanges(ConfigEffectiveDiff(previous, Config))
+    appProfilesChanged := false
+    AppProfilesLoad(&appProfilesChanged)
+    changes := ConfigEffectiveDiff(previous, Config)
+    ; Apply other settings first, then register once against the combined state.
+    ApplyConfigChanges(changes, true)
+    registrationErrors := []
+    if appProfilesChanged || rebuildCustomHotkeys || changes.Has("CustomHotkey")
+        registrationErrors := RegisterCustomHotkeys()
     if notifySettingsPage && SettingsVisible
         SetTimer(SettingsPushSnapshot, -1)
     DebugLog("Settings reloaded")
+    return registrationErrors
 }
 
 ApplyGlobalSettings() {
@@ -268,12 +277,22 @@ SettingInteger(section, key, fallback, minimum, maximum) {
 }
 
 MonitorSettings() {
-    global SettingsModifyTime
+    global SettingsModifyTime, SettingsVisible
     currentTime := ConfigFileModifyTime()
-    if currentTime = SettingsModifyTime
+    if currentTime != SettingsModifyTime {
+        SettingsModifyTime := currentTime
+        ReloadSettings()
         return
-    SettingsModifyTime := currentTime
-    ReloadSettings()
+    }
+    ; Check application profile content even when the coarse file timestamp did
+    ; not change. Profile-only external edits should take effect immediately.
+    appProfilesChanged := false
+    if AppProfilesLoad(&appProfilesChanged) && appProfilesChanged {
+        ; AppProfilesLoad already refreshed the map, so request one hotkey rebuild.
+        ReloadSettings(false, true)
+        if SettingsVisible
+            SetTimer(SettingsPushSnapshot, -1)
+    }
 }
 
 ConfigSet(section, key, value) {
@@ -303,7 +322,7 @@ ApplySettingChange(section, key, value) {
     ApplyConfigChanges(changes)
 }
 
-ApplyConfigChanges(changes) {
+ApplyConfigChanges(changes, deferCustomHotkeys := false) {
     global AllowClipboardWatcher, DebugLogging, MouseSpeed, Config
     if !IsObject(changes) || !changes.Count
         return
@@ -357,7 +376,7 @@ ApplyConfigChanges(changes) {
 
     if rebuildKeys
         BuildKeySet()
-    if rebuildCustomHotkeys
+    if rebuildCustomHotkeys && !deferCustomHotkeys
         RegisterCustomHotkeys()
     if rebuildHotStrings
         RebuildHotStringPattern()

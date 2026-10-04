@@ -7,7 +7,8 @@
 - 入口 `capslock_p2.ahk` 用 `#include` 引入全部 `lib/*.ahk`；AHK v2 中每个被包含的文件加载时即执行，
   全局变量和函数在所有文件间共享。
 - **键盘层**：按住 CapsLock 进入键层，`lib/input/keymap.ahk` 做键位方案与层调度，`lib/input/keys.ahk` 提供
-  `keyFunc_*` 动作函数；`lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局快捷键映射。
+  `keyFunc_*` 动作函数；`lib/input/appProfiles.ahk` 按前台 EXE 路径解析应用覆盖；
+  `lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局和应用快捷键映射。
   **`keyFunc_*` 是面向用户的配置 API，不能按「有没有代码引用」判断死活**：键位是由 `[Keys]` 按函数名选择并交给
   `RunConfiguredAction()` 执行的，所以一个 `keyFunc_*` 在全部 AHK 源码和两个 ini 里都可能一次都不出现，却仍然
   是用户可绑定、README 明确指向的接口。同理，回调是以函数引用形式传递的（`OnExit(Shutdown)`），名字后面不带
@@ -34,7 +35,8 @@ lib\
   clipboard/clipboard_panel.ahk   剪贴板历史 WebView2 面板与消息协议
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
-  customHotkeys.ahk                [CustomHotkey] 全局快捷键重映射
+  appProfiles.ahk                  EXE 路径应用配置、继承解析与持久化
+  customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射
   panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与共用失焦隐藏生命周期
   windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
