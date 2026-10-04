@@ -19,6 +19,17 @@ AHK2 实现统一放在 `lib/`，WebView2 面板页面放在 `pages/`；`capsloc
 - 临时测试或诊断文件如果不需要提交，统一加入本地 `.git/info/exclude`；不要为此修改项目级
   `.gitignore`。确认文件尚未被 Git 跟踪，因为 `exclude` 不会隐藏已跟踪文件的修改或删除。
 
+## Qbar 工具规范
+
+- 新增 Qbar 工具优先接入现有插件/命令体系，复用别名解析、候选展示、执行、设置、历史与使用统计流程；不要另建平行的工具系统，或把业务分发散落到页面和快捷键分支。
+- 模块职责保持清晰：`qbar_plugin_catalog.ahk` 声明内置插件定义；`qbar_plugin_host.ahk` 管理注册、实例和配置校验；`qbar_registry.ahk` 构建内存注册表并解析别名与候选；`qbar_store.ahk` 集中处理 Qbar 数据持久化；`qbar_index.ahk` 生成展示项；`qbar_commands.ahk` 接收并校验执行请求；`qbar_execution.ahk` 调用已注册的 handler；`pages/qbar.html` 只负责交互和展示。新增动作应调用现有功能或共享服务，避免复制已有实现。
+- 区分插件定义、插件实例和命令。`definitionId`、`pluginId`、`commandId` 使用稳定且带命名空间的身份；显示名称、别名和用户输入都不是命令身份。重命名或修改别名不得改变稳定 ID；执行、历史和使用统计按 ID 关联，不根据显示文本反查。
+- 别名匹配不区分大小写，连续空白按一个空格归一化，多词别名采用最长匹配。别名冲突是多个有效候选，不是覆盖错误；保留并展示全部候选，按统一排序规则选择。
+- 页面消息、数据库字段和 manifest 都是不可信输入。执行只接受宿主已注册且通过白名单校验的 `handlerId`，不得把其中的函数名或代码直接执行；设置和参数在进入 handler 前校验。Qbar 页面向宿主传递命令及查询上下文标识，宿主校验 session、query 和注册表版本，拒绝过期请求。
+- 插件别名、启用状态、设置、历史和使用频率通过 `qbar_store.ahk` 持久化；其他模块不得自行访问 Qbar 数据库。配置变更用事务保存并更新内存注册表和相关索引；逐字符查询只读内存注册表，不查询 SQLite。不要把可执行 AHK 代码存入数据库。
+- 排查 Qbar 问题先查看现有 `DebugLog` 记录；补充日志时保留足够的状态和错误上下文，不记录密钥等敏感值。
+- 详细设计参考 [`docs/2026-10-02-qbar-plugin-refactor-design.md`](docs/2026-10-02-qbar-plugin-refactor-design.md)。
+
 ## 打包文档
 
 Inno Setup、Ahk2Exe、发布资源清单、脱敏配置和安装目录的完整说明见
@@ -27,68 +38,25 @@ Inno Setup、Ahk2Exe、发布资源清单、脱敏配置和安装目录的完整
 
 ## 工具坑记录
 
-- **校验 AHK 语法**：用 PowerShell 直接调用，`/ErrorStdOut` 必须带，输出并进管道之后再读
-  `$LASTEXITCODE`：
+- **校验 AHK 语法**：在 PowerShell 中直接调用，并保留 `/ErrorStdOut` 和 `Out-String` 管道，确保读取本次运行的退出码。不要用 Git Bash（会改写 AHK 参数）或 `Start-Process` 重定向后读取 `ExitCode`。
 
   ```powershell
   $exe  = 'D:\utils\AutoHotkey\v2\AutoHotkey64.exe'   # 本机路径，仓库不内置运行时
   $text = (& $exe /ErrorStdOut /validate 'capslock_p2.ahk' 2>&1 | Out-String).Trim()
-  "exit=$LASTEXITCODE"   # 0 = 没有错误（警告不影响它）；2 = 语法错误或脚本路径不存在
-  $text                  # 非空即错误或警告详情：<绝对路径> (行号) : ==> Missing operand.
+  "exit=$LASTEXITCODE"   # 0 = 无错误；2 = 语法错误或脚本路径不存在
+  $text                  # 错误和警告详情
   ```
 
-  下面几条都实测过，少任何一条都会得到**假阳性**：
+  相对脚本路径按当前工作目录解析，`#Include` 按脚本所在目录解析。
 
-  - **`/ErrorStdOut` 不能省**：省掉后语法错误也返回 `0`，错误被丢弃，既没有对话框也没有输出。
-  - **必须真的等进程**：`AutoHotkey64.exe` 是 GUI 子系统程序，PowerShell 默认不为它等待；写成
-    `& $exe ... | Out-String` 这样**有管道**才会等，`$LASTEXITCODE` 才是这次的退出码。
-  - **不要用 `Start-Process ... -RedirectStandardOutput/-RedirectStandardError` 去读
-    `$p.ExitCode`**：本机 PowerShell 7.6.3 实测，只要带重定向，`-PassThru` 拿到的 `ExitCode` 恒为
-    空（`cmd /c exit 3` 也一样；`Refresh()`、`Wait-Process` 之后仍然为空），于是「读不到退出码」
-    会被当成「没报错」。而且 AHK 把错误写在 **stderr**，只重定向 stdout 的话文件始终是空的。
-    不带重定向时 `-PassThru` 的 `ExitCode` 是正常的，错误文本直接打在控制台上。
-  - **不要在 Git Bash 里校验**：MSYS 会把 `/ErrorStdOut`、`/validate` 当成 Unix 路径改写成
-    `C:/Program Files/Git/ErrorStdOut`，AHK 报 "Script file not found"；而且 bash 的 `$?` 取的是管道
-    **最后一个**命令的状态，`| head` 会把 AHK 的 2 掩成 0。PowerShell 的 `$LASTEXITCODE` 由原生命令
-    设置、不受管道后面的 cmdlet 影响，所以上面那个 `| Out-String` 是安全的。
-
-  路径规则：相对路径按 **CWD** 解析（失败时报错会带上它实际去找的绝对路径）；`#Include` 按**脚本
-  自身所在目录**解析，所以从任意 CWD 用绝对路径校验都成立。退出码 `2` 同时表示语法错误和
-  `Script file not found`，要区分就看输出文本。
-
-- **`/validate` 会照常报 `#Warn` 警告，但警告不进退出码**：官方文档写的是 `/Validate` 下
-  "load-time errors **and warnings** are displayed as usual"，而退出码只反映**错误**，所以
-  `exit=0` 不等于「没有警告」。三种 load-time 警告都能抓到（下面用 `#Warn …, StdOut` 实测）：
-
-  - `LocalSameAsGlobal`——函数里给同名全局赋值而没声明 `global`：
-    `… (5) : ==> Warning: This local variable has the same name as a global variable.`
-  - `Unreachable`——`Return`/`Break`/`Continue`/`Throw`/`Goto` 之后同层的行：
-    `… (5) : ==> Warning: This line will never execute, due to Return preceding it.`
-  - `VarUnset`——引用了从未被赋值的变量：
-    `… (4) : ==> Warning: This variable appears to never be assigned a value.`
-
-  这三种情况下退出码**都是 `0`**，只看退出码完全看不到警告。警告走 **stdout**，语法错误走
-  **stderr**，所以上面配方里的 `2>&1` 两种都能收到。
-
-  **由此而来的坑**：默认 `WarningMode` 是 `MsgBox`，而本项目 `capslock_p2.ahk` 第 5 行是裸 `#Warn`
-  （= `All`，比不写更严——不写时 `LocalSameAsGlobal` 是关的）、第 10 行是 `#Warn VarUnset, Off`，
-  也就是 MsgBox 模式。于是**校验一份带警告的脚本会弹出模态对话框并一直等在那里**，在自动化里看起来
-  就是命令卡住（不是脚本慢）。`/ErrorStdOut` **救不了这个**——按文档它只管"prevent a script from
-  launching"的语法错误，实测警告照样弹框、stderr 是空的。`#Warn` 指令又以**最后一次出现为准**，
-  所以用 `/include` 预置一个 `StdOut` 也覆盖不掉脚本自己的设置。
-
-  要抓警告又不想被对话框挡住，有一个不用改文件的办法：把脚本文本从 **stdin** 喂给 AHK（文件名写
-  `*`），顺手把 `#Warn` 那一行改写成 `StdOut`。stdin 模式下 `A_ScriptDir` 取**初始工作目录**，
-  所以在项目根目录下跑，`#Include` 照样解析得到：
+- **`#Warn` 警告**：警告会显示但不影响 `/validate` 退出码；`exit=0` 不代表没有警告。默认警告模式可能弹出对话框，导致校验挂起。要无弹窗收集警告，可在项目根目录将脚本从 stdin 传入，并把裸 `#Warn` 改为 `#Warn All, StdOut`：
 
   ```powershell
-  # 接上面第一段的 $exe
   $patch = (Get-Content -Raw capslock_p2.ahk) -replace '(?m)^#Warn\s*$', '#Warn All, StdOut'
   ($patch | & $exe /ErrorStdOut /validate '*' 2>&1 | Out-String).Trim()
   ```
 
-  实测这样能一次列出整棵 include 树里所有 `LocalSameAsGlobal` / `Unreachable` 警告，带绝对路径和
-  行号，而且退出码仍然是 `0`。
+  stdin 模式下 `A_ScriptDir` 取当前工作目录，因此应从项目根目录执行。
 - **AHK 的 `NumPut` 只收纯数字**：传入 `ComValue`（如 `ComObjArray` 迭代出的 VT_UI1 包装）或
   String 会抛 "Invalid parameter(s)"；而且 VT_UI1 的 ComValue 参与 `+ 0` 这类算术会直接抛
   "Expected a Number"。COM/SafeArray 数据入缓存前先转成纯数值（`NumGet` 读出即是），
