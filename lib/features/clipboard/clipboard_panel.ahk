@@ -3,6 +3,8 @@
 global ClipboardHistoryHost := 0
 global ClipboardHistoryVisible := false
 global ClipboardHistoryPageReady := false
+global ClipboardHistoryDeferredPanelUpdate := ""
+global ClipboardHistoryDeferredPanelQuery := 0
 global ClipboardHistorySessionSerial := 0
 global ClipboardHistorySessionId := ""
 global ClipboardHistoryQuerySerial := 0
@@ -60,12 +62,14 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         if refreshSession {
             ClipboardHistoryResetSession(initialSearch, targetContext, false)
             SetTimer(ClipboardHistorySendState, -1)
-        }
+        } else
+            ClipboardHistoryRefreshVisibleView()
         ShowSystemCursor()
         DebugLog("ClipboardHistoryShow reused pageReady=" . PanelHostPageReady(ClipboardHistoryHost))
         return true
     }
     ClipboardHistoryVisible := false
+    refreshPage := IsObject(ClipboardHistoryHost)
 
     ClipboardHistoryResetSession(initialSearch, targetContext, !refreshSession)
 
@@ -73,8 +77,14 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         DebugLog("ClipboardHistoryShow failed ensureWebView")
         return false
     }
+    if refreshPage {
+        PanelHostNavigate(ClipboardHistoryHost)
+        ClipboardHistoryPageReady := false
+        DebugLog("ClipboardHistoryShow reloading hidden page")
+    } else {
+        ClipboardHistoryPageReady := PanelHostPageReady(ClipboardHistoryHost)
+    }
     ClipboardHistoryVisible := true
-    ClipboardHistoryPageReady := PanelHostPageReady(ClipboardHistoryHost)
     PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, true)
     panelGui := PanelHostGui(ClipboardHistoryHost)
     if IsObject(panelGui)
@@ -221,6 +231,8 @@ ClipboardHistoryEscape(*) {
 
 ClipboardHistorySendState(*) {
     global ClipboardHistoryVisible, ClipboardHistoryPageReady
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryDeferredPanelUpdate
     global ClipboardHistorySessionId, ClipboardHistoryPendingSearch
     global ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
     global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
@@ -228,6 +240,12 @@ ClipboardHistorySendState(*) {
     global ClipboardHistoryPendingPageSize
     if !ClipboardHistoryVisible || !ClipboardHistoryPageReady
         return
+    if ClipboardHistoryActiveCaptureEventId != "" || ClipboardHistoryCaptureQueue.Length {
+        ClipboardHistoryDeferredPanelUpdate := "state"
+        DebugLog("ClipboardHistorySendState deferred until capture queue drains")
+        return
+    }
+    ClipboardHistoryDeferredPanelUpdate := ""
     ClipboardHistoryPost(Map("type", "hostState", "sessionId", ClipboardHistorySessionId,
         "search", ClipboardHistoryPendingSearch, "primaryType", ClipboardHistoryPendingType,
         "favoriteOnly", ClipboardHistoryPendingFavorite,
@@ -236,6 +254,42 @@ ClipboardHistorySendState(*) {
         "dateAfter", ClipboardHistoryPendingDateAfter,
         "dateBefore", ClipboardHistoryPendingDateBefore,
         "pageSize", ClipboardHistoryPendingPageSize))
+}
+
+ClipboardHistoryRefreshVisibleView(*) {
+    global ClipboardHistoryVisible, ClipboardHistoryPageReady, ClipboardHistoryHost
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryDeferredPanelUpdate
+    if !ClipboardHistoryVisible || !ClipboardHistoryPageReady
+        return false
+    if ClipboardHistoryActiveCaptureEventId != "" || ClipboardHistoryCaptureQueue.Length {
+        ClipboardHistoryDeferredPanelUpdate := "view"
+        DebugLog("ClipboardHistoryRefreshVisibleView deferred until capture queue drains")
+        return true
+    }
+    ClipboardHistoryDeferredPanelUpdate := ""
+    refreshed := PanelHostExecute(ClipboardHistoryHost, "window.refreshHistory();")
+    DebugLog("ClipboardHistoryRefreshVisibleView sent=" . refreshed)
+    return refreshed
+}
+
+ClipboardHistoryPanelCaptureQueueDrained() {
+    global ClipboardHistoryDeferredPanelUpdate, ClipboardHistoryDeferredPanelQuery
+    if IsObject(ClipboardHistoryDeferredPanelQuery) {
+        query := ClipboardHistoryDeferredPanelQuery
+        ClipboardHistoryDeferredPanelQuery := 0
+        ClipboardHistoryDeferredPanelUpdate := ""
+        SetTimer(ClipboardHistoryPanelQuery.Bind(query[1], query[2], query[3],
+            query[4], query[5], query[6], query[7], query[8], query[9],
+            query[10], query[11]), -1)
+        return
+    }
+    switch ClipboardHistoryDeferredPanelUpdate {
+        case "state":
+            SetTimer(ClipboardHistorySendState, -1)
+        case "view":
+            SetTimer(ClipboardHistoryRefreshVisibleView, -1)
+    }
 }
 
 ClipboardHistoryPanelChanged() {
@@ -247,6 +301,8 @@ ClipboardHistoryPanelChanged() {
 ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, dateFilter, selectedDate,
     dateAfter, dateBefore, page, pageSize, sessionId, queryId) {
     global ClipboardHistoryVisible, ClipboardHistorySessionId
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryDeferredPanelQuery, ClipboardHistoryDeferredPanelUpdate
     global ClipboardHistoryPendingSearch, ClipboardHistoryPendingType
     global ClipboardHistoryPendingFavorite, ClipboardHistoryPendingDateFilter
     global ClipboardHistoryPendingSelectedDate, ClipboardHistoryPendingDateAfter
@@ -254,6 +310,14 @@ ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, dateFilter, se
     global ClipboardHistoryQuerySerial
     if !ClipboardHistoryVisible || sessionId != ClipboardHistorySessionId
         return
+    if ClipboardHistoryActiveCaptureEventId != "" || ClipboardHistoryCaptureQueue.Length {
+        ClipboardHistoryDeferredPanelQuery := [searchText, primaryType, favoriteOnly,
+            dateFilter, selectedDate, dateAfter, dateBefore, page, pageSize, sessionId, queryId]
+        ClipboardHistoryDeferredPanelUpdate := ""
+        DebugLog("ClipboardHistory query deferred until capture queue drains")
+        return
+    }
+    ClipboardHistoryDeferredPanelQuery := 0
     ClipboardHistoryPendingSearch := String(searchText)
     ClipboardHistoryPendingType := String(primaryType)
     ClipboardHistoryPendingFavorite := !!favoriteOnly
@@ -284,6 +348,8 @@ ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, dateFilter, se
         "queryId", actualQueryId, "rows", rows, "counts", counts,
         "page", ClipboardHistoryPendingPage, "pageSize", ClipboardHistoryPendingPageSize,
         "pageCount", pageCount, "append", JSON.false))
+    DebugLog("ClipboardHistory query page=" . ClipboardHistoryPendingPage
+        . " returned=" . rows.Length . " matching=" . counts["matching"])
 }
 
 ClipboardHistoryPanelImagePreview(id, sessionId, *) {
@@ -319,14 +385,7 @@ ClipboardHistoryWebMessageReceived(sender, args) {
     sessionId := LLMMsgField(msg, "sessionId")
     if messageType = "ready" {
         ClipboardHistoryPageReady := true
-        ClipboardHistoryPost(Map("type", "hostState", "sessionId", ClipboardHistorySessionId,
-            "search", ClipboardHistoryPendingSearch, "primaryType", ClipboardHistoryPendingType,
-            "favoriteOnly", ClipboardHistoryPendingFavorite,
-            "dateFilter", ClipboardHistoryPendingDateFilter,
-            "selectedDate", ClipboardHistoryPendingSelectedDate,
-            "dateAfter", ClipboardHistoryPendingDateAfter,
-            "dateBefore", ClipboardHistoryPendingDateBefore,
-            "pageSize", ClipboardHistoryPendingPageSize))
+        SetTimer(ClipboardHistorySendState, -1)
         return
     }
     if sessionId != ClipboardHistorySessionId

@@ -47,7 +47,7 @@ button { cursor: pointer; }
 .image-preview-wrap img { display: block; max-width: 100%; max-height: 280px; width: auto; height: auto; object-fit: contain; border-radius: 8px; }
 .image-preview-wrap .lucide { width: 19px; height: 19px; margin: 9px; }
 .row-main { min-width: 0; }
-.preview { overflow: hidden; color: var(--ui-text); font-size: 13px; line-height: 1.35; white-space: nowrap; text-overflow: ellipsis; }
+.preview { display: -webkit-box; max-height: 10.8em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 8; color: var(--ui-text); font-size: 13px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .note { display: flex; align-items: center; gap: 4px; margin-top: 5px; overflow: hidden; color: var(--ui-muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .note .lucide { flex: none; width: 13px; height: 13px; }
 .meta { display: flex; gap: 8px; margin-top: 5px; overflow: hidden; color: var(--ui-subtle); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
@@ -725,6 +725,7 @@ window.handleHostMessage=function(message){
     }
   }
 };
+window.refreshHistory=function(){requestQuery(true);};
 window.setState=function(payload){ if(payload&&payload.sessionId)state.sessionId=payload.sessionId; if(payload&&payload.search!=null){state.search=payload.search;search.value=state.search;} requestQuery(true); };
 setTimeout(()=>post({type:'ready',sessionId:state.sessionId}),0);
 refreshIcons();

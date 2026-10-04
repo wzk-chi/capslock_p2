@@ -246,14 +246,17 @@ ClipboardHistoryScheduleNextCapture() {
         SetTimer(ClipboardHistoryProcessEvent.Bind(eventId), -1)
         return true
     }
+    try ClipboardHistoryPanelCaptureQueueDrained()
     return false
 }
 
 ClipboardHistoryNotify(dataType, reason := "", sequence := 0) {
     global ClipboardHistoryEnabled, ClipboardHistoryBaselineSequence, ClipboardHistoryEpoch
     global ClipboardHistoryNextEvent, ClipboardHistoryEvents, ClipboardHistorySequenceEvents
-    if !ClipboardHistoryEnabled
+    if !ClipboardHistoryEnabled {
+        DebugLog("ClipboardHistoryNotify ignored because history is disabled")
         return 0
+    }
     if !sequence
         sequence := ClipboardSequenceNumber()
     if !sequence || sequence = ClipboardHistoryBaselineSequence
@@ -300,6 +303,8 @@ ClipboardHistoryNotify(dataType, reason := "", sequence := 0) {
         "finalized", false)
     ClipboardHistoryEvents[eventId] := event
     ClipboardHistorySequenceEvents[sequence] := eventId
+    DebugLog("ClipboardHistoryNotify event=" . eventId . " sequence=" . sequence
+        . " type=" . dataType . " reason=" . reason)
     return eventId
 }
 
@@ -408,6 +413,7 @@ ClipboardHistoryPublishExplicit(sequence, snapshot := 0, reason := "user-copy") 
 ClipboardHistoryProcessEvent(eventId, *) {
     global ClipboardHistoryEnabled, ClipboardHistoryEvents, ClipboardHistoryEpoch
     global ClipboardHistoryActiveCaptureEventId
+    global ClipboardHistoryStoreError
     Critical("On")
     try {
         if ClipboardHistoryActiveCaptureEventId != eventId
@@ -449,13 +455,19 @@ ClipboardHistoryProcessEvent(eventId, *) {
                 return false
             record := ClipboardHistoryCaptureCurrent(event["sequence"], maxBytes)
         }
-        if !IsObject(record)
+        if !IsObject(record) {
+            DebugLog("ClipboardHistory capture rejected event=" . eventId
+                . " reason=unsupported-or-over-limit")
             return false
+        }
         if event["epoch"] != ClipboardHistoryEpoch
             return false
         if event["reason"] = "user-cut"
             record["cut"] := true
         result := ClipboardHistoryRemember(record, event)
+        DebugLog("ClipboardHistory capture event=" . eventId . " type="
+            . record["primaryType"] . " saved=" . result
+            . (result ? "" : " error=" . ClipboardHistoryStoreError))
         return result
     } finally {
         ClipboardHistoryCleanupEvent(eventId)
