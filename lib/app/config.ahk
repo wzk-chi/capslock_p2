@@ -108,15 +108,61 @@ ConfigValidateKey(section, key) {
         return false
     if section = "Keys"
         return RegExMatch(key, "i)^(press_caps|caps(_lalt)?_[A-Za-z0-9_]+)$")
+    if section = "CustomHotkey"
+        return ConfigValidateCustomHotkeyTrigger(key)
     field := ConfigField(section, key)
     return IsObject(field) || ConfigIsDynamicSection(section)
 }
 
+ConfigNormalizeCustomHotkeyTrigger(trigger) {
+    raw := Trim(String(trigger))
+    if raw = ""
+        return ""
+    prefix := ""
+    while StrLen(raw) && InStr("^!+#", SubStr(raw, 1, 1)) {
+        prefix .= SubStr(raw, 1, 1)
+        raw := SubStr(raw, 2)
+    }
+    canonicalPrefix := ""
+    for modifier in ["^", "!", "+", "#"]
+        if InStr(prefix, modifier)
+            canonicalPrefix .= modifier
+    ; The recorder uses Send syntax for special keys; Hotkey names omit braces.
+    if StrLen(raw) >= 2 && SubStr(raw, 1, 1) = "{" && SubStr(raw, -1) = "}"
+        raw := SubStr(raw, 2, StrLen(raw) - 2)
+    return StrLower(canonicalPrefix . raw)
+}
+
+ConfigValidateCustomHotkeyTrigger(trigger) {
+    normalized := ConfigNormalizeCustomHotkeyTrigger(trigger)
+    if normalized = ""
+        return false
+    keyName := normalized
+    while StrLen(keyName) && InStr("^!+#", SubStr(keyName, 1, 1))
+        keyName := SubStr(keyName, 2)
+    if keyName = "" || RegExMatch(keyName, "[{}\s]")
+        return false
+    keyCode := 0
+    try keyCode := GetKeyVK(keyName)
+    catch
+        keyCode := 0
+    if keyCode
+        return true
+    ; Mouse and joystick hotkeys do not map to a virtual key code.
+    return RegExMatch(keyName,
+        "i)^(?:Wheel(?:Up|Down|Left|Right)|[LRM]Button|XButton[12]|Joy(?:[1-9]|[12][0-9]|3[0-2]))$")
+}
+
 ConfigValidateValue(section, key, value, &normalized := "") {
     normalized := ""
-    if !ConfigValidateKey(section, key) || IsObject(value)
+    if IsObject(value)
         return false
     text := String(value)
+    ; An empty custom-hotkey action removes the mapping, including a malformed
+    ; legacy trigger which must remain removable from the settings page.
+    if (!ConfigValidateKey(section, key)
+        && !(section = "CustomHotkey" && Trim(text) = ""))
+        return false
     field := ConfigField(section, key)
     if !IsObject(field) {
         if section = "Keys" {
@@ -381,7 +427,8 @@ ConfigDefaultRead(section, key, defaultValue := "") {
     return defaultValue
 }
 
-ConfigParseIni(filePath) {
+ConfigParseIni(filePath, &loaded := false) {
+    loaded := true
     sections := Map()
     if !FileExist(filePath)
         return sections
@@ -389,10 +436,17 @@ ConfigParseIni(filePath) {
     ; Force UTF-8: an ANSI (GBK) decode of a UTF-8 file can swallow the LF
     ; after a multi-byte character, merging the next line into a comment.
     try content := FileRead(filePath, "UTF-8")
-    catch
+    catch {
+        loaded := false
         return sections
+    }
 
-    content := StrReplace(content, "`r")
+    return ConfigParseIniText(content)
+}
+
+ConfigParseIniText(content) {
+    sections := Map()
+    content := StrReplace(String(content), "`r", "")
     currentSection := ""
     for line in StrSplit(content, "`n") {
         line := Trim(line)
@@ -449,17 +503,14 @@ ConfigWriteFile(filePath, changes) {
 
 ; Save only explicit user overrides. Values equal to the canonical default are
 ; removed from the user file so a later default update can take effect.
-ConfigWriteUserOverrides(changes, &fileChanged := false, &invalidChange := "") {
-    global SettingsFile, SettingsModifyTime, Config
-    fileChanged := false
+ConfigPrepareUserOverrides(changes, originalContent, &content := "", &invalidChange := "") {
     invalidChange := ""
     effectiveChanges := Map()
+    original := StrReplace(String(originalContent), "`r`n", "`n")
+    content := original
     if !IsObject(changes)
         return effectiveChanges
-    original := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
-    original := StrReplace(original, "`r`n", "`n")
-    content := original
-    userDocument := ConfigParseIni(SettingsFile)
+    userDocument := ConfigParseIniText(original)
     for section, values in changes {
         if !IsObject(values)
             continue
@@ -481,7 +532,9 @@ ConfigWriteUserOverrides(changes, &fileChanged := false, &invalidChange := "") {
                     effectiveChanges[sectionName] := Map()
                 effectiveChanges[sectionName][keyName] := normalized
             }
-            if ConfigDefaultHas(sectionName, keyName)
+            if sectionName = "CustomHotkey" && normalized = ""
+                content := ConfigDeleteIniValue(content, sectionName, keyName)
+            else if ConfigDefaultHas(sectionName, keyName)
                 && normalized = String(ConfigDefaultRead(sectionName, keyName))
                 content := ConfigDeleteIniValue(content, sectionName, keyName)
             else
@@ -489,9 +542,19 @@ ConfigWriteUserOverrides(changes, &fileChanged := false, &invalidChange := "") {
                     ConfigEncodeValue(sectionName, keyName, normalized))
         }
     }
+    return effectiveChanges
+}
+
+ConfigWriteUserOverrides(changes, &invalidChange := "") {
+    global SettingsFile, SettingsModifyTime
+    original := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
+    original := StrReplace(original, "`r`n", "`n")
+    content := ""
+    effectiveChanges := ConfigPrepareUserOverrides(changes, original, &content, &invalidChange)
+    if invalidChange != ""
+        return Map()
     if content != original {
         ConfigAtomicWrite(SettingsFile, content)
-        fileChanged := true
         SettingsModifyTime := ConfigFileModifyTime()
     }
     return effectiveChanges
@@ -568,6 +631,34 @@ ConfigDeleteIniValue(content, section, key) {
             }
         }
         out.Push(line)
+    }
+    if !removed
+        return content
+    return ConfigJoinIniLines(out)
+}
+
+ConfigDeleteIniSection(content, section) {
+    if content = ""
+        return content
+    content := StrReplace(content, "`r", "")
+    content := RTrim(content, "`n")
+    lines := StrSplit(content, "`n")
+    out := []
+    currentSection := ""
+    removing := false
+    removed := false
+    for line in lines {
+        trimmed := Trim(line)
+        if SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]" {
+            currentSection := SubStr(trimmed, 2, StrLen(trimmed) - 2)
+            removing := currentSection = section
+            if removing {
+                removed := true
+                continue
+            }
+        }
+        if !removing
+            out.Push(line)
     }
     if !removed
         return content

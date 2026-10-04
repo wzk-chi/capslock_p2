@@ -93,6 +93,8 @@ SettingsWebMessageReceived(sender, args) {
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     else if messageType = "saveSettings"
         SetTimer(SettingsApplyDraft.Bind(message), -1)
+    else if messageType = "selectHotkeyApplication"
+        SetTimer(SettingsSelectHotkeyApplication, -1)
     else if messageType = "testSettings"
         SetTimer(SettingsRunTest.Bind(message), -1)
     else if messageType = "startShortcutRecording"
@@ -303,6 +305,31 @@ SettingsBindingSnapshot() {
     return result
 }
 
+SettingsSelectHotkeyApplication(*) {
+    global SettingsHost
+    applicationPath := ""
+    try applicationPath := FileSelect(1, "", "选择应用程序", "应用程序 (*.exe)")
+    catch as pickerError {
+        SettingsSendHotkeyApplicationSelected(0)
+        ShowMsg("无法打开应用选择器：" . pickerError.Message, 3000)
+        return
+    }
+    if applicationPath = ""
+        return
+    profile := AppProfileDraftFromPath(applicationPath)
+    if !IsObject(profile)
+        return
+    SettingsSendHotkeyApplicationSelected(profile)
+}
+
+SettingsSendHotkeyApplicationSelected(profile) {
+    global SettingsHost
+    if !IsObject(SettingsHost) || !IsObject(profile)
+        return
+    PanelHostExecute(SettingsHost,
+        "window.hotkeyApplicationSelected(" . JSON.stringify(profile, 0) . ");")
+}
+
 SettingsPushSnapshot(*) {
     global SettingsHost, SettingsPendingToast
     if !IsObject(SettingsHost)
@@ -316,6 +343,8 @@ SettingsPushSnapshot(*) {
         "toast", SettingsPendingToast,
         "sections", sections,
         "keys", SettingsKeySnapshot(),
+        "profiles", AppProfilesSnapshot(),
+        "profileStamp", AppProfilesStampValue(),
         "bindings", SettingsBindingSnapshot(),
         "bindingModes", WindowBindingModes())
     PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
@@ -346,6 +375,7 @@ SettingsCollectSectionChanges(changes, section, values) {
 }
 
 SettingsApplyDraft(message) {
+    global SettingsFile, SettingsModifyTime
     msg := LLMMessageParse(message)
     sections := 0
     if msg.Has("sections") && IsObject(msg["sections"])
@@ -376,19 +406,69 @@ SettingsApplyDraft(message) {
             SettingsSendSaved(false, translationError)
             return
         }
-        fileChanged := false
+
+        profilesDirty := msg.Has("profilesDirty") && AppProfileBoolean(msg["profilesDirty"], false)
+        profiles := msg.Has("profiles") && Type(msg["profiles"]) = "Array" ? msg["profiles"] : []
+        if profilesDirty {
+            ; Refresh from disk before comparing the page's profile snapshot.
+            ; This catches profile edits whose file timestamp shares the same
+            ; second as the previous timestamp.
+            if !AppProfilesLoad() {
+                SettingsSendSaved(false, "无法读取应用配置文件，请检查后重试。")
+                return
+            }
+            baseProfileStamp := msg.Has("baseProfileStamp") ? String(msg["baseProfileStamp"]) : ""
+            if baseProfileStamp != AppProfilesStampValue() {
+                ; The profile map is already refreshed; rebuild hotkeys with it.
+                ReloadSettings(false, true)
+                SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。")
+                return
+            }
+            if !AppProfilesValidateDraft(profiles, &profileError) {
+                SettingsSendSaved(false, profileError)
+                return
+            }
+        }
         invalidChange := ""
-        effectiveChanges := ConfigWriteUserOverrides(changes, &fileChanged, &invalidChange)
+        candidateContent := ""
+        originalContent := ""
+        if profilesDirty {
+            originalContent := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
+            originalContent := StrReplace(originalContent, "`r`n", "`n")
+            effectiveChanges := ConfigPrepareUserOverrides(
+                changes, originalContent, &candidateContent, &invalidChange)
+        } else {
+            effectiveChanges := ConfigWriteUserOverrides(changes, &invalidChange)
+        }
         if invalidChange != "" {
             SettingsSendSaved(false, LLMText(
                 "Invalid setting value: " . invalidChange,
                 "设置值无效：" . invalidChange))
             return
         }
-        if effectiveChanges.Count {
-            ReloadSettings(false)
+        if profilesDirty {
+            if !AppProfilePrepareDraftContent(profiles, candidateContent,
+                &candidateContent, &profileError) {
+                SettingsSendSaved(false, profileError)
+                return
+            }
+            if candidateContent != originalContent {
+                ConfigAtomicWrite(SettingsFile, candidateContent)
+                SettingsModifyTime := ConfigFileModifyTime()
+            }
         }
-        SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
+        registrationErrors := []
+        if effectiveChanges.Count || profilesDirty {
+            registrationErrors := ReloadSettings(false)
+        }
+        if registrationErrors.Length {
+            failedTriggers := ""
+            for trigger in registrationErrors
+                failedTriggers .= (failedTriggers = "" ? "" : "、") . trigger
+            SettingsSendSaved(true, "设置已保存，但以下触发键无法启用：" . failedTriggers)
+        } else {
+            SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
+        }
         SettingsPushSnapshot()
     } catch as saveError {
         SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))

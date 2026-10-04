@@ -18,6 +18,7 @@ A_HotkeyInterval := 2000
 #Include lib\app\config.ahk
 #Include lib\app\core.ahk
 #Include lib\features\windows.ahk
+#Include lib\input\appProfiles.ahk
 #Include lib\vendor\WebView2.ahk
 #Include lib\shared\panelHost.ahk
 #Include lib\shared\windowBar.ahk

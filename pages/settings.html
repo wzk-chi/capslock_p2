@@ -84,7 +84,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .custom-hotkey-field { min-width: 0; display: flex; gap: 8px; }
 .custom-hotkey-field input { min-width: 0; flex: 1; }
 .custom-hotkey-record { flex: none; padding: 6px 8px; font-size: 11px; }
-.shortcut-row { grid-template-columns: 180px minmax(0, 1fr) 48px; }
+.shortcut-row { grid-template-columns: 180px minmax(0, 1fr) minmax(48px, auto); }
+.shortcut-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .shortcut-label { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shortcut-record { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
 .shortcut-record.recording { background: var(--danger); }
@@ -95,6 +96,25 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .shortcut-group[open] .summary-icon { transform: rotate(90deg); }
 .shortcut-group-count { margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 500; }
 .shortcut-group-list { display: grid; gap: 7px; padding: 0 12px 12px; }
+.hotkey-scope-card { display: grid; gap: 9px; }
+.hotkey-scope-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hotkey-scope-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.hotkey-scope-summary { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.hotkey-scope-button { min-width: 190px; text-align: left; }
+.hotkey-application-dialog { width: min(680px, calc(100% - 32px)); }
+.hotkey-application-dialog .picker-table th:last-child,
+.hotkey-application-dialog .picker-table td:last-child { width: 170px; text-align: right; }
+.hotkey-application-dialog .picker-table td:first-child { cursor: pointer; }
+.hotkey-app-name { display: grid; gap: 3px; min-width: 0; }
+.hotkey-app-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hotkey-app-path { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.hotkey-app-status { color: var(--accent); font-size: 11px; white-space: nowrap; }
+.hotkey-app-status.off { color: var(--muted); }
+.hotkey-app-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.hotkey-app-actions .btn { padding: 5px 8px; font-size: 11px; }
+.hotkey-global-row { cursor: pointer; }
+.hotkey-global-row td { background: var(--accent-quiet); }
+.hotkey-global-row:hover td, .hotkey-application-dialog .picker-table tbody tr:hover td { background: var(--accent-soft); }
 .icon-btn { border: 0; border-radius: 7px; padding: 6px; background: transparent; color: var(--muted); font-size: 16px; }
 .icon-btn:hover { background: var(--accent-quiet); color: var(--accent); }
 .list-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
@@ -142,7 +162,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   .content { padding: 22px 20px 32px; }
   .grid { grid-template-columns: 1fr; }
   .field.wide { grid-column: auto; }
-  .shortcut-row { grid-template-columns: 135px minmax(0, 1fr) 48px; }
+  .shortcut-row { grid-template-columns: 135px minmax(0, 1fr) minmax(48px, auto); }
 }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -282,10 +302,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 
       <section class="page" data-page-view="shortcuts">
         <div class="cards">
+          <div class="card hotkey-scope-card">
+            <div class="hotkey-scope-head"><h3>应用范围</h3><button id="hotkeyScopeButton" class="btn ghost hotkey-scope-button" type="button">全局</button></div>
+            <div id="hotkeyScopeSummary" class="hotkey-scope-summary">所有应用共用的基础快捷键配置。</div>
+          </div>
           <div class="card">
             <div class="card-head"><h3>自定义快捷键</h3><button id="addCustomHotkey" class="btn mini">添加快捷键</button></div>
             <div id="customHotkeyList" class="pair-list"></div>
-            <div class="hint">触发键 → 发送键，例如 Alt+C → Ctrl+C。</div>
+            <div class="hint">触发键 → 发送键，例如 Alt+C → Ctrl+C；输入 @native 保留应用原键，输入 @block 禁用。</div>
           </div>
           <div class="card"><input id="shortcutFilter" class="filter" placeholder="筛选快捷键"><div id="shortcutList" class="shortcut-list"></div></div>
         </div>
@@ -341,11 +365,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
     <div class="picker-dialog-actions"><button id="cancelWindowPicker" class="btn ghost" type="button">取消</button><button id="selectWindowPicker" class="btn" type="button" disabled>选择</button></div>
   </div>
 </dialog>
+<dialog id="hotkeyApplicationDialog" class="picker-dialog hotkey-application-dialog">
+  <div class="picker-dialog-body">
+    <div class="picker-dialog-head"><h3>应用范围</h3><span id="hotkeyApplicationCount"></span></div>
+    <p class="picker-description">点击“全局”或应用名称切换快捷键配置。添加应用时选择一个 .exe 文件。</p>
+    <div class="picker-table-wrap">
+      <table class="picker-table">
+        <thead><tr><th>应用</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="hotkeyApplicationRows"></tbody>
+      </table>
+      <div id="hotkeyApplicationEmpty" class="picker-empty">还没有添加应用。</div>
+    </div>
+    <div class="picker-dialog-actions"><button id="addHotkeyApplication" class="btn" type="button">添加应用</button><button id="closeHotkeyApplication" class="btn ghost" type="button">关闭</button></div>
+  </div>
+</dialog>
 <div id="settingsToast" class="ui-toast error" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script>
 const state = {
   draft: null, baseSections: null, page: 'general', dirty: false,
-  dirtyFields: new Set(), confirmAction: '', toastTimer: 0
+  dirtyFields: new Set(), confirmAction: '', toastTimer: 0,
+  hotkeyProfileId: '', baseProfileStamp: '', profilesDirty: false
 };
 let shortcutRecording = null;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -356,6 +395,94 @@ const post = payload => {
 const clone = value => JSON.parse(JSON.stringify(value || {}));
 const pickerState = { selectedIndex: 0, kind: '' };
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
+function hotkeyProfile() {
+  if (!state.draft || !Array.isArray(state.draft.profiles) || !state.hotkeyProfileId) return null;
+  return state.draft.profiles.find(profile => String(profile.id) === String(state.hotkeyProfileId)) || null;
+}
+function normalizeCustomTrigger(value) {
+  let raw = String(value ?? '').trim();
+  let prefix = '';
+  while (raw && '^!+#'.includes(raw[0])) prefix += raw[0], raw = raw.slice(1);
+  if (raw.length >= 2 && raw[0] === '{' && raw[raw.length - 1] === '}') raw = raw.slice(1, -1);
+  return [...'^!+#'].filter(modifier => prefix.includes(modifier)).join('') + raw.toLowerCase();
+}
+function shortcutSection(name) {
+  const profile = hotkeyProfile();
+  const globalValues = section(name);
+  if (!profile && name === 'CustomHotkey') {
+    const normalized = {};
+    Object.entries(globalValues).forEach(([key, value]) => { normalized[normalizeCustomTrigger(key)] = value; });
+    return normalized;
+  }
+  if (!profile) return globalValues;
+  const overrides = profile.sections && profile.sections[name] || {};
+  if (name === 'CustomHotkey') {
+    const normalized = {};
+    Object.entries(globalValues).forEach(([key, value]) => { normalized[normalizeCustomTrigger(key)] = value; });
+    Object.entries(overrides).forEach(([key, value]) => { normalized[normalizeCustomTrigger(key)] = value; });
+    return normalized;
+  }
+  return Object.assign({}, globalValues, overrides);
+}
+function shortcutOverrideExists(sectionName, key) {
+  const profile = hotkeyProfile();
+  if (!profile || !profile.sections || !profile.sections[sectionName]) return false;
+  const target = sectionName === 'CustomHotkey' ? normalizeCustomTrigger(key) : key;
+  return Object.keys(profile.sections[sectionName]).some(raw =>
+    (sectionName === 'CustomHotkey' ? normalizeCustomTrigger(raw) : raw) === target);
+}
+function markHotkeyProfileDirty() {
+  state.dirty = true;
+  state.profilesDirty = true;
+  setStatus('未保存');
+}
+function setShortcutDraftValue(sectionName, key, value) {
+  const normalizedKey = sectionName === 'CustomHotkey' ? normalizeCustomTrigger(key) : key;
+  const profile = hotkeyProfile();
+  if (!profile) {
+    const values = state.draft.sections[sectionName] || {};
+    Object.keys(values).forEach(raw => {
+      if (raw !== normalizedKey && sectionName === 'CustomHotkey'
+        && normalizeCustomTrigger(raw) === normalizedKey) {
+        delete values[raw]; markDirty(sectionName, raw);
+      }
+    });
+    setDraftValue(sectionName, normalizedKey, value);
+    return;
+  }
+  if (!profile.sections) profile.sections = { Keys: {}, CustomHotkey: {} };
+  if (!profile.sections[sectionName]) profile.sections[sectionName] = {};
+  Object.keys(profile.sections[sectionName]).forEach(raw => {
+    if (raw !== normalizedKey && sectionName === 'CustomHotkey'
+      && normalizeCustomTrigger(raw) === normalizedKey) delete profile.sections[sectionName][raw];
+  });
+  profile.sections[sectionName][normalizedKey] = value;
+  markHotkeyProfileDirty();
+}
+function removeShortcutDraftValue(sectionName, key) {
+  const normalizedKey = sectionName === 'CustomHotkey' ? normalizeCustomTrigger(key) : key;
+  const profile = hotkeyProfile();
+  if (!profile) {
+    const values = state.draft.sections[sectionName] || {};
+    let matched = false;
+    Object.keys(values).forEach(raw => {
+      if ((sectionName === 'CustomHotkey' ? normalizeCustomTrigger(raw) : raw) === normalizedKey) {
+        values[raw] = '';
+        markDirty(sectionName, raw);
+        matched = true;
+      }
+    });
+    if (!matched) setDraftValue(sectionName, normalizedKey, '');
+    return;
+  }
+  if (profile.sections && profile.sections[sectionName]) {
+    Object.keys(profile.sections[sectionName]).forEach(raw => {
+      if ((sectionName === 'CustomHotkey' ? normalizeCustomTrigger(raw) : raw) === normalizedKey)
+        delete profile.sections[sectionName][raw];
+    });
+  }
+  markHotkeyProfileDirty();
+}
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const compactWindowText = value => {
   const text = String(value ?? '').trim();
@@ -530,6 +657,7 @@ function shortcutActionName(action) {
   return String(action || '').trim().replace(/\s*\(.*/, '').toLowerCase();
 }
 const ACTION_LABELS = {
+  '@block': '禁用动作', '@native': '保留应用原键',
   keyFunc_doNothing: '无操作', keyFunc_toggleCapsLock: '切换大小写', keyFunc_send: '自定义', keyFunc_run: '运行程序',
   keyFunc_mouseSpeedIncrease: '提高鼠标速度', keyFunc_mouseSpeedDecrease: '降低鼠标速度',
   keyFunc_moveLeft: '向左移动', keyFunc_moveRight: '向右移动', keyFunc_moveUp: '向上移动', keyFunc_moveDown: '向下移动',
@@ -563,6 +691,8 @@ const ACTION_LABELS = {
 };
 function shortcutActionLabel(action) {
   const raw = String(action || '').trim();
+  if (raw === '@block') return '禁用动作';
+  if (raw === '@native') return '保留应用原键';
   const match = raw.match(/^([A-Za-z0-9_]+)(?:\((.*)\))?$/);
   if (!match || !ACTION_LABELS[match[1]]) return '自定义动作';
   const name = match[1];
@@ -601,9 +731,10 @@ function shortcutActionCategory(action) {
   if (/(^|_)(mousespeed|click|mouse|wheel)/.test(name)) return 'mouse';
   return 'other';
 }
-function shortcutActionGroups(values) {
+function shortcutActionGroups(values, allowNative = true) {
   const current = Object.values(values).filter(Boolean);
-  const actions = [...new Set(current.concat(Object.keys(ACTION_LABELS)))];
+  const baseActions = Object.keys(ACTION_LABELS).filter(action => allowNative || action !== '@native');
+  const actions = [...new Set(current.concat(baseActions))];
   const grouped = new Map(SHORTCUT_GROUPS.map(group => [group.id, []]));
   for (const action of actions) {
     const groupId = shortcutActionCategory(action);
@@ -635,8 +766,7 @@ window.receiveShortcutCapture = function (capture) {
     if (shortcutRecording.field === 'trigger') {
       updateCustomHotkeyKey(shortcutRecording.row, shortcutRecording.input, shortcutRecording.sendInput);
     } else if (shortcutRecording.row.dataset.key) {
-      state.draft.sections.CustomHotkey[shortcutRecording.row.dataset.key] = capture.value;
-      markDirty('CustomHotkey', shortcutRecording.row.dataset.key);
+      setShortcutDraftValue('CustomHotkey', shortcutRecording.row.dataset.key, capture.value);
     }
     stopShortcutRecording(false);
     setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
@@ -645,7 +775,7 @@ window.receiveShortcutCapture = function (capture) {
   const action = 'keyFunc_send(' + capture.value + ')';
   ensureShortcutOption(shortcutRecording.select, action);
   shortcutRecording.select.value = action;
-  setDraftValue('Keys', shortcutRecording.key, action);
+  setShortcutDraftValue('Keys', shortcutRecording.key, action);
   stopShortcutRecording(false);
   setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
 };
@@ -679,8 +809,8 @@ function renderShortcuts() {
   stopShortcutRecording();
   const root = $('#shortcutList');
   root.replaceChildren();
-  const values = section('Keys');
-  const actionGroups = shortcutActionGroups(values);
+  const values = shortcutSection('Keys');
+  const actionGroups = shortcutActionGroups(values, false);
   const grouped = new Map(SHORTCUT_GROUPS.map(group => [group.id, []]));
   for (const key of Object.keys(values)) {
     const groupId = shortcutCategory(key, values[key]);
@@ -727,7 +857,9 @@ function renderShortcuts() {
         select.append(optgroup);
       }
       select.value = entry.action || 'keyFunc_doNothing';
-      select.addEventListener('change', () => setDraftValue('Keys', entry.key, select.value));
+      select.addEventListener('change', () => setShortcutDraftValue('Keys', entry.key, select.value));
+      const actionButtons = document.createElement('div');
+      actionButtons.className = 'shortcut-row-actions';
       const record = document.createElement('button');
       record.type = 'button';
       record.className = 'btn mini shortcut-record';
@@ -746,7 +878,19 @@ function renderShortcuts() {
         setStatus('请按下要绑定的按键组合，再次点击可取消');
         post({ type: 'startShortcutRecording', key: entry.key });
       });
-      row.append(label, select, record);
+      actionButtons.append(record);
+      if (shortcutOverrideExists('Keys', entry.key)) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'btn ghost mini shortcut-record';
+        restore.textContent = '恢复继承';
+        restore.addEventListener('click', () => {
+          removeShortcutDraftValue('Keys', entry.key);
+          renderAll();
+        });
+        actionButtons.append(restore);
+      }
+      row.append(label, select, actionButtons);
       list.append(row);
     }
     details.append(summary, list);
@@ -757,15 +901,14 @@ function renderShortcuts() {
 }
 function updateCustomHotkeyKey(row, triggerInput, sendInput) {
   const oldKey = row.dataset.key;
-  const newKey = triggerInput.value.trim();
+  const newKey = normalizeCustomTrigger(triggerInput.value);
+  triggerInput.value = newKey;
   if (oldKey && oldKey !== newKey) {
-    state.draft.sections.CustomHotkey[oldKey] = '';
-    markDirty('CustomHotkey', oldKey);
+    removeShortcutDraftValue('CustomHotkey', oldKey);
   }
   row.dataset.key = newKey;
   if (newKey) {
-    state.draft.sections.CustomHotkey[newKey] = sendInput.value;
-    markDirty('CustomHotkey', newKey);
+    setShortcutDraftValue('CustomHotkey', newKey, sendInput.value);
   }
 }
 function startCustomHotkeyRecording(row, input, sendInput, field, button) {
@@ -804,7 +947,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   sendField.className = 'custom-hotkey-field';
   const sendInput = document.createElement('input');
   sendInput.value = initialSend;
-  sendInput.placeholder = '发送键，例如 ^c';
+  sendInput.placeholder = '发送键，例如 ^c；@native 保留原键；@block 禁用';
   const sendRecord = document.createElement('button');
   sendRecord.type = 'button';
   sendRecord.className = 'btn ghost custom-hotkey-record';
@@ -819,10 +962,11 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   remove.type = 'button';
   remove.appendChild(createIcon('x'));
   remove.title = '删除自定义快捷键';
+  if (hotkeyProfile() && initialTrigger && !shortcutOverrideExists('CustomHotkey', initialTrigger))
+    remove.hidden = true;
   remove.addEventListener('click', () => {
     if (row.dataset.key) {
-      state.draft.sections.CustomHotkey[row.dataset.key] = '';
-      markDirty('CustomHotkey', row.dataset.key);
+      removeShortcutDraftValue('CustomHotkey', row.dataset.key);
     }
     if (shortcutRecording && shortcutRecording.row === row) stopShortcutRecording();
     row.remove();
@@ -831,8 +975,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   triggerInput.addEventListener('input', () => updateCustomHotkeyKey(row, triggerInput, sendInput));
   sendInput.addEventListener('input', () => {
     if (row.dataset.key) {
-      state.draft.sections.CustomHotkey[row.dataset.key] = sendInput.value;
-      markDirty('CustomHotkey', row.dataset.key);
+      setShortcutDraftValue('CustomHotkey', row.dataset.key, sendInput.value);
     }
   });
   row.append(triggerField, sendField, remove);
@@ -842,7 +985,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
 function renderCustomHotkeys() {
   const root = $('#customHotkeyList');
   root.replaceChildren();
-  const entries = Object.entries(section('CustomHotkey'));
+  const entries = Object.entries(shortcutSection('CustomHotkey'));
   if (!entries.length) {
     addCustomHotkeyRow(root);
     return;
@@ -948,8 +1091,137 @@ function renderBindings() {
     card.append(items); root.append(card);
   }
 }
+function closeHotkeyApplicationDialog() {
+  const dialog = $('#hotkeyApplicationDialog');
+  if (dialog.open) dialog.close();
+}
+function hotkeyProfileLabel(profile) {
+  return String(profile && (profile.displayName || profile.exePath) || '应用');
+}
+function createGlobalHotkeyRow() {
+  const row = document.createElement('tr');
+  row.className = 'hotkey-global-row';
+
+  const description = document.createElement('td');
+  description.colSpan = 2;
+  const title = document.createElement('strong');
+  title.textContent = '全局';
+  const detail = document.createElement('span');
+  detail.className = 'exe';
+  detail.textContent = '所有应用共用的基础配置';
+  description.append(title, detail);
+
+  const selection = document.createElement('td');
+  selection.textContent = state.hotkeyProfileId ? '点击切换' : '当前配置';
+  row.append(description, selection);
+  row.addEventListener('click', () => {
+    state.hotkeyProfileId = '';
+    renderAll();
+    closeHotkeyApplicationDialog();
+  });
+  return row;
+}
+function createHotkeyApplicationRow(profile, profiles) {
+  const row = document.createElement('tr');
+  row.className = String(profile.id) === String(state.hotkeyProfileId) ? 'selected' : '';
+
+  const appCell = document.createElement('td');
+  const appName = document.createElement('div');
+  appName.className = 'hotkey-app-name';
+  const name = document.createElement('strong');
+  name.textContent = hotkeyProfileLabel(profile);
+  const path = document.createElement('span');
+  path.className = 'hotkey-app-path';
+  path.textContent = profile.exePath || '';
+  appName.append(name, path);
+  appCell.append(appName);
+
+  const statusCell = document.createElement('td');
+  const enabled = String(profile.enabled) === '1';
+  const status = document.createElement('span');
+  status.className = 'hotkey-app-status' + (enabled ? '' : ' off');
+  status.textContent = enabled ? '已启用' : '已禁用';
+  statusCell.append(status);
+
+  const actionsCell = document.createElement('td');
+  const actions = document.createElement('div');
+  actions.className = 'hotkey-app-actions';
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn ghost';
+  remove.textContent = '删除';
+  remove.addEventListener('click', event => {
+    event.stopPropagation();
+    if (!window.confirm('删除“' + hotkeyProfileLabel(profile) + '”的快捷键配置？')) return;
+    state.draft.profiles = profiles.filter(item => String(item.id) !== String(profile.id));
+    if (String(state.hotkeyProfileId) === String(profile.id)) state.hotkeyProfileId = '';
+    markHotkeyProfileDirty();
+    renderHotkeyApplicationRows();
+    renderAll();
+  });
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'btn ghost';
+  toggle.textContent = enabled ? '禁用' : '启用';
+  toggle.addEventListener('click', event => {
+    event.stopPropagation();
+    profile.enabled = enabled ? '0' : '1';
+    markHotkeyProfileDirty();
+    renderHotkeyApplicationRows();
+    renderAll();
+  });
+
+  actions.append(remove, toggle);
+  actionsCell.append(actions);
+  row.append(appCell, statusCell, actionsCell);
+  row.addEventListener('click', () => {
+    state.hotkeyProfileId = String(profile.id);
+    renderAll();
+    closeHotkeyApplicationDialog();
+  });
+  return row;
+}
+function renderHotkeyApplicationRows() {
+  const root = $('#hotkeyApplicationRows');
+  if (!root || !state.draft) return;
+  root.replaceChildren();
+  const profiles = Array.isArray(state.draft.profiles) ? state.draft.profiles : [];
+  root.append(createGlobalHotkeyRow());
+  profiles.forEach(profile => root.append(createHotkeyApplicationRow(profile, profiles)));
+  $('#hotkeyApplicationCount').textContent = profiles.length + ' 个应用';
+  $('#hotkeyApplicationEmpty').classList.toggle('visible', profiles.length === 0);
+}
+function renderHotkeyScope() {
+  const profile = hotkeyProfile();
+  const button = $('#hotkeyScopeButton');
+  const summary = $('#hotkeyScopeSummary');
+  if (!button || !summary) return;
+  if (!profile) {
+    button.textContent = '全局';
+    summary.textContent = '所有应用共用的基础快捷键配置。';
+  } else {
+    const enabled = String(profile.enabled) === '1';
+    button.textContent = hotkeyProfileLabel(profile);
+    summary.textContent = enabled
+      ? '当前活动程序匹配此 EXE 时使用本应用映射；没有单独设置的按键沿用全局。'
+      : '此应用配置已禁用，目前使用全局设置；已保存的应用映射会保留。';
+  }
+}
+window.hotkeyApplicationSelected = function (profile) {
+  if (!profile || !profile.id || !profile.exePath || !state.draft) return;
+  const profiles = Array.isArray(state.draft.profiles) ? state.draft.profiles : [];
+  const existing = profiles.find(item => String(item.id) === String(profile.id)
+    || String(item.exePath || '').toLowerCase() === String(profile.exePath || '').toLowerCase());
+  if (existing) profile = existing;
+  else profiles.push(clone(profile));
+  state.draft.profiles = profiles;
+  state.hotkeyProfileId = String(profile.id);
+  markHotkeyProfileDirty(); renderAll(); closeHotkeyApplicationDialog();
+};
 function renderAll() {
-  refreshStaticControls(); renderCustomHotkeys(); renderShortcuts();
+  refreshStaticControls(); renderHotkeyScope(); renderCustomHotkeys(); renderShortcuts();
   renderPairs('TabHotString', 'tabList', true);
   renderPairs('QSearch', 'qsearchList'); renderPairs('QRun', 'qrunList'); renderPairs('QWeb', 'qwebList');
   renderBindings();
@@ -1002,8 +1274,11 @@ function receiveSnapshot(snapshot) {
   sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
     sections.TTranslate.targetLanguage);
   state.baseSections = sections;
+  state.baseProfileStamp = String(snapshot.profileStamp || '');
   state.bindingModes = clone(snapshot.bindingModes || []);
-  state.draft = { sections: clone(sections), bindings: clone(snapshot.bindings) };
+  state.hotkeyProfileId = '';
+  state.profilesDirty = false;
+  state.draft = { sections: clone(sections), bindings: clone(snapshot.bindings), profiles: clone(snapshot.profiles || []) };
   state.dirtyFields.clear();
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   updateLanguageSelectLabels();
@@ -1034,14 +1309,21 @@ function buildChangedSections() {
 function saveDraft() {
   if (!state.draft) return;
   const changes = buildChangedSections();
-  if (!Object.keys(changes).some(name => Object.keys(changes[name]).length)) {
+  const hasSectionChanges = Object.keys(changes).some(name => Object.keys(changes[name]).length);
+  if (!hasSectionChanges && !state.profilesDirty) {
     setStatus('没有需要保存的变化');
     state.dirty = false;
     state.dirtyFields.clear();
     return;
   }
   setStatus('保存中…');
-  post({ type: 'saveSettings', page: state.page, sections: changes, base: clone(state.baseSections || {}) });
+  post({
+    type: 'saveSettings', page: state.page, sections: changes,
+    base: clone(state.baseSections || {}),
+    profiles: clone((state.draft && state.draft.profiles) || []),
+    profilesDirty: state.profilesDirty,
+    baseProfileStamp: state.baseProfileStamp
+  });
 }
 window.receiveSnapshot = receiveSnapshot;
 window.settingsSaved = function (ok, text) {
@@ -1049,6 +1331,7 @@ window.settingsSaved = function (ok, text) {
   if (ok) {
     state.dirty = false;
     state.dirtyFields.clear();
+    state.profilesDirty = false;
   }
 };
 window.settingsTestResult = function (ok, text) {
@@ -1114,6 +1397,19 @@ $('#windowPickerDialog').addEventListener('keydown', event => {
     return;
   event.preventDefault();
   confirmWindowPickerSelection();
+});
+$('#hotkeyScopeButton').addEventListener('click', () => {
+  renderHotkeyApplicationRows();
+  const dialog = $('#hotkeyApplicationDialog');
+  if (!dialog.open) dialog.showModal();
+});
+$('#closeHotkeyApplication').addEventListener('click', closeHotkeyApplicationDialog);
+$('#addHotkeyApplication').addEventListener('click', () => post({ type: 'selectHotkeyApplication' }));
+$('#hotkeyApplicationDialog').addEventListener('cancel', event => {
+  event.preventDefault(); closeHotkeyApplicationDialog();
+});
+$('#hotkeyApplicationDialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeHotkeyApplicationDialog();
 });
 $('#windowPickerDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget)
