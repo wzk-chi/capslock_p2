@@ -77,6 +77,11 @@ AppProfileIsValidId(profileId) {
 }
 
 AppProfileBoolean(value, fallback := false) {
+    if Type(value) = "ComValue" {
+        try return value == JSON.true
+        catch
+            return fallback
+    }
     lowered := StrLower(Trim(String(value)))
     if lowered = "1" || lowered = "true" || lowered = "on"
         return true

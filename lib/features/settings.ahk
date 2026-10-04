@@ -91,8 +91,10 @@ SettingsWebMessageReceived(sender, args) {
         SetTimer(SettingsPushSnapshot, -1)
     else if messageType = "setSettingsPage"
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
-    else if messageType = "saveSettings"
+    else if messageType = "saveSettings" {
+        DebugLog("Settings save message received")
         SetTimer(SettingsApplyDraft.Bind(message), -1)
+    }
     else if messageType = "saveQbarPlugin" {
         DebugLog("Settings received saveQbarPlugin")
         SetTimer(SettingsApplyQbarPlugin.Bind(message), -1)
@@ -103,6 +105,21 @@ SettingsWebMessageReceived(sender, args) {
         SetTimer(SettingsCreatePlugin.Bind(message), -1)
     else if messageType = "selectHotkeyApplication"
         SetTimer(SettingsSelectHotkeyApplication, -1)
+    else if messageType = "selectHotkeyOpenApplication" {
+        DebugLog("Hotkey application picker requested")
+        SetTimer(SettingsShowHotkeyApplicationPicker, -1)
+    } else if messageType = "selectHotkeyApplicationPath"
+        SetTimer(SettingsSelectHotkeyApplicationPath.Bind(LLMMsgField(msg, "path")), -1)
+    else if messageType = "hotkeyPickerTrace" {
+        stage := RegExReplace(LLMMsgField(msg, "stage"), "[^A-Za-z0-9_-]", "")
+        rowCountValid := false
+        rowCount := LLMMsgNumber(msg, "rowCount", &rowCountValid, 0, true)
+        indexValid := false
+        index := LLMMsgNumber(msg, "index", &indexValid, 0, true)
+        DebugLog("Hotkey picker UI stage=" . stage
+            . (rowCountValid ? " rows=" . rowCount : "")
+            . (indexValid ? " index=" . index : ""))
+    }
     else if messageType = "testSettings"
         SetTimer(SettingsRunTest.Bind(message), -1)
     else if messageType = "startShortcutRecording"
@@ -168,9 +185,8 @@ SettingsApplyQbarPlugin(message) {
     try {
         if maxResults != "" {
             changes := Map("Qbar", Map("esMaxResults", maxResults))
-            fileChanged := false
             invalidChange := ""
-            effectiveChanges := ConfigWriteUserOverrides(changes, &fileChanged, &invalidChange)
+            effectiveChanges := ConfigWriteUserOverrides(changes, &invalidChange)
             if invalidChange != "" {
                 DebugLog("Settings Qbar save rejected plugin=" . pluginId
                     . " invalid config=" . invalidChange)
@@ -429,8 +445,32 @@ SettingsSendHotkeyApplicationSelected(profile) {
     global SettingsHost
     if !IsObject(SettingsHost) || !IsObject(profile)
         return
+    DebugLog("Hotkey application profile returned id=" . String(profile["id"]))
     PanelHostExecute(SettingsHost,
         "window.hotkeyApplicationSelected(" . JSON.stringify(profile, 0) . ");")
+}
+
+SettingsSelectHotkeyApplicationPath(path) {
+    global WindowPickerKind, WindowPickerVisible
+    DebugLog("Hotkey application selection received pathLength=" . StrLen(String(path))
+        . " visible=" . WindowPickerVisible . " kind=" . WindowPickerKind)
+    if !WindowPickerVisible || WindowPickerKind != "hotkeyApplication" {
+        DebugLog("Hotkey application selection ignored: picker state mismatch")
+        return
+    }
+    path := Trim(String(path))
+    if path = "" {
+        DebugLog("Hotkey application selection ignored: empty path")
+        return
+    }
+    profile := AppProfileDraftFromPath(path)
+    if !IsObject(profile) {
+        DebugLog("Hotkey application profile creation failed")
+        return
+    }
+    DebugLog("Hotkey application profile created id=" . profile["id"])
+    SettingsCloseWindowPicker(false)
+    SettingsSendHotkeyApplicationSelected(profile)
 }
 
 SettingsPushSnapshot(*) {
@@ -484,12 +524,14 @@ SettingsApplyDraft(message) {
         return
     if msg.Has("page")
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
+    savePhase := "collect settings"
     try {
         changes := Map()
         for section in SettingsConfigSections() {
             if sections.Has(section)
                 SettingsCollectSectionChanges(changes, section, sections[section])
         }
+        savePhase := "check external settings changes"
         if msg.Has("base") && IsObject(msg["base"]) {
             conflict := SettingsFindDraftConflict(changes, msg["base"])
             if conflict != "" {
@@ -499,14 +541,19 @@ SettingsApplyDraft(message) {
                 return
             }
         }
+        savePhase := "validate translation settings"
         if !SettingsValidateTranslationChanges(changes, &translationError) {
             SettingsSendSaved(false, translationError)
             return
         }
 
+        savePhase := "read application profile changes"
         profilesDirty := msg.Has("profilesDirty") && AppProfileBoolean(msg["profilesDirty"], false)
         profiles := msg.Has("profiles") && Type(msg["profiles"]) = "Array" ? msg["profiles"] : []
+        DebugLog("Settings save request sections=" . changes.Count
+            . " profilesDirty=" . profilesDirty . " profileCount=" . profiles.Length)
         if profilesDirty {
+            savePhase := "load application profiles"
             ; Refresh from disk before comparing the page's profile snapshot.
             ; This catches profile edits whose file timestamp shares the same
             ; second as the previous timestamp.
@@ -521,6 +568,7 @@ SettingsApplyDraft(message) {
                 SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。")
                 return
             }
+            savePhase := "validate application profiles"
             if !AppProfilesValidateDraft(profiles, &profileError) {
                 SettingsSendSaved(false, profileError)
                 return
@@ -529,12 +577,14 @@ SettingsApplyDraft(message) {
         invalidChange := ""
         candidateContent := ""
         originalContent := ""
+        savePhase := "prepare global settings"
         if profilesDirty {
             originalContent := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
             originalContent := StrReplace(originalContent, "`r`n", "`n")
             effectiveChanges := ConfigPrepareUserOverrides(
                 changes, originalContent, &candidateContent, &invalidChange)
         } else {
+            savePhase := "write global settings"
             effectiveChanges := ConfigWriteUserOverrides(changes, &invalidChange)
         }
         if invalidChange != "" {
@@ -544,25 +594,30 @@ SettingsApplyDraft(message) {
             return
         }
         if profilesDirty {
+            savePhase := "prepare application profiles"
             if !AppProfilePrepareDraftContent(profiles, candidateContent,
                 &candidateContent, &profileError) {
                 SettingsSendSaved(false, profileError)
                 return
             }
             if candidateContent != originalContent {
+                savePhase := "write settings file"
                 ConfigAtomicWrite(SettingsFile, candidateContent)
                 SettingsModifyTime := ConfigFileModifyTime()
             }
         }
         registrationErrors := []
         if effectiveChanges.Count || profilesDirty {
+            savePhase := "reload settings"
             registrationErrors := ReloadSettings(false)
         }
-        if msg.Has("plugins") && Type(msg["plugins"]) = "Array"
+        if msg.Has("plugins") && Type(msg["plugins"]) = "Array" {
+            savePhase := "save plugin settings"
             if !QbarPluginHostApplyPluginChanges(msg["plugins"]) {
                 SettingsSendSaved(false, LLMText("Plugin settings could not be saved.", "插件设置保存失败。"))
                 return
             }
+        }
         if registrationErrors.Length {
             failedTriggers := ""
             for trigger in registrationErrors
@@ -571,8 +626,11 @@ SettingsApplyDraft(message) {
         } else {
             SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
         }
+        savePhase := "push settings snapshot"
         SettingsPushSnapshot()
     } catch as saveError {
+        errorText := StrReplace(StrReplace(String(saveError.Message), "`r", " "), "`n", " ")
+        DebugLog("Settings save exception phase=" . savePhase . " message=" . errorText)
         SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
     }
 }
@@ -773,6 +831,15 @@ SettingsShowWindowPicker(bindingNumber, bindType) {
 }
 
 SettingsShowApplicationPicker(bindingNumber) {
+    SettingsOpenApplicationPicker("application", bindingNumber)
+}
+
+SettingsShowHotkeyApplicationPicker(*) {
+    DebugLog("Hotkey application picker opening")
+    SettingsOpenApplicationPicker("hotkeyApplication")
+}
+
+SettingsOpenApplicationPicker(kind, bindingNumber := 0) {
     global SettingsHost, WindowPickerVisible, WindowPickerKind
     global WindowPickerRows, WindowPickerBindingNumber
     if WindowPickerVisible
@@ -782,11 +849,14 @@ SettingsShowApplicationPicker(bindingNumber) {
     excludeHwnd := IsObject(settingsGui) ? settingsGui.Hwnd : 0
     rows := WindowBindingOpenApplications(excludeHwnd)
     if !rows.Length {
-        SettingsShow("windows")
+        DebugLog("Application picker found no open applications kind=" . kind)
+        if kind != "hotkeyApplication"
+            SettingsShow("windows")
         ShowMsg("没有找到当前用户已打开的应用。", 2500)
         return
     }
-    WindowPickerKind := "application"
+    DebugLog("Application picker results kind=" . kind . " count=" . rows.Length)
+    WindowPickerKind := kind
     WindowPickerRows := rows
     WindowPickerBindingNumber := bindingNumber
     WindowPickerVisible := true
@@ -798,7 +868,8 @@ SettingsPushWindowPicker(*) {
     if !WindowPickerVisible || !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
         return
 
-    isApplication := WindowPickerKind = "application"
+    isApplication := WindowPickerKind = "application" || WindowPickerKind = "hotkeyApplication"
+    isHotkeyApplication := WindowPickerKind = "hotkeyApplication"
     rows := []
     for item in WindowPickerRows {
         if isApplication
@@ -809,8 +880,10 @@ SettingsPushWindowPicker(*) {
     payload := Map(
         "kind", WindowPickerKind,
         "title", isApplication ? "选择已打开应用" : "选择已打开窗口",
-        "description", isApplication ? "选择一个已打开应用，绑定它的全部窗口。" : "选择当前用户已打开的窗口作为窗口绑定。",
+        "description", isHotkeyApplication ? "选择应用以添加快捷键配置。"
+            : isApplication ? "选择应用并绑定它的全部窗口。" : "选择要绑定的窗口。",
         "rows", rows)
+    DebugLog("Window picker pushed kind=" . WindowPickerKind . " count=" . rows.Length)
     PanelHostExecute(SettingsHost, "window.receiveWindowPicker(" . JSON.stringify(payload, 0) . ");")
 }
 
@@ -832,6 +905,15 @@ SettingsWindowPickerSelect(index) {
 }
 
 SettingsWindowPickerCancel(*) {
+    global SettingsHost, WindowPickerKind
+    reopenHotkeyApplications := WindowPickerKind = "hotkeyApplication"
+    DebugLog("Window picker cancelled kind=" . WindowPickerKind)
+    if reopenHotkeyApplications {
+        SettingsCloseWindowPicker(false)
+        if IsObject(SettingsHost) && PanelHostPageReady(SettingsHost)
+            PanelHostExecute(SettingsHost, "window.openHotkeyApplicationDialog();")
+        return
+    }
     SettingsCloseWindowPicker(true)
 }
 

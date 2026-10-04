@@ -8,6 +8,7 @@
   let sequence = 0;
   let shell = null;
   let active = null;
+  let pendingCloseEvents = 0;
 
   const element = (tag, className = '', text = '') => {
     const node = document.createElement(tag);
@@ -56,6 +57,10 @@
       if (event.target === dialog) dismiss();
     });
     dialog.addEventListener('close', () => {
+      if (pendingCloseEvents) {
+        pendingCloseEvents--;
+        return;
+      }
       if (active && !active.settled) active.close({ action: 'dismiss' });
     });
     if (typeof window.refreshIcons === 'function') window.refreshIcons();
@@ -112,12 +117,17 @@
       settled = true;
       controller.settled = true;
       if (active === controller) active = null;
-      if (currentShell.dialog.open) currentShell.dialog.close();
+      if (currentShell.dialog.open) {
+        pendingCloseEvents++;
+        currentShell.dialog.close();
+      }
       resolveResult(value);
       if (typeof options.onClose === 'function') options.onClose(value, api);
     };
     const keepOpen = () => ({ keepOpen: true });
     const setActionEnabled = (id, enabled) => {
+      const descriptor = descriptors.find(item => item.id === id);
+      if (descriptor) descriptor.disabled = !enabled;
       const button = currentShell.buttons.get(id);
       if (button) button.disabled = !enabled;
     };
