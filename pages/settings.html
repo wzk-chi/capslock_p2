@@ -244,6 +244,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
             <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
             <label class="check"><input data-section="Global" data-key="runAsAdmin" type="checkbox"><span>以管理员身份运行（重启后生效）</span></label>
           </div></div>
+          <div class="card">
+            <div class="card-head"><h3>剪贴板历史</h3><span class="hint">CapsLock + Z / Qbar：cv</span></div>
+            <div class="grid">
+              <label class="check"><input data-section="ClipboardHistory" data-key="enabled" type="checkbox"><span>记录剪贴板历史</span></label>
+              <label class="field"><span>非收藏历史上限</span><input data-section="ClipboardHistory" data-key="maxItems" type="number" min="20" max="5000"></label>
+              <label class="field"><span>单次采集上限（字节）</span><input data-section="ClipboardHistory" data-key="maxCaptureBytes" type="number" min="1048576" max="536870912" step="1048576"></label>
+              <div class="hint field wide">支持文本、图片、文件和常见 HTML / RTF 富文本；收藏项不参与自动淘汰和清空。数据保存在安装目录 data\clipboard-history。</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -607,7 +616,7 @@ const ACTION_LABELS = {
   keyFunc_copy_1: '复制到剪贴板 1', keyFunc_paste_1: '粘贴剪贴板 1', keyFunc_cut_2: '剪切到剪贴板 2',
   keyFunc_copy_2: '复制到剪贴板 2', keyFunc_paste_2: '粘贴剪贴板 2', keyFunc_undoRedo: '撤销 / 重做',
   keyFunc_tabPrve: '切换到上一个标签页', keyFunc_tabNext: '切换到下一个标签页', keyFunc_jumpPageTop: '跳到页面顶部',
-  keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_translate: '打开翻译',
+  keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_clipboardHistory: '打开剪贴板历史', keyFunc_translate: '打开翻译',
   keyFunc_getJSEvalString: '获取表达式文本', keyFunc_tabHotString: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
   keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
   keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
@@ -655,7 +664,7 @@ function shortcutActionCategory(action) {
   if (name === 'keyfunc_togglecapslock') return 'press';
   if (/(^|_)select/.test(name)) return 'select';
   if (/(^|_)(move|home|end|pageup|pagedown|jump)/.test(name)) return 'move';
-  if (/(^|_)(copy|cut|paste|switchclipboard)/.test(name)) return 'clipboard';
+  if (/(^|_)(copy|cut|paste|switchclipboard|clipboardhistory)/.test(name)) return 'clipboard';
   if (/(^|_)(delete|backspace|forwarddelete|enter|double|sendchar)/.test(name)) return 'edit';
   if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
   if (/(^|_)(qbar|translate|dictionary|opencpasdocs|reload|getjsevalstring|tabhotstring)/.test(name)) return 'tools';
@@ -716,7 +725,7 @@ function shortcutCategory(key, action) {
   const name = shortcutActionName(action);
   if (/(^|_)select/.test(name)) return 'select';
   if (/(^|_)(move|home|end|pageup|pagedown)/.test(name)) return 'move';
-  if (/(^|_)(copy|cut|paste|switchclipboard)/.test(name)) return 'clipboard';
+  if (/(^|_)(copy|cut|paste|switchclipboard|clipboardhistory)/.test(name)) return 'clipboard';
   if (/(^|_)(delete|backspace|forwarddelete|enter)/.test(name)) return 'edit';
   if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
   if (/(^|_)(qbar|translate|dictionary|opencpasdocs|reload|getjsevalstring|tabscript)/.test(name)) return 'tools';

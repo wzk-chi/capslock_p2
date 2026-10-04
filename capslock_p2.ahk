@@ -24,6 +24,10 @@ A_HotkeyInterval := 2000
 #Include lib\vendor\JSON.ahk
 #Include lib\shared\crypto.ahk
 #Include lib\vendor\CSQLite.ahk
+#Include lib\features\clipboard\clipboard_store.ahk
+#Include lib\features\clipboard\clipboard_formats.ahk
+#Include lib\features\clipboard\clipboard_history.ahk
+#Include lib\features\clipboard\clipboard_panel.ahk
 #Include lib\features\translate\translate.ahk
 #Include lib\features\translate\languageDetect.ahk
 #Include lib\shared\llm.ahk

@@ -230,6 +230,23 @@ keyFunc_qbar(*) {
     QbarToggle()
 }
 
+keyFunc_clipboardHistory(*) {
+    global QbarVisible
+    if AiChatIsActive() || LLMTranslateIsActive() || DictionaryIsActive()
+        return
+    if EverythingIsActive() || NotesIsActive()
+        return
+    if QbarVisible {
+        ; Freeze Qbar's validated external target before hiding it. This makes
+        ; CapsLock+Z a direct one-press switch instead of a swallowed command.
+        targetContext := ClipboardHistoryCaptureTargetContext()
+        QbarHide()
+        ClipboardHistoryShow("", targetContext)
+        return
+    }
+    ClipboardHistoryToggle()
+}
+
 keyFunc_translate(*) {
     ; "multiline": a real multi-paragraph selection ends with a newline, which
     ; strict mode would discard.

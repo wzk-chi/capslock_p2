@@ -89,6 +89,8 @@ QBar 笔记使用安装目录下的运行时数据目录：
 
 该目录不出现在安装器 `[Files]` 或 `UninstallDelete` 中，因此安装包不携带用户笔记，覆盖更新和同目录重装不会覆盖数据库或图片。卸载也不会主动删除笔记；更换安装目录时由用户手动复制整个 `data\qbar-notes` 目录。
 
+大型持久化数据遵循 `AGENTS.md`：优先保存在 `{app}\data\<功能名>\`，作为安装目录下的运行时用户数据，不列入安装包，也不由覆盖更新或卸载清理。剪贴板历史使用 `{app}\data\clipboard-history\clipboard-history.db`，运行后按需创建。更换安装目录时一并迁移相应功能的数据子目录。
+
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 
 ## 配置和安全规则

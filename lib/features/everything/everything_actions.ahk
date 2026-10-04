@@ -49,16 +49,19 @@ EverythingRevealResult(item) {
 }
 
 EverythingCopyText(text, message := "") {
-    global A_Clipboard, ClipboardWatcherSuspended
-    previousSuspension := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
-    try A_Clipboard := String(text)
+    global A_Clipboard
+    suspendToken := ClipboardSuspendBegin("user-copy")
+    try {
+        A_Clipboard := String(text)
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "user-copy")
+    }
     catch {
-        ClipboardWatcherSuspended := previousSuspension
+        ClipboardSuspendEnd(suspendToken)
         EverythingActionFeedback(EverythingText("Copy failed", "复制失败"), true)
         return false
     }
-    ClipboardWatcherSuspended := previousSuspension
+    ClipboardSuspendEnd(suspendToken)
+    ClipboardHistoryPublishExplicit(ClipboardSequenceNumber(), 0, "user-copy")
     EverythingActionFeedback(message != "" ? message : EverythingText("Copied", "已复制"), false)
     return true
 }
@@ -67,7 +70,6 @@ EverythingCopyText(text, message := "") {
 ; file or folder. AHK's Clipboard assignment only supplies text and cannot
 ; represent this operation.
 EverythingCopyFiles(path, attempt := 0, *) {
-    global ClipboardWatcherSuspended
     path := String(path)
     if path = "" || (!FileExist(path) && !DirExist(path)) {
         EverythingActionFeedback(EverythingText("The item no longer exists.", "该项目已不存在。"), true)
@@ -103,8 +105,7 @@ EverythingCopyFiles(path, attempt := 0, *) {
         return false
     }
 
-    previousSuspension := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("user-copy")
     success := false
     try {
         if !DllCall("user32\EmptyClipboard")
@@ -112,6 +113,7 @@ EverythingCopyFiles(path, attempt := 0, *) {
         if !DllCall("user32\SetClipboardData", "uint", 15, "ptr", hGlobal)
             throw Error("SetClipboardData failed")
         hGlobal := 0 ; ownership transferred to the clipboard
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "user-copy")
         success := true
     } catch as copyError {
         DebugLog("Everything file copy failed")
@@ -121,8 +123,10 @@ EverythingCopyFiles(path, attempt := 0, *) {
         if hGlobal
             DllCall("kernel32\GlobalFree", "ptr", hGlobal)
         DllCall("user32\CloseClipboard")
-        ClipboardWatcherSuspended := previousSuspension
+        ClipboardSuspendEnd(suspendToken)
     }
+    if success
+        ClipboardHistoryPublishExplicit(ClipboardSequenceNumber(), 0, "user-copy")
     if success
         EverythingActionFeedback(EverythingText("Copied", "已复制"), false)
     else

@@ -14,6 +14,9 @@ global CapsLockUsed := false
 global CtrlZPending := true
 global AllowClipboardWatcher := true
 global ClipboardWatcherSuspended := false
+global ClipboardSuspendDepth := 0
+global ClipboardSuspendNextId := 1
+global ClipboardSuspendTokens := Map()
 global WhichClipboardNow := 0
 global SystemClipboard := 0
 global CapsClipboard := 0
@@ -41,6 +44,7 @@ Initialize() {
 
     ConfigLoad()
     EnsureConfiguredElevation()
+    try ClipboardHistoryInitialize()
     AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
         "ptr", 0, "int", 0, "wstr", "Local\capslock_p2-running", "ptr")
     if !AppInstanceMutex
@@ -99,6 +103,7 @@ EnsureConfiguredElevation() {
 }
 
 Shutdown(*) {
+    try ClipboardHistoryShutdown()
     try SetTimer(MouseSpeedTick, 0)
     try RestoreMouseSpeed()
     try LLMTranslateShutdown()
@@ -111,6 +116,49 @@ Shutdown(*) {
     try QbarPluginHostShutdown()
     try ShowSystemCursor()
     try HideLoading()
+}
+
+ClipboardSuspendBegin(reason := "unspecified") {
+    global ClipboardSuspendDepth, ClipboardSuspendNextId, ClipboardSuspendTokens, ClipboardWatcherSuspended
+    token := "clip-suspend-" . ClipboardSuspendNextId . "-" . A_TickCount
+    order := ClipboardSuspendNextId
+    ClipboardSuspendNextId += 1
+    ClipboardSuspendTokens[token] := Map("reason", String(reason), "active", true, "order", order)
+    ClipboardSuspendDepth += 1
+    ClipboardWatcherSuspended := true
+    return token
+}
+
+ClipboardSuspendEnd(token) {
+    global ClipboardSuspendDepth, ClipboardSuspendTokens, ClipboardWatcherSuspended
+    if token = "" || !ClipboardSuspendTokens.Has(token)
+        return false
+    state := ClipboardSuspendTokens[token]
+    if !state["active"]
+        return false
+    state["active"] := false
+    ClipboardSuspendDepth := Max(0, ClipboardSuspendDepth - 1)
+    ClipboardWatcherSuspended := ClipboardSuspendDepth > 0
+    ClipboardSuspendTokens.Delete(token)
+    return true
+}
+
+ClipboardSuspendActive() {
+    global ClipboardSuspendDepth
+    return ClipboardSuspendDepth > 0
+}
+
+ClipboardSuspendReason() {
+    global ClipboardSuspendTokens
+    reason := ""
+    newestOrder := 0
+    for token, state in ClipboardSuspendTokens {
+        if state["active"] && state["order"] >= newestOrder {
+            reason := state["reason"]
+            newestOrder := state["order"]
+        }
+    }
+    return reason
 }
 
 ReloadSettings(notifySettingsPage := true, *) {
@@ -302,6 +350,8 @@ ApplyConfigChanges(changes) {
                 refreshAi := true
             case "Qbar":
                 ; esMaxResults is read at query time; no index rebuild is needed.
+            case "ClipboardHistory":
+                try ClipboardHistoryOnSettingsChanged()
         }
     }
 
@@ -497,7 +547,11 @@ CLhotString() {
     replacement := GetHotStringReplacement(A_Clipboard, &matched)
     if matched = ""
         return ""
-    A_Clipboard := replacement
+    token := ClipboardSuspendBegin("temporary-hotstring")
+    try {
+        A_Clipboard := replacement
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-hotstring")
+    } finally ClipboardSuspendEnd(token)
     return matched
 }
 
@@ -596,7 +650,7 @@ SplitActionArguments(argumentText) {
 ;   "any"       keep everything and just drop the trailing newline; used
 ;               where a wrong guess is visible and editable (qbar prefill).
 GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := false) {
-    global A_Clipboard, ClipboardWatcherSuspended, CapsLockHeld
+    global A_Clipboard, CapsLockHeld
 
     ; Prefer UI Automation so reading a selection does not touch the system
     ; clipboard.
@@ -610,7 +664,7 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
     result := ""
     success := false
     copySequence := 0
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("temporary-selection")
     try {
         sequenceBefore := ClipboardSequenceNumber()
         SendInput("^{Insert}")
@@ -631,6 +685,7 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
             }
         }
         if success {
+            ClipboardHistoryMarkOwnedSequence(copySequence, "temporary-selection")
             result := A_Clipboard
             result := NormalizeSelectedText(result, mode)
         }
@@ -638,9 +693,11 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
         ; A failed copy must not change the clipboard. On success, restore only
         ; while the clipboard still contains this copy; otherwise preserve the
         ; user's newer clipboard contents.
-        if success && copySequence && ClipboardSequenceNumber() = copySequence
+        if success && copySequence && ClipboardSequenceNumber() = copySequence {
             A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := false
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-selection")
+        }
+        ClipboardSuspendEnd(suspendToken)
     }
     return result
 }
@@ -860,14 +917,27 @@ clipSaver(clipX) {
 
 HandleClipboardChange(dataType) {
     global AllowClipboardWatcher, ClipboardWatcherSuspended, CapsLockHeld, WhichClipboardNow, SystemClipboard
+    sequence := ClipboardSequenceNumber()
+    eventId := ClipboardHistoryNotify(dataType, ClipboardSuspendReason(), sequence)
     DebugLog("ClipboardChange type=" . dataType . " suspended=" . ClipboardWatcherSuspended . " capsHeld=" . CapsLockHeld . " allowed=" . AllowClipboardWatcher)
-    if ClipboardWatcherSuspended || CapsLockHeld || !AllowClipboardWatcher
-        return
     try {
-        SystemClipboard := ClipboardAll()
-        WhichClipboardNow := 0
-    } catch
-        return
+        if !ClipboardSuspendActive() && !CapsLockHeld && AllowClipboardWatcher {
+            ; Keep the local snapshot detached from the global slot until the
+            ; sequence is confirmed. The same object is then offered to history
+            ; so the delayed whitelist capture does not read the clipboard again.
+            snapshot := ClipboardAll()
+            sequenceAfter := ClipboardSequenceNumber()
+            if sequence && sequenceAfter = sequence {
+                SystemClipboard := snapshot
+                WhichClipboardNow := 0
+                ClipboardHistoryOfferSlotSnapshot(eventId, sequenceAfter, snapshot, 0)
+            }
+        }
+    } catch {
+        ; Keep the existing system-slot state when a clipboard snapshot fails.
+    } finally {
+        ClipboardHistoryFinalizeNotify(eventId)
+    }
 }
 
 SaveClipboardSlot(slot) {
@@ -879,14 +949,21 @@ SaveClipboardSlot(slot) {
         CapsClipboard := savedClipboard
     else
         CapsAltClipboard := savedClipboard
+    return savedClipboard
 }
 
 RestoreClipboard(data) {
     global A_Clipboard
-    if IsObject(data)
-        A_Clipboard := data
-    else
-        A_Clipboard := ""
+    suspendToken := ClipboardSuspendBegin("slot-restore")
+    try {
+        if IsObject(data)
+            A_Clipboard := data
+        else
+            A_Clipboard := ""
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "slot-restore")
+    } finally {
+        ClipboardSuspendEnd(suspendToken)
+    }
 }
 
 ClipboardEnabled() {
@@ -894,13 +971,14 @@ ClipboardEnabled() {
 }
 
 CopyToClipboardSlot(slot, isCut := false) {
-    global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
+    global A_Clipboard, WhichClipboardNow
     if !ClipboardEnabled()
         return
 
     success := false
     copySequence := 0
-    ClipboardWatcherSuspended := true
+    copiedSnapshot := 0
+    suspendToken := ClipboardSuspendBegin(isCut ? "user-cut" : "user-copy")
     try {
         sequenceBefore := ClipboardSequenceNumber()
         SendInput(isCut ? "^x" : "^{Insert}")
@@ -921,16 +999,20 @@ CopyToClipboardSlot(slot, isCut := false) {
             success := WaitClipboardSequenceChange(sequenceBefore, 0.15, &copySequence)
         }
         if success {
-            SaveClipboardSlot(slot)
+            copiedSnapshot := SaveClipboardSlot(slot)
+            ClipboardHistoryMarkOwnedSequence(copySequence, isCut ? "user-cut" : "user-copy")
             WhichClipboardNow := slot
         }
     } finally {
-        ClipboardWatcherSuspended := false
+        ClipboardSuspendEnd(suspendToken)
     }
+    if success
+        ClipboardHistoryPublishExplicit(copySequence, copiedSnapshot,
+            isCut ? "user-cut" : "user-copy")
 }
 
 PasteClipboardSlot(slot) {
-    global A_Clipboard, CapsClipboard, CapsAltClipboard, WhichClipboardNow, ClipboardWatcherSuspended
+    global A_Clipboard, CapsClipboard, CapsAltClipboard, WhichClipboardNow
     if !ClipboardEnabled()
         return
     savedClipboard := slot = 1 ? CapsClipboard : CapsAltClipboard
@@ -938,20 +1020,26 @@ PasteClipboardSlot(slot) {
         return
 
     if WhichClipboardNow != slot {
-        ClipboardWatcherSuspended := true
-        try A_Clipboard := savedClipboard
-        finally ClipboardWatcherSuspended := false
+        suspendToken := ClipboardSuspendBegin("slot-restore")
+        try {
+            A_Clipboard := savedClipboard
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "slot-restore")
+        }
+        finally ClipboardSuspendEnd(suspendToken)
         WhichClipboardNow := slot
     }
     SendInput("^v")
 }
 
 PasteSystemClipboard() {
-    global A_Clipboard, SystemClipboard, WhichClipboardNow, ClipboardWatcherSuspended
+    global A_Clipboard, SystemClipboard, WhichClipboardNow
     if WhichClipboardNow != 0 && IsObject(SystemClipboard) {
-        ClipboardWatcherSuspended := true
-        try A_Clipboard := SystemClipboard
-        finally ClipboardWatcherSuspended := false
+        suspendToken := ClipboardSuspendBegin("slot-restore")
+        try {
+            A_Clipboard := SystemClipboard
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "slot-restore")
+        }
+        finally ClipboardSuspendEnd(suspendToken)
         WhichClipboardNow := 0
     }
     SendInput("^v")
@@ -1023,22 +1111,24 @@ ExtractSetString(value, &runString := "", &runAsAdmin := false, &parameters := "
 }
 
 SetClipboardText(text) {
-    global A_Clipboard, ClipboardWatcherSuspended
+    global A_Clipboard
     oldClipboard := ClipboardAll()
-    previousSuspension := ClipboardWatcherSuspended
     ownedSequence := 0
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("temporary-paste")
     try {
         A_Clipboard := text
         ownedSequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(ownedSequence, "temporary-paste")
         SendInput("^v")
         Sleep(60)
     } finally {
         ; Do not put an older snapshot back over clipboard data the user
         ; supplied while the paste was in flight.
-        if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+        if ownedSequence && ClipboardSequenceNumber() = ownedSequence {
             A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := previousSuspension
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
+        }
+        ClipboardSuspendEnd(suspendToken)
     }
 }
 

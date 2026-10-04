@@ -249,4 +249,104 @@ class CSQLite {
 			return (this.ErrorMsg := this._ErrMsg(), this.ErrorCode := RC, false)
 		return true
 	}
+	; Small prepared-statement helpers used by feature stores which persist
+	; binary payloads. The existing Exec/GetTable surface intentionally remains
+	; unchanged for the string-only stores.
+	Prepare(SQL) {
+		this.ErrorMsg := "", this.ErrorCode := 0
+		if !(this.ptr)
+			return (this.ErrorMsg := "Invalid database handle!", 0)
+		statement := 0
+		sqlBuffer := this._StrToUTF8(String(SQL))
+		RC := DllCall("SQLite3.dll\sqlite3_prepare_v2", "ptr", this,
+			"ptr", sqlBuffer.Ptr, "int", -1, "ptr*", &statement := 0,
+			"ptr", 0, "cdecl int")
+		if RC {
+			this.ErrorMsg := this._ReturnMsg(RC) || this._ErrMsg()
+			this.ErrorCode := RC
+			return 0
+		}
+		return statement
+	}
+
+	StatementBindText(statement, index, value) {
+		if !statement
+			return false
+		RC := DllCall("SQLite3.dll\sqlite3_bind_text16", "ptr", statement,
+			"int", index, "wstr", String(value), "int", -1,
+			"ptr", -1, "cdecl int")
+		return RC = 0
+	}
+
+	StatementBindInteger(statement, index, value) {
+		if !statement
+			return false
+		RC := DllCall("SQLite3.dll\sqlite3_bind_int64", "ptr", statement,
+			"int", index, "int64", Integer(value), "cdecl int")
+		return RC = 0
+	}
+
+	StatementBindBlob(statement, index, dataBuffer) {
+		if !statement || !IsObject(dataBuffer)
+			return false
+		byteCount := dataBuffer.Size
+		dataPtr := byteCount ? dataBuffer.Ptr : 0
+		RC := DllCall("SQLite3.dll\sqlite3_bind_blob", "ptr", statement,
+			"int", index, "ptr", dataPtr, "int", byteCount,
+			"ptr", -1, "cdecl int")
+		return RC = 0
+	}
+
+	StatementStep(statement) {
+		if !statement
+			return 1
+		return DllCall("SQLite3.dll\sqlite3_step", "ptr", statement, "cdecl int")
+	}
+
+	StatementReset(statement) {
+		if !statement
+			return false
+		return DllCall("SQLite3.dll\sqlite3_reset", "ptr", statement, "cdecl int") = 0
+	}
+
+	StatementFinalize(statement) {
+		if !statement
+			return true
+		return DllCall("SQLite3.dll\sqlite3_finalize", "ptr", statement, "cdecl int") = 0
+	}
+
+	StatementColumnText(statement, column) {
+		if !statement
+			return ""
+		textPtr := DllCall("SQLite3.dll\sqlite3_column_text16", "ptr", statement,
+			"int", column, "cdecl ptr")
+		return textPtr ? StrGet(textPtr, "UTF-16") : ""
+	}
+
+	StatementColumnInteger(statement, column) {
+		if !statement
+			return 0
+		return DllCall("SQLite3.dll\sqlite3_column_int64", "ptr", statement,
+			"int", column, "cdecl int64")
+	}
+
+	StatementColumnBlob(statement, column, &byteCount := 0, maxBytes := 0) {
+		byteCount := 0
+		if !statement
+			return 0
+		dataPtr := DllCall("SQLite3.dll\sqlite3_column_blob", "ptr", statement,
+			"int", column, "cdecl ptr")
+		byteCount := DllCall("SQLite3.dll\sqlite3_column_bytes", "ptr", statement,
+			"int", column, "cdecl int")
+		if maxBytes && byteCount > maxBytes
+			return 0
+		if byteCount <= 0
+			return Buffer(0)
+		if !dataPtr
+			return 0
+		blobBuffer := Buffer(byteCount, 0)
+		DllCall("Kernel32\RtlMoveMemory", "ptr", blobBuffer.Ptr, "ptr", dataPtr,
+			"uptr", byteCount)
+		return blobBuffer
+	}
 }

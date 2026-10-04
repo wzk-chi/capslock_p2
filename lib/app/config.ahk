@@ -69,6 +69,10 @@ ConfigSchema() {
             "systemPrompt", Map("type", "text", "codec", "jsonScalar"))),
         "Qbar", Map("kind", "static", "keys", Map(
             "esMaxResults", Map("type", "int", "min", 1, "max", 500))),
+        "ClipboardHistory", Map("kind", "static", "keys", Map(
+            "enabled", Map("type", "bool"),
+            "maxItems", Map("type", "int", "min", 20, "max", 5000),
+            "maxCaptureBytes", Map("type", "int", "min", 1048576, "max", 536870912))),
         "Keys", Map("kind", "keys"),
         "TabHotString", Map("kind", "dynamic", "codec", "hotString"),
         "CustomHotkey", Map("kind", "dynamic", "codec", "plain"))
@@ -77,7 +81,7 @@ ConfigSchema() {
 
 ConfigSchemaSections() {
     return ["Global", "TabHotString", "Keys", "LLM", "LLMTranslate", "QAI",
-        "Qbar", "CustomHotkey", "TTranslate",
+        "Qbar", "ClipboardHistory", "CustomHotkey", "TTranslate",
         "TYoudao", "TVolcengine"]
 }
 

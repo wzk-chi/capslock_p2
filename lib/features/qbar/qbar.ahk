@@ -7,6 +7,8 @@ global QbarHost := 0
 global QbarVisible := false
 global QbarOpen := false            ; re-entrancy guard for QbarShow/QbarHide
 global QbarTargetHwnd := 0          ; external window captured before qbar opens
+global QbarTargetPid := 0
+global QbarTargetSessionId := ""
 global QbarIndexReady := false
 global QbarIndexLoading := false
 global QbarPendingText := ""
@@ -72,6 +74,7 @@ QbarToggle(*) {
 
 QbarShow() {
     global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarTargetHwnd
+    global QbarTargetPid, QbarTargetSessionId
     global QbarSessionSerial, QbarSessionId
     if QbarOpen
         return
@@ -80,8 +83,15 @@ QbarShow() {
     QbarSessionId := "qbar-" . QbarSessionSerial . "-" . A_TickCount
 
     activeHwnd := WinGetID("A")
-    if !IsObject(PanelHostGui(QbarHost)) || activeHwnd != PanelHostGui(QbarHost).Hwnd
+    QbarTargetHwnd := 0
+    QbarTargetPid := 0
+    QbarTargetSessionId := QbarSessionId
+    if activeHwnd && ClipboardHistoryTargetWindowValid(activeHwnd, 0) {
         QbarTargetHwnd := activeHwnd
+        try QbarTargetPid := WinGetPID("ahk_id " . activeHwnd)
+        catch
+            QbarTargetHwnd := 0
+    }
 
     ; "any": a line-wise selection must prefill too, even though it ends with
     ; the newline that strict mode reads as an editor's no-selection
@@ -109,6 +119,7 @@ QbarShow() {
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
     PanelHostStartAutoHide(QbarHost, QbarHide)
+    SetTimer(QbarTrackExternalTarget, 100)
 
     if PanelHostPageReady(QbarHost) {
         ; The page keeps its state across hide/show while the window starts
@@ -140,7 +151,31 @@ QbarHide(*) {
     QbarExec("window.resetLoadingSnapshot && window.resetLoadingSnapshot();")
     SetTimer(QbarWarmIndex, 0)
     QbarIndexLoading := false
+    SetTimer(QbarTrackExternalTarget, 0)
     PanelHostHide(QbarHost)
+}
+
+QbarTrackExternalTarget(*) {
+    global QbarVisible, QbarTargetHwnd, QbarTargetPid, QbarTargetSessionId, QbarSessionId
+    if !QbarVisible
+        return
+    activeHwnd := WinGetID("A")
+    if activeHwnd && ClipboardHistoryTargetWindowValid(activeHwnd, 0) {
+        QbarTargetHwnd := activeHwnd
+        try {
+            QbarTargetPid := WinGetPID("ahk_id " . activeHwnd)
+            QbarTargetSessionId := QbarSessionId
+        } catch {
+            QbarTargetHwnd := 0
+            QbarTargetPid := 0
+        }
+    } else if activeHwnd && !ClipboardHistoryIsQbarWindow(activeHwnd) {
+        ; A different panel in this process is not a valid target and must not
+        ; leave the previous external window usable for a later command.
+        QbarTargetHwnd := 0
+        QbarTargetPid := 0
+        QbarTargetSessionId := QbarSessionId
+    }
 }
 
 QbarExec(script) {

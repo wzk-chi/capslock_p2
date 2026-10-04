@@ -218,7 +218,7 @@ NotesAssetIdFromFileName(fileName) {
 ; and SetClipboardData. The HBITMAP handed to the clipboard becomes the system's
 ; to own and must not be deleted here.
 NotesSetClipboardImage(path) {
-    global ClipboardWatcherSuspended, WhichClipboardNow
+    global WhichClipboardNow
     if path = "" || !FileExist(path) || !IconGdiplusStart()
         return false
     bitmap := 0
@@ -234,8 +234,7 @@ NotesSetClipboardImage(path) {
         DllCall("gdi32\DeleteObject", "ptr", handle, "int")
         return false
     }
-    previous := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("temporary-paste")
     try {
         DllCall("user32\EmptyClipboard", "int")
         ; CF_BITMAP (2) takes an HBITMAP. CF_DIB (8) is the neighbouring value
@@ -247,20 +246,20 @@ NotesSetClipboardImage(path) {
             DllCall("gdi32\DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
             return false
         }
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
         WhichClipboardNow := 0
     } finally {
         DllCall("user32\CloseClipboard", "int")
-        ClipboardWatcherSuspended := previous
+        ClipboardSuspendEnd(suspendToken)
     }
     return true
 }
 
 NotesPasteImageToTarget(path, targetHwnd := 0) {
-    global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
+    global A_Clipboard, WhichClipboardNow
     if path = ""
         return false
-    previous := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("temporary-paste")
     oldClipboard := ClipboardAll()
     ownedSequence := 0
     try {
@@ -279,30 +278,31 @@ NotesPasteImageToTarget(path, targetHwnd := 0) {
         WhichClipboardNow := 0
         return !targetHwnd || WinActive("ahk_id " . targetHwnd)
     } finally {
-        if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+        if ownedSequence && ClipboardSequenceNumber() = ownedSequence {
             A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := previous
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
+        }
+        ClipboardSuspendEnd(suspendToken)
     }
 }
 
 NotesSetClipboard(text) {
-    global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
-    previous := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
+    global A_Clipboard, WhichClipboardNow
+    suspendToken := ClipboardSuspendBegin("temporary-paste")
     try {
         A_Clipboard := String(text)
+        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
         WhichClipboardNow := 0
     } finally {
-        ClipboardWatcherSuspended := previous
+        ClipboardSuspendEnd(suspendToken)
     }
 }
 
 NotesPasteToTarget(text, targetHwnd := 0) {
-    global A_Clipboard, ClipboardWatcherSuspended, WhichClipboardNow
+    global A_Clipboard, WhichClipboardNow
     if text = ""
         return false
-    previous := ClipboardWatcherSuspended
-    ClipboardWatcherSuspended := true
+    suspendToken := ClipboardSuspendBegin("temporary-paste")
     oldClipboard := ClipboardAll()
     ownedSequence := 0
     try {
@@ -315,14 +315,17 @@ NotesPasteToTarget(text, targetHwnd := 0) {
         }
         A_Clipboard := text
         ownedSequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(ownedSequence, "temporary-paste")
         SendInput("^v")
         Sleep(60)
         WhichClipboardNow := 0
         return !targetHwnd || WinActive("ahk_id " . targetHwnd)
     } finally {
-        if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+        if ownedSequence && ClipboardSequenceNumber() = ownedSequence {
             A_Clipboard := oldClipboard
-        ClipboardWatcherSuspended := previous
+            ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
+        }
+        ClipboardSuspendEnd(suspendToken)
     }
 }
 

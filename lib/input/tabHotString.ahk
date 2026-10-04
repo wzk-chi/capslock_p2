@@ -3,7 +3,7 @@
 ; action; only configured text replacements are applied.
 
 TabHotStringAction() {
-    global A_Clipboard, ClipboardWatcherSuspended
+    global A_Clipboard
     replacement := ""
 
     selectedText := GetSelectedText()
@@ -13,12 +13,12 @@ TabHotStringAction() {
             SetClipboardText(replacement)
     } else {
         oldClipboard := ClipboardAll()
-        previousSuspension := ClipboardWatcherSuspended
         ownedSequence := 0
-        ClipboardWatcherSuspended := true
+        suspendToken := ClipboardSuspendBegin("temporary-hotstring")
         try {
             A_Clipboard := ""
             ownedSequence := ClipboardSequenceNumber()
+            ClipboardHistoryMarkOwnedSequence(ownedSequence, "temporary-hotstring")
             SendInput("+{Home}")
             Sleep(10)
             SendInput("^{Insert}")
@@ -29,14 +29,17 @@ TabHotStringAction() {
                 if replacement != "" && replacement != lineText {
                     A_Clipboard := replacement
                     ownedSequence := ClipboardSequenceNumber()
+                    ClipboardHistoryMarkOwnedSequence(ownedSequence, "temporary-hotstring")
                     SendInput("^v")
                     Sleep(60)
                 }
             }
         } finally {
-            if ownedSequence && ClipboardSequenceNumber() = ownedSequence
+            if ownedSequence && ClipboardSequenceNumber() = ownedSequence {
                 A_Clipboard := oldClipboard
-            ClipboardWatcherSuspended := previousSuspension
+                ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-hotstring")
+            }
+            ClipboardSuspendEnd(suspendToken)
         }
     }
     return replacement

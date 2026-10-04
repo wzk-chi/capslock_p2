@@ -30,6 +30,13 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
         case "builtin.notes.search":
             if QbarScheduleNotes(args, true)
                 return QbarExecutionRememberRegistered(command, args, QbarHistoryNotesEntry(args))
+        case "builtin.clipboard.open":
+            ; Freeze a validated target before QbarHide changes the foreground
+            ; window. The history panel must not guess from an old Qbar HWND.
+            targetContext := ClipboardHistoryCaptureTargetContext()
+            QbarHide()
+            if ClipboardHistoryShow(args, targetContext)
+                return QbarExecutionRememberRegistered(command, args, 0)
         case "builtin.settings.open":
             QbarHide()
             QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",

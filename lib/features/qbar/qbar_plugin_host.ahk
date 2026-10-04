@@ -119,6 +119,7 @@ QbarPluginHostHandlerAllowed(handlerId) {
         "builtin.ai.ask", true,
         "builtin.everything.search", true,
         "builtin.notes.search", true,
+        "builtin.clipboard.open", true,
         "builtin.settings.open", true,
         "builtin.open-path", true,
         "builtin.open-url", true,
