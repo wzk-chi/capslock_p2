@@ -38,6 +38,9 @@ QbarConfigIndex() {
         Map("commandId", "builtin.notes.search", "pluginId", "builtin.notes", "short", "n",
             "label", "笔记", "type", "notes", "usageKey", "builtin:notes",
             "aliases", ["n", "note", "w", "write"]),
+        Map("commandId", "builtin.clipboard.open", "pluginId", "builtin.clipboard", "short", "cv",
+            "label", "剪贴板历史", "type", "clipboard", "usageKey", "builtin:clipboard",
+            "aliases", ["cv"]),
         Map("commandId", "builtin.settings.open", "pluginId", "builtin.settings", "short", "cl set",
             "label", "设置", "type", "settings", "usageKey", "builtin:settings",
             "aliases", ["cl set", "cl settings"])
@@ -133,12 +136,10 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
         QbarSendResults(QbarHistoryRows(), false, "", "history", pageQueryId, querySeq)
         return
     }
-    if QbarSplitCommand(text, &firstToken, &rest) {
-        resolution := QbarRegistryResolve(text)
-        if resolution["candidates"].Length {
-            QbarSendResults(QbarRegistryResolutionRows(resolution), false, "", "normal", pageQueryId, querySeq)
-            return
-        }
+    resolution := QbarRegistryResolve(text)
+    if resolution["candidates"].Length {
+        QbarSendResults(QbarRegistryResolutionRows(resolution), false, "", "normal", pageQueryId, querySeq)
+        return
     }
     if QbarIsFolderQuery(text) {
         items := QbarFilterFolder(text)
@@ -159,6 +160,7 @@ QbarRegistryResolutionRows(resolution) {
         rowType := candidate["kind"] = "search" ? "search"
             : candidate["handlerId"] = "builtin.everything.search" ? "everything"
             : candidate["handlerId"] = "builtin.notes.search" ? "notes"
+            : candidate["handlerId"] = "builtin.clipboard.open" ? "clipboard"
             : candidate["handlerId"] = "builtin.settings.open" ? "settings"
             : candidate["kind"] = "run" ? "file" : "app"
         label := candidate["displayName"]
@@ -244,6 +246,7 @@ QbarRegistryBuiltinItem(commandId, fallback) {
     short := aliases[1]
     rowType := commandId = "builtin.everything.search" ? "everything"
         : commandId = "builtin.notes.search" ? "notes"
+        : commandId = "builtin.clipboard.open" ? "clipboard"
         : commandId = "builtin.settings.open" ? "settings" : "search"
     label := command["displayName"]
     return Map(

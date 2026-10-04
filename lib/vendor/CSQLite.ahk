@@ -225,8 +225,10 @@ class CSQLite {
 		return true
 		callback_gettable(TB, coln, vals, cols) {
 			arr := Array(), TBobj := ObjFromPtrAddRef(TB)
-			Loop coln
-				arr.Push(StrGet(NumGet(vals + A_PtrSize * (A_Index - 1), "Ptr"), "UTF-8"))
+			Loop coln {
+				valuePtr := NumGet(vals + A_PtrSize * (A_Index - 1), "Ptr")
+				arr.Push(valuePtr ? StrGet(valuePtr, "UTF-8") : "")
+			}
 			TBobj.Rows.Push(arr), TBobj.RowCount++
 			return 0
 		}
@@ -286,14 +288,17 @@ class CSQLite {
 		return RC = 0
 	}
 
-	StatementBindBlob(statement, index, dataBuffer) {
+	StatementBindBlob(statement, index, dataBuffer, copyData := true) {
 		if !statement || !IsObject(dataBuffer)
 			return false
 		byteCount := dataBuffer.Size
 		dataPtr := byteCount ? dataBuffer.Ptr : 0
+		; SQLITE_STATIC is safe only while the caller keeps dataBuffer alive until
+		; the statement is finalized; the transient default owns a SQLite copy.
+		destructor := copyData ? -1 : 0
 		RC := DllCall("SQLite3.dll\sqlite3_bind_blob", "ptr", statement,
 			"int", index, "ptr", dataPtr, "int", byteCount,
-			"ptr", -1, "cdecl int")
+			"ptr", destructor, "cdecl int")
 		return RC = 0
 	}
 

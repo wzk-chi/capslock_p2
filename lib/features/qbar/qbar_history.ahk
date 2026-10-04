@@ -105,6 +105,8 @@ QbarHistoryKindForHandler(handlerId) {
             return "everything"
         case "builtin.notes.search":
             return "notes"
+        case "builtin.clipboard.open":
+            return "clipboard"
         case "builtin.settings.open":
             return "settings"
         case "builtin.search", "builtin.open-url":
@@ -316,6 +318,7 @@ QbarHistoryDisplayLabel(entry) {
         toolName := kind = "ai" ? "AI 问答"
             : kind = "everything" ? "文件搜索"
             : kind = "notes" ? "笔记"
+            : kind = "clipboard" ? "剪贴板历史"
             : kind = "settings" ? "设置"
             : kind = "url" ? "打开网址"
             : kind = "run" ? "快捷命令"
@@ -334,6 +337,8 @@ QbarHistoryDisplayContent(entry, command := 0) {
     if kind = "everything"
         return payload.Has("query") ? Trim(String(payload["query"])) : ""
     if kind = "notes"
+        return payload.Has("search") ? Trim(String(payload["search"])) : ""
+    if kind = "clipboard"
         return payload.Has("search") ? Trim(String(payload["search"])) : ""
     if kind = "path" || kind = "reveal"
         return payload.Has("path") ? Trim(String(payload["path"])) : ""
@@ -375,6 +380,8 @@ QbarHistoryRowType(kind) {
             return "everything"
         case "notes":
             return "notes"
+        case "clipboard":
+            return "clipboard"
         case "settings":
             return "settings"
         default:
@@ -484,6 +491,10 @@ QbarHistoryNormalizeEntry(entry) {
             if !QbarHistoryPayloadString(payload, "search", &value)
                 value := ""
             normalizedPayload["search"] := value
+        case "clipboard":
+            if !QbarHistoryPayloadString(payload, "search", &value)
+                value := ""
+            normalizedPayload["search"] := value
         case "settings":
             if !QbarHistoryPayloadString(payload, "page", &value) || value = ""
                 value := "general"
@@ -516,7 +527,7 @@ QbarHistoryPayloadString(payload, key, &value := "") {
 
 QbarHistoryKnownKind(kind) {
     switch kind {
-        case "run", "shortcut", "url", "path", "reveal", "ai", "everything", "notes", "settings":
+        case "run", "shortcut", "url", "path", "reveal", "ai", "everything", "notes", "clipboard", "settings":
             return true
         default:
             return false
@@ -572,6 +583,8 @@ QbarHistoryIdentity(entry) {
         case "everything":
             return kind . QbarHistoryIdentityPart(payload["query"]) . QbarHistoryIdentityPart(QbarHistoryBoolValue(payload["runQuery"]) ? "1" : "0")
         case "notes":
+            return kind . QbarHistoryIdentityPart(payload["search"])
+        case "clipboard":
             return kind . QbarHistoryIdentityPart(payload["search"])
         case "settings":
             return kind . QbarHistoryIdentityPart(payload["page"])

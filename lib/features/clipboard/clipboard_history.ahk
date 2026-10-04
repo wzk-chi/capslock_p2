@@ -5,19 +5,23 @@ global ClipboardHistoryEnabled := true
 global ClipboardHistoryBaselineSequence := 0
 global ClipboardHistoryEpoch := 0
 global ClipboardHistoryNextEvent := 1
-global ClipboardHistoryCaptureOrder := 0
 global ClipboardHistoryEvents := Map()
 global ClipboardHistorySequenceEvents := Map()
 global ClipboardHistoryOwnedSequences := Map()
 global ClipboardHistoryPendingTasks := Map()
+global ClipboardHistoryCaptureQueue := []
+global ClipboardHistoryActiveCaptureEventId := ""
+global ClipboardHistoryRetentionDays := 30
+global ClipboardHistoryRetainedSnapshotBytes := 0
+global ClipboardHistoryMaxRetainedSnapshotBytes := 256 * 1024 * 1024
 
 ClipboardHistoryInitialize() {
     global ClipboardHistoryLoaded, ClipboardHistoryEnabled
     global ClipboardHistoryBaselineSequence, ClipboardHistoryEpoch
     global ClipboardHistoryEvents, ClipboardHistorySequenceEvents, ClipboardHistoryOwnedSequences
-    global ClipboardHistoryPendingTasks
-    global ClipboardHistoryCaptureOrder
-    global ClipboardHistoryStoreMaxItems
+    global ClipboardHistoryPendingTasks, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryRetainedSnapshotBytes
+    global ClipboardHistoryStoreMaxItems, ClipboardHistoryRetentionDays
     if ClipboardHistoryLoaded
         return true
     ClipboardHistoryLoaded := true
@@ -27,25 +31,33 @@ ClipboardHistoryInitialize() {
     ClipboardHistorySequenceEvents := Map()
     ClipboardHistoryOwnedSequences := Map()
     ClipboardHistoryPendingTasks := Map()
+    ClipboardHistoryCaptureQueue := []
+    ClipboardHistoryActiveCaptureEventId := ""
+    ClipboardHistoryRetainedSnapshotBytes := 0
     ClipboardHistoryBaselineSequence := ClipboardSequenceNumber()
     ClipboardHistoryStoreMaxItems := ClipboardHistoryIntegerConfig("maxItems", 500, 20, 5000)
+    ClipboardHistoryRetentionDays := ClipboardHistoryIntegerConfig("retentionDays", 30, 1, 3650)
     if !ClipboardHistoryStoreInit() {
         ClipboardHistoryLoaded := false
         return false
     }
-    ClipboardHistoryCaptureOrder := Max(0, ClipboardHistoryStoreNextOrder() - 1)
     return true
 }
 
 ClipboardHistoryShutdown(*) {
     global ClipboardHistoryLoaded, ClipboardHistoryEpoch, ClipboardHistoryEvents
     global ClipboardHistorySequenceEvents, ClipboardHistoryOwnedSequences
-    global ClipboardHistoryPendingTasks
+    global ClipboardHistoryPendingTasks, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryRetainedSnapshotBytes
     ClipboardHistoryEpoch += 1
     ClipboardHistoryEvents := Map()
     ClipboardHistorySequenceEvents := Map()
     ClipboardHistoryOwnedSequences := Map()
     ClipboardHistoryPendingTasks := Map()
+    ClipboardHistoryCaptureQueue := []
+    ClipboardHistoryActiveCaptureEventId := ""
+    ClipboardHistoryRetainedSnapshotBytes := 0
+    ClipboardHistoryShutdownPanel()
     ClipboardHistoryStoreClose()
     ClipboardHistoryLoaded := false
 }
@@ -58,6 +70,12 @@ ClipboardHistoryIntegerConfig(key, fallback, minimum, maximum) {
     return Max(minimum, Min(maximum, value))
 }
 
+ClipboardHistoryRetentionCutoff() {
+    global ClipboardHistoryRetentionDays
+    return FormatTime(DateAdd(A_NowUTC, -ClipboardHistoryRetentionDays, "Days"),
+        "yyyy-MM-ddTHH:mm:ss") . ".000Z"
+}
+
 ClipboardHistoryIsEnabled() {
     global ClipboardHistoryEnabled
     return ClipboardHistoryEnabled
@@ -65,16 +83,25 @@ ClipboardHistoryIsEnabled() {
 
 ClipboardHistorySetEnabled(enabled) {
     global ClipboardHistoryEnabled, ClipboardHistoryEpoch, ClipboardHistoryBaselineSequence
-    ClipboardHistoryEnabled := !!enabled
-    ClipboardHistoryEpoch += 1
-    ClipboardHistoryBaselineSequence := ClipboardSequenceNumber()
+    global ClipboardHistoryEvents, ClipboardHistorySequenceEvents, ClipboardHistoryPendingTasks
+    global ClipboardHistoryCaptureQueue, ClipboardHistoryRetainedSnapshotBytes
+    Critical("On")
+    try {
+        ClipboardHistoryEnabled := !!enabled
+        ClipboardHistoryEpoch += 1
+        ClipboardHistoryBaselineSequence := ClipboardSequenceNumber()
+        ClipboardHistoryDiscardPendingEvents()
+    } finally {
+        Critical("Off")
+    }
     return ClipboardHistoryEnabled
 }
 
 ClipboardHistoryOnSettingsChanged() {
-    global ClipboardHistoryStoreMaxItems
+    global ClipboardHistoryStoreMaxItems, ClipboardHistoryRetentionDays
     enabled := ConfigRead("ClipboardHistory", "enabled", "1") != "0"
     ClipboardHistoryStoreMaxItems := ClipboardHistoryIntegerConfig("maxItems", 500, 20, 5000)
+    ClipboardHistoryRetentionDays := ClipboardHistoryIntegerConfig("retentionDays", 30, 1, 3650)
     ClipboardHistorySetEnabled(enabled)
 }
 
@@ -133,35 +160,98 @@ ClipboardHistoryPruneOwnedSequences(*) {
 
 ClipboardHistoryCleanupEvent(eventId) {
     global ClipboardHistoryEvents, ClipboardHistorySequenceEvents, ClipboardHistoryPendingTasks
-    if !eventId || !ClipboardHistoryEvents.Has(eventId)
-        return
-    event := ClipboardHistoryEvents[eventId]
-    sequence := event.Has("sequence") ? event["sequence"] : 0
-    ClipboardHistoryEvents.Delete(eventId)
-    if sequence && ClipboardHistorySequenceEvents.Has(sequence)
-        if ClipboardHistorySequenceEvents[sequence] = eventId
-            ClipboardHistorySequenceEvents.Delete(sequence)
-    if ClipboardHistoryPendingTasks.Has(eventId)
-        ClipboardHistoryPendingTasks.Delete(eventId)
+    global ClipboardHistoryRetainedSnapshotBytes
+    Critical("On")
+    try {
+        if !eventId || !ClipboardHistoryEvents.Has(eventId)
+            return
+        event := ClipboardHistoryEvents[eventId]
+        sequence := event.Has("sequence") ? event["sequence"] : 0
+        snapshotBytes := event.Has("slotSnapshotBytes") ? event["slotSnapshotBytes"] : 0
+        ClipboardHistoryRetainedSnapshotBytes := Max(0,
+            ClipboardHistoryRetainedSnapshotBytes - snapshotBytes)
+        ClipboardHistoryEvents.Delete(eventId)
+        if sequence && ClipboardHistorySequenceEvents.Has(sequence)
+            if ClipboardHistorySequenceEvents[sequence] = eventId
+                ClipboardHistorySequenceEvents.Delete(sequence)
+        if ClipboardHistoryPendingTasks.Has(eventId)
+            ClipboardHistoryPendingTasks.Delete(eventId)
+    } finally {
+        Critical("Off")
+    }
+}
+
+; Discard queued events but keep the active event's snapshot accounted for
+; until its finally block releases the remaining reference.
+ClipboardHistoryDiscardPendingEvents() {
+    global ClipboardHistoryEvents, ClipboardHistorySequenceEvents
+    global ClipboardHistoryPendingTasks, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryRetainedSnapshotBytes
+    remainingEvents := Map()
+    retainedBytes := 0
+    activeId := ClipboardHistoryActiveCaptureEventId
+    if activeId != "" && ClipboardHistoryEvents.Has(activeId) {
+        activeEvent := ClipboardHistoryEvents[activeId]
+        remainingEvents[activeId] := activeEvent
+        if activeEvent.Has("slotSnapshotBytes")
+            retainedBytes := activeEvent["slotSnapshotBytes"]
+    }
+    ClipboardHistoryEvents := remainingEvents
+    ClipboardHistorySequenceEvents := Map()
+    ClipboardHistoryPendingTasks := Map()
+    ClipboardHistoryCaptureQueue := []
+    ClipboardHistoryRetainedSnapshotBytes := retainedBytes
 }
 
 ClipboardHistoryQueueEvent(eventId) {
     global ClipboardHistoryEvents, ClipboardHistoryPendingTasks
-    if !eventId || !ClipboardHistoryEvents.Has(eventId)
-        return false
-    event := ClipboardHistoryEvents[eventId]
-    if event["processed"] || event["queued"]
+    global ClipboardHistoryCaptureQueue, ClipboardHistoryActiveCaptureEventId
+    Critical("On")
+    try {
+        if !eventId || !ClipboardHistoryEvents.Has(eventId)
+            return false
+        event := ClipboardHistoryEvents[eventId]
+        if event["processed"] || event["queued"]
+            return true
+        event["queued"] := true
+        ClipboardHistoryPendingTasks[eventId] := true
+        if ClipboardHistoryActiveCaptureEventId = "" {
+            ClipboardHistoryActiveCaptureEventId := eventId
+            event["queued"] := false
+            SetTimer(ClipboardHistoryProcessEvent.Bind(eventId), -1)
+        } else
+            ClipboardHistoryCaptureQueue.Push(eventId)
         return true
-    event["queued"] := true
-    ClipboardHistoryPendingTasks[eventId] := true
-    SetTimer(ClipboardHistoryProcessEvent.Bind(eventId), -1)
-    return true
+    } finally {
+        Critical("Off")
+    }
+}
+
+; Keep one large capture/parse/hash/save pipeline active at a time. Pending
+; events retain only their bounded source snapshots, not concurrent work copies.
+ClipboardHistoryScheduleNextCapture() {
+    global ClipboardHistoryEvents, ClipboardHistoryCaptureQueue
+    global ClipboardHistoryActiveCaptureEventId
+    if ClipboardHistoryActiveCaptureEventId != ""
+        return false
+    while ClipboardHistoryCaptureQueue.Length {
+        eventId := ClipboardHistoryCaptureQueue.RemoveAt(1)
+        if !ClipboardHistoryEvents.Has(eventId)
+            continue
+        event := ClipboardHistoryEvents[eventId]
+        if !event["queued"] || event["processed"]
+            continue
+        event["queued"] := false
+        ClipboardHistoryActiveCaptureEventId := eventId
+        SetTimer(ClipboardHistoryProcessEvent.Bind(eventId), -1)
+        return true
+    }
+    return false
 }
 
 ClipboardHistoryNotify(dataType, reason := "", sequence := 0) {
     global ClipboardHistoryEnabled, ClipboardHistoryBaselineSequence, ClipboardHistoryEpoch
     global ClipboardHistoryNextEvent, ClipboardHistoryEvents, ClipboardHistorySequenceEvents
-    global ClipboardHistoryCaptureOrder
     if !ClipboardHistoryEnabled
         return 0
     if !sequence
@@ -184,26 +274,29 @@ ClipboardHistoryNotify(dataType, reason := "", sequence := 0) {
     }
     if reason = "" && owned
         reason := ownedReason
-    if reason = ""
-        reason := ClipboardSuspendReason()
-    if reason = ""
-        reason := "external"
+    if reason = "" {
+        suspendReason := ClipboardSuspendReason()
+        if suspendReason = "user-copy" || suspendReason = "user-cut"
+            reason := suspendReason
+        else
+            reason := suspendReason = "" ? "external" : "pending"
+    }
     ClipboardHistoryNextEvent += 1
-    ClipboardHistoryCaptureOrder += 1
     eventId := "clipboard-event-" . A_TickCount . "-" . ClipboardHistoryNextEvent
     event := Map(
         "eventId", eventId,
         "sequence", sequence,
         "dataType", Integer(dataType),
         "reason", String(reason),
+        "pendingReason", reason = "pending" ? String(suspendReason) : "",
         "epoch", ClipboardHistoryEpoch,
         "observedAtUtc", ClipboardHistoryStoreNow(),
-        "captureOrder", ClipboardHistoryCaptureOrder,
         "explicit", false,
         "awaitingExplicit", reason = "user-copy" || reason = "user-cut",
         "queued", false,
         "processed", false,
         "slotSnapshot", 0,
+        "slotSnapshotBytes", 0,
         "finalized", false)
     ClipboardHistoryEvents[eventId] := event
     ClipboardHistorySequenceEvents[sequence] := eventId
@@ -211,17 +304,32 @@ ClipboardHistoryNotify(dataType, reason := "", sequence := 0) {
 }
 
 ClipboardHistoryOfferSlotSnapshot(eventId, sequence, snapshot, formatContext := 0) {
-    global ClipboardHistoryEvents
-    if eventId = "" || !ClipboardHistoryEvents.Has(eventId)
-        return false
-    event := ClipboardHistoryEvents[eventId]
-    if event["sequence"] != sequence || !IsObject(snapshot)
-        return false
-    ; Retain the stable object reference until the delayed whitelist pass. Do
-    ; not consult the mutable global SystemClipboard at processing time.
-    event["slotSnapshot"] := snapshot
-    event["formatContext"] := formatContext
-    return true
+    global ClipboardHistoryEvents, ClipboardHistoryRetainedSnapshotBytes
+    global ClipboardHistoryMaxRetainedSnapshotBytes
+    Critical("On")
+    try {
+        if eventId = "" || !ClipboardHistoryEvents.Has(eventId)
+            return false
+        event := ClipboardHistoryEvents[eventId]
+        if event["sequence"] != sequence || !IsObject(snapshot)
+            return false
+        previousBytes := event.Has("slotSnapshotBytes") ? event["slotSnapshotBytes"] : 0
+        nextBytes := snapshot.Size
+        retainedBytes := ClipboardHistoryRetainedSnapshotBytes - previousBytes + nextBytes
+        if retainedBytes > ClipboardHistoryMaxRetainedSnapshotBytes {
+            DebugLog("Clipboard history retained snapshot skipped: memory budget")
+            return false
+        }
+        ClipboardHistoryRetainedSnapshotBytes := retainedBytes
+        ; Retain the stable object reference until the delayed whitelist pass. Do
+        ; not consult the mutable global SystemClipboard at processing time.
+        event["slotSnapshot"] := snapshot
+        event["slotSnapshotBytes"] := nextBytes
+        event["formatContext"] := formatContext
+        return true
+    } finally {
+        Critical("Off")
+    }
 }
 
 ClipboardHistoryFinalizeNotify(eventId) {
@@ -232,12 +340,48 @@ ClipboardHistoryFinalizeNotify(eventId) {
     if event["finalized"]
         return
     event["finalized"] := true
+    if event["reason"] = "pending" {
+        SetTimer(ClipboardHistoryResolvePending.Bind(eventId), -50)
+        return
+    }
+    if event["reason"] != "external" && !event["explicit"] {
+        if event["awaitingExplicit"]
+            SetTimer(ClipboardHistoryExpireAwaitingExplicit.Bind(eventId), -5000)
+        else
+            ClipboardHistoryCleanupEvent(eventId)
+        return
+    }
+    ClipboardHistoryQueueEvent(eventId)
+}
+
+ClipboardHistoryResolvePending(eventId, *) {
+    global ClipboardHistoryEvents, ClipboardHistoryEpoch
+    if !ClipboardHistoryEvents.Has(eventId)
+        return
+    event := ClipboardHistoryEvents[eventId]
+    if !event["finalized"] || event["queued"] || event["processed"]
+        return
+    if event["epoch"] != ClipboardHistoryEpoch {
+        ClipboardHistoryCleanupEvent(eventId)
+        return
+    }
+    if event["reason"] = "pending"
+        event["reason"] := "external"
     if event["reason"] != "external" && !event["explicit"] {
         if !event["awaitingExplicit"]
             ClipboardHistoryCleanupEvent(eventId)
         return
     }
     ClipboardHistoryQueueEvent(eventId)
+}
+
+ClipboardHistoryExpireAwaitingExplicit(eventId, *) {
+    global ClipboardHistoryEvents
+    if !ClipboardHistoryEvents.Has(eventId)
+        return
+    event := ClipboardHistoryEvents[eventId]
+    if event["awaitingExplicit"] && !event["explicit"] && !event["processed"]
+        ClipboardHistoryCleanupEvent(eventId)
 }
 
 ClipboardHistoryPublishExplicit(sequence, snapshot := 0, reason := "user-copy") {
@@ -256,32 +400,44 @@ ClipboardHistoryPublishExplicit(sequence, snapshot := 0, reason := "user-copy") 
     event["awaitingExplicit"] := false
     event["epoch"] := ClipboardHistoryEpoch
     if IsObject(snapshot)
-        event["slotSnapshot"] := snapshot
+        ClipboardHistoryOfferSlotSnapshot(eventId, sequence, snapshot)
     event["finalized"] := false
     return ClipboardHistoryQueueEvent(eventId)
 }
 
 ClipboardHistoryProcessEvent(eventId, *) {
-    global ClipboardHistoryEnabled, ClipboardHistoryEvents, ClipboardHistoryPendingTasks, ClipboardHistoryEpoch
-    if !ClipboardHistoryEvents.Has(eventId)
-        return false
-    if !ClipboardHistoryEnabled {
-        ClipboardHistoryCleanupEvent(eventId)
-        return false
+    global ClipboardHistoryEnabled, ClipboardHistoryEvents, ClipboardHistoryEpoch
+    global ClipboardHistoryActiveCaptureEventId
+    Critical("On")
+    try {
+        if ClipboardHistoryActiveCaptureEventId != eventId
+            return false
+        if !ClipboardHistoryEvents.Has(eventId) {
+            ClipboardHistoryActiveCaptureEventId := ""
+            ClipboardHistoryScheduleNextCapture()
+            return false
+        }
+        event := ClipboardHistoryEvents[eventId]
+        if event["processed"] {
+            ClipboardHistoryActiveCaptureEventId := ""
+            ClipboardHistoryScheduleNextCapture()
+            return false
+        }
+        event["queued"] := false
+        event["processed"] := true
+    } finally {
+        Critical("Off")
     }
-    event := ClipboardHistoryEvents[eventId]
-    event["queued"] := false
-    if event["processed"]
-        return false
-    event["processed"] := true
     result := false
     try {
+        if !ClipboardHistoryEnabled
+            return false
         if event["epoch"] != ClipboardHistoryEpoch
             return false
         if event["reason"] != "external" && !event["explicit"]
             return false
         maxBytes := ClipboardHistoryIntegerConfig("maxCaptureBytes", 256 * 1024 * 1024,
-            1024 * 1024, 512 * 1024 * 1024)
+            1024 * 1024, 256 * 1024 * 1024)
         if IsObject(event["slotSnapshot"])
             record := ClipboardHistoryCaptureSnapshot(event["slotSnapshot"], event["sequence"],
                 maxBytes, event.Has("formatContext") ? event["formatContext"] : 0)
@@ -295,40 +451,65 @@ ClipboardHistoryProcessEvent(eventId, *) {
         }
         if !IsObject(record)
             return false
+        if event["epoch"] != ClipboardHistoryEpoch
+            return false
         if event["reason"] = "user-cut"
             record["cut"] := true
         result := ClipboardHistoryRemember(record, event)
         return result
     } finally {
         ClipboardHistoryCleanupEvent(eventId)
+        Critical("On")
+        try {
+            if ClipboardHistoryActiveCaptureEventId = eventId {
+                ClipboardHistoryActiveCaptureEventId := ""
+                ClipboardHistoryScheduleNextCapture()
+            }
+        } finally {
+            Critical("Off")
+        }
     }
 }
 
 ClipboardHistoryRemember(record, event := 0) {
-    global ClipboardHistoryCaptureOrder, ClipboardHistoryStoreMaxItems
-    if !IsObject(record) || !ClipboardHistoryStoreInit()
-        return false
-    existing := ClipboardHistoryStoreFindByHash(record["contentHash"])
-    now := ClipboardHistoryStoreNow()
-    if IsObject(existing) {
-        record["id"] := existing["id"]
-        record["createdAtUtc"] := existing["created_at_utc"]
-        record["isFavorite"] := existing["is_favorite"] != "0"
-    } else {
-        record["id"] := ClipboardHistoryNewId()
-        record["createdAtUtc"] := now
-        record["isFavorite"] := false
+    global ClipboardHistoryStoreMaxItems, ClipboardHistoryEpoch, ClipboardHistoryStoreError
+    result := false
+    capacityFull := false
+    Critical("On")
+    try {
+        if !IsObject(record) || !ClipboardHistoryStoreInit()
+            return false
+        if IsObject(event) && event.Has("epoch") && event["epoch"] != ClipboardHistoryEpoch
+            return false
+        existing := ClipboardHistoryStoreFindByHash(record["contentHash"])
+        now := ClipboardHistoryStoreNow()
+        if IsObject(existing) {
+            record["id"] := existing["id"]
+            record["isFavorite"] := existing["is_favorite"] != "0"
+            record["noteText"] := existing.Has("note_text") ? existing["note_text"] : ""
+            record["isPinned"] := existing.Has("is_pinned") && existing["is_pinned"] != "0"
+            record["pinOrder"] := existing.Has("pin_order") ? Integer(existing["pin_order"]) : 0
+        } else {
+            record["id"] := ClipboardHistoryNewId()
+            record["isFavorite"] := false
+            record["noteText"] := ""
+            record["isPinned"] := false
+            record["pinOrder"] := 0
+        }
+        record["lastCapturedAtUtc"] := now
+        if ClipboardHistoryStoreSave(record, record["snapshot"], record["manifestJson"],
+            ClipboardHistoryRetentionCutoff(), ClipboardHistoryStoreMaxItems) {
+            ClipboardHistoryImagePreviewCachePrune()
+            result := true
+        } else {
+            capacityFull := InStr(ClipboardHistoryStoreError, "容量已满") > 0
+        }
+    } finally {
+        Critical("Off")
     }
-    record["favoritedAtUtc"] := existing && existing.Has("favorited_at_utc")
-        ? existing["favorited_at_utc"] : ""
-    ClipboardHistoryCaptureOrder += 1
-    record["lastCapturedAtUtc"] := now
-    record["lastCaptureOrder"] := ClipboardHistoryCaptureOrder
-    if !ClipboardHistoryStoreSave(record, record["snapshot"], record["manifestJson"])
-        return false
-    ClipboardHistoryStoreTrimNonFavorites(ClipboardHistoryStoreMaxItems)
-    try ClipboardHistoryPanelChanged()
-    return true
+    if capacityFull
+        ShowMsg("剪贴板历史容量已满，未记录新内容。", 5000)
+    return result
 }
 
 ClipboardHistoryNewId() {
@@ -344,16 +525,47 @@ ClipboardHistoryCopyItem(id) {
     return ClipboardHistoryCopyPrepared(item)
 }
 
-ClipboardHistoryCopyPrepared(item) {
+ClipboardHistoryCopyPrepared(item, dragKind := "") {
     global SystemClipboard, WhichClipboardNow
     if !IsObject(item) || !IsObject(item["snapshot"])
         return false
+    archive := item["snapshot"]
+    manifestJson := item["manifestJson"]
+    if dragKind != "" {
+        ; Native drags expose only their real file/image formats, never text fallbacks.
+        entries := ClipboardHistoryParseArchive(archive, manifestJson, true, dragKind)
+        try manifest := JSON.Parse(manifestJson, false, true)
+        catch
+            manifest := []
+        if Type(manifest) != "Array"
+            return false
+        dragEntries := []
+        dragManifest := []
+        for entry in entries {
+            index := entry["manifestIndex"]
+            if index > manifest.Length || !IsObject(manifest[index])
+                continue
+            manifestEntry := manifest[index]
+            if !manifestEntry.Has("kind") || String(manifestEntry["kind"]) != dragKind
+                continue
+            if dragKind = "files" && (entry["id"] != 15 || entry["name"] != "")
+                continue
+            dragEntries.Push(entry)
+            dragManifest.Push(manifestEntry)
+        }
+        if !dragEntries.Length
+            return false
+        archive := ClipboardHistoryBuildArchive(dragEntries)
+        if !IsObject(archive)
+            return false
+        manifestJson := JSON.stringify(dragManifest, 0)
+    }
     ownerHwnd := ClipboardHistoryOwnerHwnd()
     token := ClipboardSuspendBegin("history-replay")
     success := false
     try {
-        success := ClipboardHistoryRestoreArchive(item["snapshot"], ownerHwnd,
-            item["manifestJson"], &restoredSnapshot)
+        success := ClipboardHistoryRestoreArchive(archive, ownerHwnd,
+            manifestJson, &restoredSnapshot)
         if success {
             WhichClipboardNow := 0
             ; The stored archive is already a validated ClipboardAll-format
@@ -365,7 +577,17 @@ ClipboardHistoryCopyPrepared(item) {
     } finally {
         ClipboardSuspendEnd(token)
     }
+    if success && item.Has("id")
+        ClipboardHistoryTouchItem(item["id"])
     return success
+}
+
+ClipboardHistoryTouchItem(id) {
+    if !ClipboardHistoryStoreTouch(id) {
+        DebugLog("Clipboard history recent-use update failed")
+        return false
+    }
+    return true
 }
 
 ClipboardHistoryPasteItem(id, targetHwnd := 0) {
@@ -377,8 +599,8 @@ ClipboardHistoryPasteItem(id, targetHwnd := 0) {
 }
 
 ClipboardHistoryPastePrepared(item, targetContext := 0, activateTarget := false,
-    expectedClipboardSequence := 0) {
-    global SystemClipboard, WhichClipboardNow
+    expectedClipboardSequence := 0, expectedSessionId := "") {
+    global SystemClipboard, WhichClipboardNow, ClipboardHistorySessionId
     if !IsObject(item) || !IsObject(item["snapshot"])
         return false
     if IsObject(targetContext) {
@@ -401,6 +623,8 @@ ClipboardHistoryPastePrepared(item, targetContext := 0, activateTarget := false,
     token := ClipboardSuspendBegin("history-replay")
     success := false
     try {
+        if expectedSessionId != "" && ClipboardHistorySessionId != expectedSessionId
+            return false
         if targetHwnd && (!ClipboardHistoryTargetWindowValid(targetHwnd, targetPid)
             || WinActive("ahk_id " . targetHwnd) != targetHwnd)
             return false
@@ -413,12 +637,19 @@ ClipboardHistoryPastePrepared(item, targetContext := 0, activateTarget := false,
         SystemClipboard := restoredSnapshot
         ownedSequence := ClipboardSequenceNumber()
         ClipboardHistoryMarkOwnedSequence(ownedSequence, "history-replay")
-        if targetHwnd && (!ClipboardHistoryTargetWindowValid(targetHwnd, targetPid)
-            || WinActive("ahk_id " . targetHwnd) != targetHwnd
-            || ClipboardSequenceNumber() != ownedSequence)
-            return false
-        SendInput("^v")
-        success := true
+        Critical("On")
+        try {
+            if expectedSessionId != "" && ClipboardHistorySessionId != expectedSessionId
+                return false
+            if targetHwnd && (!ClipboardHistoryTargetWindowValid(targetHwnd, targetPid)
+                || WinActive("ahk_id " . targetHwnd) != targetHwnd
+                || ClipboardSequenceNumber() != ownedSequence)
+                return false
+            SendInput("^v")
+            success := true
+        } finally {
+            Critical("Off")
+        }
     } finally {
         ClipboardSuspendEnd(token)
     }
@@ -431,55 +662,82 @@ ClipboardHistorySetFavoriteItem(id, desiredState) {
     return true
 }
 
+ClipboardHistorySetNoteItem(id, noteText) {
+    return ClipboardHistoryStoreSetNote(id, SubStr(String(noteText), 1, 4000))
+}
+
+ClipboardHistorySetNotesItems(ids, noteText) {
+    return ClipboardHistoryStoreSetNotes(ids, SubStr(String(noteText), 1, 4000))
+}
+
+ClipboardHistorySetPinnedItem(id, desiredState) {
+    return ClipboardHistoryStoreSetPinned(id, desiredState)
+}
+
 ClipboardHistoryDeleteItem(id) {
     if !ClipboardHistoryStoreDelete(id)
         return false
+    ClipboardHistoryImagePreviewCacheDelete(id)
     try ClipboardHistoryPanelChanged()
+    return true
+}
+
+ClipboardHistoryDeleteItems(ids) {
+    if !ClipboardHistoryStoreDeleteMany(ids)
+        return false
+    for id in ids
+        ClipboardHistoryImagePreviewCacheDelete(id)
     return true
 }
 
 ClipboardHistoryClearNonFavorites() {
     global ClipboardHistoryEpoch, ClipboardHistoryPendingTasks
-    if !ClipboardHistoryStoreClearNonFavorites()
-        return false
-    ; Invalidate delayed captures only after the database transaction has
-    ; committed. A failed clear must leave both the store and the queue usable.
-    ClipboardHistoryEpoch += 1
-    ClipboardHistoryPendingTasks := Map()
+    global ClipboardHistoryEvents, ClipboardHistorySequenceEvents
+    global ClipboardHistoryCaptureQueue, ClipboardHistoryRetainedSnapshotBytes
+    previousEpoch := ClipboardHistoryEpoch
+    Critical("On")
+    try {
+        ClipboardHistoryEpoch += 1
+        if !ClipboardHistoryStoreClearNonFavorites() {
+            ClipboardHistoryEpoch := previousEpoch
+            return false
+        }
+        ClipboardHistoryDiscardPendingEvents()
+    } finally {
+        Critical("Off")
+    }
+    ClipboardHistoryImagePreviewCachePrune()
     try ClipboardHistoryPanelChanged()
     return true
 }
 
 ClipboardHistoryRows(searchText := "", primaryType := "all", favoriteOnly := false,
-    cursor := 0, limit := 50) {
+    dateAfter := "", dateBefore := "", page := 1, limit := 20) {
     rows := []
-    for row in ClipboardHistoryStoreList(searchText, primaryType, favoriteOnly, cursor, limit) {
-        files := []
-        try parsed := JSON.Parse(row["files_json"], false, true)
-        catch
-            parsed := []
-        if Type(parsed) = "Array"
-            files := parsed
+    for row in ClipboardHistoryStoreList(searchText, primaryType, favoriteOnly,
+        dateAfter, dateBefore, page, limit) {
+        fileCount := Integer(row["file_count"])
         rows.Push(Map(
             "id", row["id"],
             "type", row["primary_type"],
             "richText", row["is_rich_text"] != "0",
             "preview", row["preview_text"],
-            "text", row["text_plain"],
-            "files", files,
             "favorite", row["is_favorite"] != "0",
+            "note", row.Has("note_text") ? row["note_text"] : "",
+            "pinned", row.Has("is_pinned") && row["is_pinned"] != "0",
+            "pinOrder", row.Has("pin_order") ? Integer(row["pin_order"]) : 0,
             "capturedAt", row["last_captured_at_utc"],
             "imageWidth", Integer(row["image_width"]),
             "imageHeight", Integer(row["image_height"]),
-            "itemCount", Integer(row["item_count"]),
-            "byteSize", Integer(row["byte_size"]),
-            "cursor", Integer(row["last_capture_order"])))
+            "itemCount", row["primary_type"] = "file" ? fileCount : 1,
+            "byteSize", Integer(row["byte_size"])))
     }
     return rows
 }
 
-ClipboardHistoryCounts(searchText := "", primaryType := "", favoriteOnly := false) {
-    return ClipboardHistoryStoreCounts(searchText, primaryType, favoriteOnly)
+ClipboardHistoryCounts(searchText := "", primaryType := "", favoriteOnly := false,
+    dateAfter := "", dateBefore := "") {
+    return ClipboardHistoryStoreCounts(searchText, primaryType, favoriteOnly, dateAfter, dateBefore)
 }
 
 ClipboardHistoryOwnerHwnd() {

@@ -20,6 +20,8 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "", commandId := "", regis
         }
         resolution := QbarRegistryResolve(text)
         args := resolution["args"]
+        if args = ""
+            args := QbarRegisteredCommandDisplayArguments(command, text)
         if command["handlerId"] = "builtin.search" && args = "" && selected != "" {
             QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
             return true
@@ -186,6 +188,19 @@ QbarExecute(text, selected, ctrlHeld, selectedType := "", commandId := "", regis
     DebugLog("QbarExecute no match")
 }
 
+QbarRegisteredCommandDisplayArguments(command, text) {
+    if !IsObject(command)
+        return ""
+    displayName := Trim(String(command["displayName"]))
+    text := Trim(String(text), " `t")
+    if displayName = "" || StrLower(SubStr(text, 1, StrLen(displayName))) != StrLower(displayName)
+        return ""
+    suffix := SubStr(text, StrLen(displayName) + 1)
+    if suffix = "" || SubStr(suffix, 1, 1) != " "
+        return ""
+    return Trim(suffix, " `t")
+}
+
 QbarHistoryAiEntry(question) {
     question := Trim(question)
     input := "ai" . (question = "" ? "" : " " . question)
@@ -203,6 +218,12 @@ QbarHistoryNotesEntry(searchText) {
     searchText := Trim(String(searchText))
     input := searchText = "" ? "笔记" : "笔记 " . searchText
     return QbarHistoryNew("notes", input, input, Map("search", searchText))
+}
+
+QbarHistoryClipboardEntry(searchText) {
+    searchText := Trim(String(searchText))
+    input := "cv" . (searchText = "" ? "" : " " . searchText)
+    return QbarHistoryNew("clipboard", input, input, Map("search", searchText))
 }
 
 QbarNotesAlias(token) {
@@ -282,6 +303,10 @@ QbarHistoryExecuteEntry(entry) {
             return EverythingShow(payload["query"], QbarHistoryBoolValue(payload["runQuery"]))
         case "notes":
             return QbarScheduleNotesHistory(entry)
+        case "clipboard":
+            targetContext := ClipboardHistoryCaptureTargetContext()
+            QbarHide()
+            return ClipboardHistoryShow(entry["payload"]["search"], targetContext, true)
         case "settings":
             QbarHide()
             return QbarScheduleSettingsHistory(entry)

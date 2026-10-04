@@ -51,9 +51,11 @@ EverythingRevealResult(item) {
 EverythingCopyText(text, message := "") {
     global A_Clipboard
     suspendToken := ClipboardSuspendBegin("user-copy")
+    copySequence := 0
     try {
         A_Clipboard := String(text)
-        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "user-copy")
+        copySequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(copySequence, "user-copy")
     }
     catch {
         ClipboardSuspendEnd(suspendToken)
@@ -61,7 +63,7 @@ EverythingCopyText(text, message := "") {
         return false
     }
     ClipboardSuspendEnd(suspendToken)
-    ClipboardHistoryPublishExplicit(ClipboardSequenceNumber(), 0, "user-copy")
+    ClipboardHistoryPublishExplicit(copySequence, 0, "user-copy")
     EverythingActionFeedback(message != "" ? message : EverythingText("Copied", "已复制"), false)
     return true
 }
@@ -70,6 +72,7 @@ EverythingCopyText(text, message := "") {
 ; file or folder. AHK's Clipboard assignment only supplies text and cannot
 ; represent this operation.
 EverythingCopyFiles(path, attempt := 0, *) {
+    copySequence := 0
     path := String(path)
     if path = "" || (!FileExist(path) && !DirExist(path)) {
         EverythingActionFeedback(EverythingText("The item no longer exists.", "该项目已不存在。"), true)
@@ -113,7 +116,8 @@ EverythingCopyFiles(path, attempt := 0, *) {
         if !DllCall("user32\SetClipboardData", "uint", 15, "ptr", hGlobal)
             throw Error("SetClipboardData failed")
         hGlobal := 0 ; ownership transferred to the clipboard
-        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "user-copy")
+        copySequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(copySequence, "user-copy")
         success := true
     } catch as copyError {
         DebugLog("Everything file copy failed")
@@ -126,7 +130,7 @@ EverythingCopyFiles(path, attempt := 0, *) {
         ClipboardSuspendEnd(suspendToken)
     }
     if success
-        ClipboardHistoryPublishExplicit(ClipboardSequenceNumber(), 0, "user-copy")
+        ClipboardHistoryPublishExplicit(copySequence, 0, "user-copy")
     if success
         EverythingActionFeedback(EverythingText("Copied", "已复制"), false)
     else

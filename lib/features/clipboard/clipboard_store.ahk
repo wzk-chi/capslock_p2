@@ -7,9 +7,11 @@
 global ClipboardHistoryDb := 0
 global ClipboardHistoryDbReady := false
 global ClipboardHistoryStoreError := ""
-global ClipboardHistoryStoreVersion := 1
+global ClipboardHistoryStoreVersion := 5
 global ClipboardHistoryStoreRoot := A_ScriptDir . "\data\clipboard-history"
 global ClipboardHistoryStoreMaxItems := 500
+global ClipboardHistoryStoreMaxBytes := 512 * 1024 * 1024
+global ClipboardHistoryStoreMaxThumbnailChars := 128 * 1024
 
 ClipboardHistoryStorePath() {
     global ClipboardHistoryStoreRoot
@@ -52,9 +54,49 @@ ClipboardHistoryStoreInit() {
 
 ClipboardHistoryStoreMigrate(db) {
     global ClipboardHistoryStoreVersion
+    if !db.Exec("CREATE TABLE IF NOT EXISTS history_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);")
+        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建剪贴板历史元数据表失败")
+    if !db.GetTable("SELECT value FROM history_meta WHERE key='schema_version';", &versionTable, -1)
+        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "读取剪贴板历史版本失败")
+    schemaVersion := 0
+    if versionTable.RowCount > 0 {
+        try schemaVersion := Integer(versionTable.Rows[1][1])
+        catch
+            schemaVersion := 0
+    }
+    if schemaVersion > ClipboardHistoryStoreVersion
+        throw Error("剪贴板历史数据库由较新版本创建，请升级程序后再打开")
+    ; Versions before 3 used the discarded wide schema. Keep that one-time reset
+    ; explicit; future version bumps must provide a migration instead of wiping data.
+    if schemaVersion < 3 {
+        if !db.Exec("BEGIN IMMEDIATE; DROP TABLE IF EXISTS clipboard_thumbnails; "
+            . "DROP TABLE IF EXISTS clipboard_payloads; DROP TABLE IF EXISTS clipboard_items; COMMIT;")
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "重建剪贴板历史表失败")
+        schemaVersion := 3
+    }
+    if schemaVersion = 3
+        schemaVersion := 4
+    if schemaVersion = 4 {
+        if !db.GetTable("PRAGMA table_info(clipboard_items);", &columns, -1)
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "检查剪贴板历史表结构失败")
+        if columns.RowCount > 0 {
+            hasFileCount := false
+            for column in columns.Rows
+                if column[2] = "file_count"
+                    hasFileCount := true
+            if !hasFileCount && !db.Exec("BEGIN IMMEDIATE;"
+                . "ALTER TABLE clipboard_items ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0;"
+                . "UPDATE clipboard_items SET file_count=CASE WHEN json_valid(files_json) "
+                . "THEN json_array_length(files_json) ELSE 0 END;"
+                . "UPDATE clipboard_items SET files_json='[]'; COMMIT;" )
+                throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "迁移剪贴板文件元数据失败")
+        }
+        schemaVersion := 5
+    }
+    if schemaVersion != ClipboardHistoryStoreVersion
+        throw Error("剪贴板历史数据库需要显式迁移")
+
     schema := ""
-    schema .= "CREATE TABLE IF NOT EXISTS history_meta ("
-        . "key TEXT PRIMARY KEY,value TEXT NOT NULL);"
     schema .= "CREATE TABLE IF NOT EXISTS clipboard_items ("
         . "id TEXT PRIMARY KEY,"
         . "primary_type TEXT NOT NULL,"
@@ -66,29 +108,27 @@ ClipboardHistoryStoreMigrate(db) {
         . "files_json TEXT NOT NULL DEFAULT '[]',"
         . "image_width INTEGER NOT NULL DEFAULT 0,"
         . "image_height INTEGER NOT NULL DEFAULT 0,"
-        . "item_count INTEGER NOT NULL DEFAULT 0,"
         . "byte_size INTEGER NOT NULL DEFAULT 0,"
-        . "created_at_utc TEXT NOT NULL,"
         . "last_captured_at_utc TEXT NOT NULL,"
-        . "last_capture_order INTEGER NOT NULL,"
         . "is_favorite INTEGER NOT NULL DEFAULT 0,"
-        . "favorited_at_utc TEXT NOT NULL DEFAULT '',"
-        . "format_manifest_json TEXT NOT NULL DEFAULT '[]');"
+        . "note_text TEXT NOT NULL DEFAULT '',"
+        . "is_pinned INTEGER NOT NULL DEFAULT 0,"
+        . "pin_order INTEGER NOT NULL DEFAULT 0,"
+        . "file_count INTEGER NOT NULL DEFAULT 0);"
     schema .= "CREATE TABLE IF NOT EXISTS clipboard_payloads ("
         . "item_id TEXT PRIMARY KEY,"
         . "snapshot_blob BLOB NOT NULL,"
         . "format_manifest_json TEXT NOT NULL DEFAULT '[]',"
         . "payload_version INTEGER NOT NULL DEFAULT 1,"
         . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
-    schema .= "CREATE INDEX IF NOT EXISTS clipboard_items_order_idx "
-        . "ON clipboard_items(last_capture_order DESC,id DESC);"
-        . "CREATE INDEX IF NOT EXISTS clipboard_items_type_idx "
-        . "ON clipboard_items(primary_type,last_capture_order DESC);"
-        . "CREATE INDEX IF NOT EXISTS clipboard_items_favorite_idx "
-        . "ON clipboard_items(is_favorite,last_capture_order DESC);"
-        . "CREATE UNIQUE INDEX IF NOT EXISTS clipboard_items_hash_idx "
+    schema .= "CREATE TABLE IF NOT EXISTS clipboard_thumbnails ("
+        . "item_id TEXT PRIMARY KEY,"
+        . "png_data_uri TEXT NOT NULL,"
+        . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
+    schema .= "CREATE UNIQUE INDEX IF NOT EXISTS clipboard_items_hash_idx "
         . "ON clipboard_items(content_hash);"
-
+        . "CREATE INDEX IF NOT EXISTS clipboard_items_recent_idx "
+        . "ON clipboard_items(is_pinned DESC,pin_order DESC,last_captured_at_utc DESC,id DESC);"
     if !db.Exec(schema)
         throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建剪贴板历史数据库结构失败")
     version := String(ClipboardHistoryStoreVersion)
@@ -115,7 +155,13 @@ ClipboardHistoryStoreSql(value) {
 }
 
 ClipboardHistoryStoreNow() {
-    return FormatTime(A_NowUTC, "yyyy-MM-ddTHH:mm:ssZ")
+    loop {
+        utc := A_NowUTC
+        milliseconds := A_MSec
+        if utc = A_NowUTC
+            break
+    }
+    return FormatTime(utc, "yyyy-MM-ddTHH:mm:ss") . "." . milliseconds . "Z"
 }
 
 ClipboardHistoryStoreExec(sql) {
@@ -149,13 +195,6 @@ ClipboardHistoryStoreRows(sql, &table := 0) {
     return false
 }
 
-ClipboardHistoryStoreJoin(values, delimiter := "`n") {
-    result := ""
-    for index, value in values
-        result .= (index > 1 ? delimiter : "") . String(value)
-    return result
-}
-
 ClipboardHistoryStoreRowMap(table, row) {
     result := Map()
     if !IsObject(table) || !table.HasOwnProp("Cols") || !IsObject(row)
@@ -165,27 +204,33 @@ ClipboardHistoryStoreRowMap(table, row) {
     return result
 }
 
-ClipboardHistoryStoreNextOrder() {
-    if !ClipboardHistoryStoreRows(
-        "SELECT COALESCE(MAX(last_capture_order),0)+1 AS next_order FROM clipboard_items;",
-        &table)
-        return A_TickCount
-    if table.RowCount < 1 || table.Rows[1].Length < 1
-        return A_TickCount
-    try return Integer(table.Rows[1][1])
-    catch
-        return A_TickCount
+ClipboardHistoryStoreTouch(id) {
+    global ClipboardHistoryDb, ClipboardHistoryStoreError
+    Critical("On")
+    try {
+        if !ClipboardHistoryStoreExec("UPDATE clipboard_items SET last_captured_at_utc="
+            . ClipboardHistoryStoreSql(ClipboardHistoryStoreNow()) . " WHERE id="
+            . ClipboardHistoryStoreSql(id) . ";")
+            return false
+        if ClipboardHistoryDb.Changes() < 1 {
+            ClipboardHistoryStoreError := "剪贴板历史项已不存在"
+            return false
+        }
+        return true
+    } finally {
+        Critical("Off")
+    }
 }
 
 ClipboardHistoryStoreFindByHash(contentHash) {
-    sql := "SELECT id,is_favorite,created_at_utc,favorited_at_utc FROM clipboard_items WHERE content_hash="
+    sql := "SELECT id,is_favorite,note_text,is_pinned,pin_order FROM clipboard_items WHERE content_hash="
         . ClipboardHistoryStoreSql(contentHash) . ";"
     if !ClipboardHistoryStoreRows(sql, &table) || table.RowCount < 1
         return 0
     return ClipboardHistoryStoreRowMap(table, table.Rows[1])
 }
 
-ClipboardHistoryStoreSave(item, snapshot, manifestJson) {
+ClipboardHistoryStoreSave(item, snapshot, manifestJson, retentionCutoff := "", maxItems := 0) {
     global ClipboardHistoryDb, ClipboardHistoryStoreError
     if !IsObject(item) || !IsObject(snapshot) || !ClipboardHistoryStoreInit()
         return false
@@ -197,21 +242,31 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson) {
     committed := false
     try {
         statement := ClipboardHistoryDb.Prepare(
-            "INSERT OR REPLACE INTO clipboard_items(id,primary_type,is_rich_text,content_hash,"
-            . "text_plain,search_text,preview_text,files_json,image_width,image_height,item_count,"
-            . "byte_size,created_at_utc,last_captured_at_utc,last_capture_order,is_favorite,"
-            . "favorited_at_utc,format_manifest_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
+            "INSERT INTO clipboard_items(id,primary_type,is_rich_text,content_hash,"
+            . "text_plain,search_text,preview_text,files_json,image_width,image_height,byte_size,"
+            . "last_captured_at_utc,is_favorite,note_text,is_pinned,pin_order,file_count) "
+            . "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            . "ON CONFLICT(id) DO UPDATE SET primary_type=excluded.primary_type,"
+            . "is_rich_text=excluded.is_rich_text,content_hash=excluded.content_hash,"
+            . "text_plain=excluded.text_plain,search_text=excluded.search_text,"
+            . "preview_text=excluded.preview_text,files_json=excluded.files_json,"
+                . "image_width=excluded.image_width,image_height=excluded.image_height,"
+                . "byte_size=excluded.byte_size,last_captured_at_utc=excluded.last_captured_at_utc,"
+                . "is_favorite=excluded.is_favorite,note_text=excluded.note_text,"
+                . "is_pinned=excluded.is_pinned,pin_order=excluded.pin_order,"
+                . "file_count=excluded.file_count;")
         if !statement
             throw Error(ClipboardHistoryStoreError)
         try {
             textValues := [id, item["primaryType"], item["contentHash"], item["textPlain"],
-                item["searchText"], item["previewText"], item["filesJson"], item["createdAtUtc"],
-                item["lastCapturedAtUtc"], item["favoritedAtUtc"], manifestJson]
+                item["searchText"], item["previewText"], item["filesJson"],
+                item["lastCapturedAtUtc"], item["noteText"]]
             integerValues := Map(3, item["isRichText"] ? 1 : 0, 9, item["imageWidth"],
-                10, item["imageHeight"], 11, item["itemCount"], 12, item["byteSize"],
-                15, item["lastCaptureOrder"], 16, item["isFavorite"] ? 1 : 0)
+                10, item["imageHeight"], 11, item["byteSize"],
+                13, item["isFavorite"] ? 1 : 0, 15, item["isPinned"] ? 1 : 0,
+                16, item["pinOrder"], 17, item["files"].Length)
             textIndex := 1
-            for index in [1, 2, 4, 5, 6, 7, 8, 13, 14, 17, 18] {
+            for index in [1, 2, 4, 5, 6, 7, 8, 12, 14] {
                 if !ClipboardHistoryDb.StatementBindText(statement, index, textValues[textIndex])
                     throw Error("绑定剪贴板历史元数据失败")
                 textIndex += 1
@@ -226,13 +281,18 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson) {
         }
 
         statement := ClipboardHistoryDb.Prepare(
-            "INSERT OR REPLACE INTO clipboard_payloads(item_id,snapshot_blob,format_manifest_json,payload_version) VALUES (?,?,?,1);")
+            "INSERT INTO clipboard_payloads(item_id,snapshot_blob,format_manifest_json,payload_version) "
+            . "VALUES (?,?,?,1) ON CONFLICT(item_id) DO UPDATE SET "
+            . "snapshot_blob=excluded.snapshot_blob,format_manifest_json=excluded.format_manifest_json,"
+            . "payload_version=excluded.payload_version;")
         if !statement
             throw Error(ClipboardHistoryStoreError)
         try {
             if !ClipboardHistoryDb.StatementBindText(statement, 1, id)
                 throw Error("绑定剪贴板历史 ID 失败")
-            if !ClipboardHistoryDb.StatementBindBlob(statement, 2, snapshot)
+            ; `snapshot` remains strongly referenced by this stack frame until
+            ; the statement is finalized, so avoid a second SQLite-owned copy.
+            if !ClipboardHistoryDb.StatementBindBlob(statement, 2, snapshot, false)
                 throw Error("绑定剪贴板历史 BLOB 失败")
             if !ClipboardHistoryDb.StatementBindText(statement, 3, manifestJson)
                 throw Error("绑定剪贴板历史格式清单失败")
@@ -242,6 +302,16 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson) {
             ClipboardHistoryDb.StatementFinalize(statement)
         }
 
+        ; Expiration, count trimming, payload writes, and byte-budget trimming
+        ; belong to the same transaction. A failed cleanup must not leave a
+        ; partially accepted history item behind.
+        if retentionCutoff != "" && !ClipboardHistoryStoreDeleteExpired(retentionCutoff)
+            throw Error(ClipboardHistoryStoreError)
+        if maxItems > 0 && !ClipboardHistoryStoreTrimNonFavorites(maxItems, id,
+            !item["isFavorite"] && !item["isPinned"])
+            throw Error(ClipboardHistoryStoreError)
+        ClipboardHistoryStoreTrimToByteBudget(id)
+
         if !ClipboardHistoryStoreExec("COMMIT;")
             throw Error(ClipboardHistoryStoreError)
         committed := true
@@ -250,6 +320,57 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson) {
         ClipboardHistoryStoreError := saveError.Message
     }
     return committed
+}
+
+ClipboardHistoryStoreStorageBytes(&totalBytes := 0) {
+    totalBytes := 0
+    sql := "SELECT COALESCE(SUM("
+        . "COALESCE(length(payload.snapshot_blob),0)+"
+        . "COALESCE(length(CAST(payload.format_manifest_json AS BLOB)),0)+"
+        . "length(CAST(item.text_plain AS BLOB))+"
+        . "length(CAST(item.search_text AS BLOB))+"
+        . "length(CAST(item.preview_text AS BLOB))+"
+        . "length(CAST(item.files_json AS BLOB))+"
+        . "length(CAST(item.note_text AS BLOB))+"
+        . "COALESCE(length(CAST(thumbnail.png_data_uri AS BLOB)),0)"
+        . "),0) FROM clipboard_items AS item "
+        . "LEFT JOIN clipboard_payloads AS payload ON payload.item_id=item.id "
+        . "LEFT JOIN clipboard_thumbnails AS thumbnail ON thumbnail.item_id=item.id;"
+    if !ClipboardHistoryStoreRows(sql, &table)
+        return false
+    if table.RowCount > 0
+        totalBytes := Integer(table.Rows[1][1])
+    return true
+}
+
+ClipboardHistoryStoreTrimToByteBudget(protectedId := "") {
+    global ClipboardHistoryStoreMaxBytes, ClipboardHistoryStoreError
+    protectedClause := ""
+    if Type(protectedId) = "Array" {
+        protectedIdList := ClipboardHistoryStoreIdListSql(protectedId)
+        if protectedIdList != ""
+            protectedClause := " AND id NOT IN (" . protectedIdList . ")"
+    } else if protectedId != ""
+        protectedClause := " AND id<>" . ClipboardHistoryStoreSql(protectedId)
+    loop {
+        if !ClipboardHistoryStoreStorageBytes(&totalBytes)
+            throw Error(ClipboardHistoryStoreError)
+        if totalBytes <= ClipboardHistoryStoreMaxBytes
+            return true
+
+        sql := "SELECT id FROM clipboard_items WHERE is_favorite=0 AND is_pinned=0"
+        sql .= protectedClause
+        sql .= " ORDER BY last_captured_at_utc ASC,id ASC LIMIT 1;"
+        if !ClipboardHistoryStoreRows(sql, &table)
+            throw Error(ClipboardHistoryStoreError)
+        if table.RowCount < 1
+            throw Error("剪贴板历史容量已满，收藏和置顶记录占用了全部可用空间")
+        victimId := table.Rows[1][1]
+        if !ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id="
+            . ClipboardHistoryStoreSql(victimId) . ";")
+            throw Error(ClipboardHistoryStoreError)
+        ClipboardHistoryImagePreviewCacheDelete(victimId)
+    }
 }
 
 ClipboardHistoryStoreReadPayload(id, &manifestJson := "") {
@@ -277,23 +398,17 @@ ClipboardHistoryStoreReadPayload(id, &manifestJson := "") {
 }
 
 ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := false,
-    cursor := 0, limit := 50) {
+    dateAfter := "", dateBefore := "", page := 1, limit := 20) {
     limit := Max(1, Min(100, Integer(limit)))
-    cursor := Max(0, Integer(cursor))
-    conditions := ["1=1"]
-    if Trim(searchText) != ""
-        conditions.Push("INSTR(LOWER(search_text),LOWER(" . ClipboardHistoryStoreSql(Trim(searchText)) . "))>0")
-    if primaryType != "" && primaryType != "all"
-        conditions.Push("primary_type=" . ClipboardHistoryStoreSql(primaryType))
-    if favoriteOnly
-        conditions.Push("is_favorite=1")
-    if cursor > 0
-        conditions.Push("last_capture_order<" . cursor)
-    sql := "SELECT id,primary_type,is_rich_text,text_plain,search_text,preview_text,files_json,"
-        . "image_width,image_height,item_count,byte_size,created_at_utc,last_captured_at_utc,"
-        . "last_capture_order,is_favorite,favorited_at_utc FROM clipboard_items WHERE "
-        . ClipboardHistoryStoreJoin(conditions, " AND ")
-        . " ORDER BY last_capture_order DESC,id DESC LIMIT " . limit . ";"
+    page := Max(1, Integer(page))
+    offset := (page - 1) * limit
+    whereClause := ClipboardHistoryStoreWhere(searchText, primaryType, favoriteOnly,
+        dateAfter, dateBefore)
+    sql := "SELECT id,primary_type,is_rich_text,preview_text,file_count,"
+        . "image_width,image_height,byte_size,last_captured_at_utc,is_favorite,note_text,is_pinned,pin_order FROM clipboard_items WHERE "
+        . whereClause
+        . " ORDER BY is_pinned DESC,pin_order DESC,last_captured_at_utc DESC,id DESC LIMIT " . limit
+        . " OFFSET " . offset . ";"
     rows := []
     if !ClipboardHistoryStoreRows(sql, &table)
         return rows
@@ -303,9 +418,8 @@ ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := f
 }
 
 ClipboardHistoryStoreGetItem(id) {
-    sql := "SELECT id,primary_type,is_rich_text,content_hash,text_plain,search_text,preview_text,"
-        . "files_json,image_width,image_height,item_count,byte_size,created_at_utc,last_captured_at_utc,"
-        . "last_capture_order,is_favorite,favorited_at_utc,format_manifest_json FROM clipboard_items WHERE id="
+    sql := "SELECT id,primary_type "
+        . "FROM clipboard_items WHERE id="
         . ClipboardHistoryStoreSql(id) . ";"
     if !ClipboardHistoryStoreRows(sql, &table) || table.RowCount < 1
         return 0
@@ -318,24 +432,194 @@ ClipboardHistoryStoreGetItem(id) {
     return row
 }
 
+ClipboardHistoryStoreGetThumbnail(id) {
+    global ClipboardHistoryDb
+    if !ClipboardHistoryStoreInit()
+        return ""
+    statement := ClipboardHistoryDb.Prepare(
+        "SELECT png_data_uri FROM clipboard_thumbnails WHERE item_id=?;")
+    if !statement
+        return ""
+    preview := ""
+    try {
+        if !ClipboardHistoryDb.StatementBindText(statement, 1, String(id))
+            return ""
+        if ClipboardHistoryDb.StatementStep(statement) = 100
+            preview := ClipboardHistoryDb.StatementColumnText(statement, 0)
+    } finally {
+        ClipboardHistoryDb.StatementFinalize(statement)
+    }
+    return preview
+}
+
+ClipboardHistoryStoreSaveThumbnail(id, preview) {
+    global ClipboardHistoryDb, ClipboardHistoryStoreError, ClipboardHistoryStoreMaxThumbnailChars
+    global ClipboardHistoryStoreMaxBytes
+    if preview = "" || StrLen(preview) > ClipboardHistoryStoreMaxThumbnailChars
+        return false
+    Critical("On")
+    try {
+        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+            return false
+        committed := false
+        try {
+            statement := ClipboardHistoryDb.Prepare(
+                "INSERT INTO clipboard_thumbnails(item_id,png_data_uri) VALUES (?,?) "
+                . "ON CONFLICT(item_id) DO UPDATE SET png_data_uri=excluded.png_data_uri;")
+            if !statement
+                throw Error(ClipboardHistoryStoreError)
+            try {
+                if !ClipboardHistoryDb.StatementBindText(statement, 1, String(id))
+                    throw Error("绑定缩略图 ID 失败")
+                if !ClipboardHistoryDb.StatementBindText(statement, 2, preview)
+                    throw Error("绑定图片缩略图失败")
+                if ClipboardHistoryDb.StatementStep(statement) != 101
+                    throw Error("写入图片缩略图失败")
+            } finally {
+                ClipboardHistoryDb.StatementFinalize(statement)
+            }
+            if !ClipboardHistoryStoreStorageBytes(&totalBytes)
+                throw Error(ClipboardHistoryStoreError)
+            if totalBytes > ClipboardHistoryStoreMaxBytes
+                throw Error("图片缩略图超出剪贴板历史容量，已跳过持久化")
+            if !ClipboardHistoryStoreExec("COMMIT;")
+                throw Error(ClipboardHistoryStoreError)
+            committed := true
+        } catch as thumbnailError {
+            try ClipboardHistoryStoreExec("ROLLBACK;")
+            ClipboardHistoryStoreError := thumbnailError.Message
+        }
+        return committed
+    } finally {
+        Critical("Off")
+    }
+}
+
 ClipboardHistoryStoreSetFavorite(id, desiredState) {
-    timestamp := desiredState ? ClipboardHistoryStoreNow() : ""
-    return ClipboardHistoryStoreExec("UPDATE clipboard_items SET is_favorite="
-        . (desiredState ? 1 : 0) . ",favorited_at_utc="
-        . ClipboardHistoryStoreSql(timestamp) . " WHERE id="
-        . ClipboardHistoryStoreSql(id) . ";")
+    return ClipboardHistoryStoreBudgetedMutation("UPDATE clipboard_items SET is_favorite="
+        . (desiredState ? 1 : 0) . " WHERE id="
+        . ClipboardHistoryStoreSql(id) . ";", [String(id)])
+}
+
+ClipboardHistoryStoreSetNote(id, noteText) {
+    return ClipboardHistoryStoreBudgetedMutation("UPDATE clipboard_items SET note_text="
+        . ClipboardHistoryStoreSql(SubStr(String(noteText), 1, 4000)) . " WHERE id="
+        . ClipboardHistoryStoreSql(id) . ";", [String(id)])
+}
+
+ClipboardHistoryStoreIdListSql(ids) {
+    if Type(ids) != "Array"
+        return ""
+    values := []
+    seen := Map()
+    for id in ids {
+        id := String(id)
+        if id = "" || StrLen(id) > 256 || seen.Has(id)
+            continue
+        seen[id] := true
+        values.Push(ClipboardHistoryStoreSql(id))
+    }
+    return ClipboardHistoryJoin(values, ",")
+}
+
+ClipboardHistoryStoreSetNotes(ids, noteText) {
+    idList := ClipboardHistoryStoreIdListSql(ids)
+    if idList = ""
+        return false
+    return ClipboardHistoryStoreBudgetedMutation("UPDATE clipboard_items SET note_text="
+        . ClipboardHistoryStoreSql(SubStr(String(noteText), 1, 4000))
+        . " WHERE id IN (" . idList . ");", ids)
+}
+
+ClipboardHistoryStoreBudgetedMutation(sql, protectedIds) {
+    global ClipboardHistoryDb, ClipboardHistoryStoreError
+    Critical("On")
+    committed := false
+    try {
+        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+            return false
+        try {
+            if !ClipboardHistoryStoreExec(sql)
+                throw Error(ClipboardHistoryStoreError)
+            if ClipboardHistoryDb.Changes() < 1
+                throw Error("剪贴板历史项已不存在")
+            ClipboardHistoryStoreTrimToByteBudget(protectedIds)
+            if !ClipboardHistoryStoreExec("COMMIT;")
+                throw Error(ClipboardHistoryStoreError)
+            committed := true
+        } catch as mutationError {
+            try ClipboardHistoryStoreExec("ROLLBACK;")
+            ClipboardHistoryStoreError := mutationError.Message
+        }
+    } finally {
+        Critical("Off")
+    }
+    return committed
+}
+
+ClipboardHistoryStoreDeleteMany(ids) {
+    idList := ClipboardHistoryStoreIdListSql(ids)
+    if idList = ""
+        return false
+    Critical("On")
+    try return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id IN (" . idList . ");")
+    finally Critical("Off")
+}
+
+ClipboardHistoryStoreSetPinned(id, desiredState) {
+    global ClipboardHistoryDb, ClipboardHistoryStoreError
+    Critical("On")
+    committed := false
+    try {
+        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+            return false
+        try {
+            if desiredState {
+                if !ClipboardHistoryStoreRows(
+                    "SELECT COALESCE(MAX(pin_order),0)+1 AS next_pin_order FROM clipboard_items;",
+                    &table)
+                    throw Error(ClipboardHistoryStoreError)
+                nextPinOrder := table.RowCount > 0 ? Integer(table.Rows[1][1]) : 1
+                updateSql := "UPDATE clipboard_items SET is_pinned=1,pin_order="
+                    . nextPinOrder . " WHERE id=" . ClipboardHistoryStoreSql(id) . ";"
+            } else
+                updateSql := "UPDATE clipboard_items SET is_pinned=0,pin_order=0 WHERE id="
+                    . ClipboardHistoryStoreSql(id) . ";"
+            if !ClipboardHistoryStoreExec(updateSql)
+                throw Error(ClipboardHistoryStoreError)
+            if ClipboardHistoryDb.Changes() < 1
+                throw Error("剪贴板历史项已不存在")
+            ClipboardHistoryStoreTrimToByteBudget(desiredState ? [String(id)] : "")
+            if !ClipboardHistoryStoreExec("COMMIT;")
+                throw Error(ClipboardHistoryStoreError)
+            committed := true
+        } catch as pinError {
+            try ClipboardHistoryStoreExec("ROLLBACK;")
+            ClipboardHistoryStoreError := pinError.Message
+        }
+    }
+    finally Critical("Off")
+    return committed
+}
+
+ClipboardHistoryStoreDeleteExpired(cutoffUtc) {
+    return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE is_favorite=0 AND is_pinned=0 AND last_captured_at_utc<"
+        . ClipboardHistoryStoreSql(cutoffUtc) . ";")
 }
 
 ClipboardHistoryStoreDelete(id) {
-    return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id="
+    Critical("On")
+    try return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id="
         . ClipboardHistoryStoreSql(id) . ";")
+    finally Critical("Off")
 }
 
 ClipboardHistoryStoreClearNonFavorites() {
     return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE is_favorite=0;")
 }
 
-ClipboardHistoryStoreCounts(searchText := "", primaryType := "", favoriteOnly := false) {
+ClipboardHistoryStoreCounts(searchText := "", primaryType := "", favoriteOnly := false,
+    dateAfter := "", dateBefore := "") {
     global ClipboardHistoryStoreError
     counts := Map("total", 0, "favorite", 0, "nonFavorite", 0, "matching", 0,
         "ready", false, "error", "")
@@ -344,7 +628,8 @@ ClipboardHistoryStoreCounts(searchText := "", primaryType := "", favoriteOnly :=
         return counts
     }
     if !ClipboardHistoryStoreRows("SELECT COUNT(*) AS total,"
-        . "SUM(CASE WHEN is_favorite=1 THEN 1 ELSE 0 END) AS favorite FROM clipboard_items;", &table) {
+        . "COALESCE(SUM(CASE WHEN is_favorite=1 THEN 1 ELSE 0 END),0) AS favorite "
+        . "FROM clipboard_items;", &table) {
         counts["error"] := ClipboardHistoryStoreError
         return counts
     }
@@ -353,15 +638,10 @@ ClipboardHistoryStoreCounts(searchText := "", primaryType := "", favoriteOnly :=
         counts["favorite"] := Integer(table.Rows[1][2])
         counts["nonFavorite"] := counts["total"] - counts["favorite"]
     }
-    conditions := ["1=1"]
-    if Trim(searchText) != ""
-        conditions.Push("INSTR(LOWER(search_text),LOWER(" . ClipboardHistoryStoreSql(Trim(searchText)) . "))>0")
-    if primaryType != "" && primaryType != "all"
-        conditions.Push("primary_type=" . ClipboardHistoryStoreSql(primaryType))
-    if favoriteOnly
-        conditions.Push("is_favorite=1")
+    whereClause := ClipboardHistoryStoreWhere(searchText, primaryType, favoriteOnly,
+        dateAfter, dateBefore)
     if !ClipboardHistoryStoreRows("SELECT COUNT(*) AS matching FROM clipboard_items WHERE "
-        . ClipboardHistoryStoreJoin(conditions, " AND ") . ";", &matchingTable) {
+        . whereClause . ";", &matchingTable) {
         counts["error"] := ClipboardHistoryStoreError
         return counts
     }
@@ -371,9 +651,31 @@ ClipboardHistoryStoreCounts(searchText := "", primaryType := "", favoriteOnly :=
     return counts
 }
 
-ClipboardHistoryStoreTrimNonFavorites(maxItems) {
+ClipboardHistoryStoreWhere(searchText, primaryType, favoriteOnly, dateAfter, dateBefore) {
+    conditions := ["1=1"]
+    searchText := Trim(String(searchText))
+    if searchText != ""
+        conditions.Push("(INSTR(LOWER(search_text),LOWER(" . ClipboardHistoryStoreSql(searchText)
+            . "))>0 OR INSTR(LOWER(note_text),LOWER(" . ClipboardHistoryStoreSql(searchText) . "))>0)")
+    if primaryType != "" && primaryType != "all"
+        conditions.Push("primary_type=" . ClipboardHistoryStoreSql(primaryType))
+    if favoriteOnly
+        conditions.Push("is_favorite=1")
+    if Trim(dateAfter) != ""
+        conditions.Push("last_captured_at_utc>=" . ClipboardHistoryStoreSql(dateAfter))
+    if Trim(dateBefore) != ""
+        conditions.Push("last_captured_at_utc<" . ClipboardHistoryStoreSql(dateBefore))
+    return ClipboardHistoryJoin(conditions, " AND ")
+}
+
+ClipboardHistoryStoreTrimNonFavorites(maxItems, protectedId := "", protectedIsEligible := false) {
     maxItems := Max(0, Integer(maxItems))
-    return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE is_favorite=0 AND id IN ("
-        . "SELECT id FROM clipboard_items WHERE is_favorite=0 ORDER BY last_capture_order DESC,id DESC "
-        . "LIMIT -1 OFFSET " . maxItems . ");")
+    protectedClause := protectedId = "" ? ""
+        : " AND id<>" . ClipboardHistoryStoreSql(protectedId)
+    keepCount := Max(0, maxItems - (protectedIsEligible ? 1 : 0))
+    return ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE is_favorite=0 AND is_pinned=0 AND id IN ("
+        . "SELECT id FROM clipboard_items WHERE is_favorite=0 AND is_pinned=0"
+        . protectedClause . " "
+        . "ORDER BY last_captured_at_utc DESC,id DESC "
+        . "LIMIT -1 OFFSET " . keepCount . ");")
 }

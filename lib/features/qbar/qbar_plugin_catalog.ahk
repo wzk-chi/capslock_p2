@@ -77,7 +77,7 @@ QbarPluginCatalogDefinitions() {
                 "argMode", "optional",
                 "priority", 100,
                 "usageKey", "builtin:clipboard",
-                "aliases", ["cv", "剪贴板历史"])]),
+                "aliases", ["cv"])]),
         Map(
             "definitionId", "builtin.settings",
             "source", "builtin",

@@ -72,7 +72,8 @@ ConfigSchema() {
         "ClipboardHistory", Map("kind", "static", "keys", Map(
             "enabled", Map("type", "bool"),
             "maxItems", Map("type", "int", "min", 20, "max", 5000),
-            "maxCaptureBytes", Map("type", "int", "min", 1048576, "max", 536870912))),
+            "maxCaptureBytes", Map("type", "int", "min", 1048576, "max", 536870912),
+            "retentionDays", Map("type", "int", "min", 1, "max", 3650))),
         "Keys", Map("kind", "keys"),
         "TabHotString", Map("kind", "dynamic", "codec", "hotString"),
         "CustomHotkey", Map("kind", "dynamic", "codec", "plain"))

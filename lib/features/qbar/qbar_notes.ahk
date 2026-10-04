@@ -412,7 +412,7 @@ NotesHandleCopyLine(msg) {
 
 NotesHandleCopyImage(msg) {
     path := NotesStoreAssetFilePath(LLMMsgField(msg, "noteId"), LLMMsgField(msg, "assetId"))
-    if path = "" || !NotesSetClipboardImage(path) {
+    if path = "" || !NotesSetClipboardImage(path, "user-copy") {
         DebugLog("notes image copy failed")
         NotesPost(Map("type", "actionResult", "action", "copyImage", "ok", JSON.false, "error", "图片不存在"))
         return

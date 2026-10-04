@@ -35,8 +35,9 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
             ; window. The history panel must not guess from an old Qbar HWND.
             targetContext := ClipboardHistoryCaptureTargetContext()
             QbarHide()
-            if ClipboardHistoryShow(args, targetContext)
-                return QbarExecutionRememberRegistered(command, args, 0)
+            if ClipboardHistoryShow(args, targetContext, true)
+                return QbarExecutionRememberRegistered(command, args,
+                    QbarHistoryClipboardEntry(args))
         case "builtin.settings.open":
             QbarHide()
             QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",

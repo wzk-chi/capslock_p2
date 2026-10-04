@@ -250,7 +250,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
               <label class="check"><input data-section="ClipboardHistory" data-key="enabled" type="checkbox"><span>记录剪贴板历史</span></label>
               <label class="field"><span>非收藏历史上限</span><input data-section="ClipboardHistory" data-key="maxItems" type="number" min="20" max="5000"></label>
               <label class="field"><span>单次采集上限（字节）</span><input data-section="ClipboardHistory" data-key="maxCaptureBytes" type="number" min="1048576" max="536870912" step="1048576"></label>
-              <div class="hint field wide">支持文本、图片、文件和常见 HTML / RTF 富文本；收藏项不参与自动淘汰和清空。数据保存在安装目录 data\clipboard-history。</div>
+              <label class="field"><span>历史保存天数</span><input data-section="ClipboardHistory" data-key="retentionDays" type="number" min="1" max="3650"></label>
+              <div class="hint field wide">支持文本、图片、文件和常见 HTML / RTF 富文本；历史内容有效数据预算约 512 MiB，优先淘汰最旧的非收藏、非置顶记录（SQLite 数据库文件可能因页复用暂时更大）。收藏项不参与自动淘汰和清空，收藏和置顶项不参与到期清理。数据保存在安装目录 data\clipboard-history。</div>
             </div>
           </div>
         </div>

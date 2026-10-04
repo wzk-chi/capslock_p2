@@ -13,7 +13,8 @@ AHK2 实现统一放在 `lib/`，WebView2 面板页面放在 `pages/`；`capsloc
 - 禁止删除文件。
 - 大型持久化数据（例如历史数据库、媒体和附件）优先保存到安装目录下的 `data/`，不要默认放进 `%AppData%`。这类目录属于用户运行数据，安装包不得携带示例/开发机数据，也不得在覆盖更新或卸载时覆盖、删除；安装目录需要可写。若某种安装方式不能保证可写，必须在设计中明确处理方式和数据迁移规则。
 - 风格统一：所有 WebView2 页面必须遵循统一的视觉主题、字体、颜色、边框、圆角、阴影、控件状态和深浅色规则；共享样式优先放在 `pages/theme.css`，页面文件只保留必要的局部布局和组件样式，不得重新引入互相冲突的独立配色或主题切换逻辑。
-- 优先使用现有的官方实现，不要重复造轮子。
+- 暂不考虑兼容性问题；代码要求简洁、优雅、高效、清晰，优先使用现有的官方实现，避免重复造轮子。
+- WebView2 页面中的 toast 与提示、确认、输入及复杂模态弹窗统一复用 `pages/toast.js` 的 `AppToast` 和 `pages/dialog.js` 的 `AppDialog`（复杂交互使用 `AppDialog.open`），样式遵循 `pages/theme.css`；不要在页面中重复实现相同能力或直接使用浏览器原生 `alert`、`confirm`、`prompt`。共享封装缺少所需能力时，先扩展共享封装再由页面调用。
 - 临时测试或诊断文件如果不需要提交，统一加入本地 `.git/info/exclude`；不要为此修改项目级
   `.gitignore`。确认文件尚未被 Git 跟踪，因为 `exclude` 不会隐藏已跟踪文件的修改或删除。
 
@@ -98,3 +99,10 @@ Inno Setup、Ahk2Exe、发布资源清单、脱敏配置和安装目录的完整
   未赋值的局部变量，`SetTimer(() => Fn(host), -1)` 触发时抛
   "This variable has not been assigned a value"。这类延迟调用改用 `Fn.Bind(host, arg)`：
   传值，不依赖名字捕获。在函数体顶层赋值的普通局部变量（`text := ...`）不受影响。
+
+- **WebView2 面板的鼠标指针恢复**：Windows 开启“键入时隐藏指针”后，WebView2 不一定像原生编辑控件
+  一样在鼠标移动时自动恢复指针。所有可交互页面都要同时做好两层处理：宿主显示/激活面板时调用一次
+  `ShowSystemCursor()`；页面用 `mousemove` 监听器按约 80ms 节流发送 `{ type: 'cursorMove' }`，宿主消息
+  分支收到后再次调用 `ShowSystemCursor()`。只在 AHK 侧增加 `cursorMove` 分支而不在页面发送事件是不完整
+  的；不要用高频无节流上报，也不要用轮询替代鼠标移动事件。现有参考实现是 `pages/chat.html` +
+  `lib/features/aiChat.ahk`。

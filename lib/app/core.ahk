@@ -594,7 +594,8 @@ RunConfiguredAction(actionText) {
     arguments := SplitActionArguments(argumentText)
     try functionObject.Call(arguments*)
     catch as functionError {
-        DebugLog("Action failed")
+        DebugLog("Action failed function=" . functionName
+            . " error=" . SubStr(functionError.Message, 1, 240))
         ShowMsg(functionName . ": " . functionError.Message, 3000)
     }
 }
@@ -918,7 +919,7 @@ clipSaver(clipX) {
 HandleClipboardChange(dataType) {
     global AllowClipboardWatcher, ClipboardWatcherSuspended, CapsLockHeld, WhichClipboardNow, SystemClipboard
     sequence := ClipboardSequenceNumber()
-    eventId := ClipboardHistoryNotify(dataType, ClipboardSuspendReason(), sequence)
+    eventId := ClipboardHistoryNotify(dataType, "", sequence)
     DebugLog("ClipboardChange type=" . dataType . " suspended=" . ClipboardWatcherSuspended . " capsHeld=" . CapsLockHeld . " allowed=" . AllowClipboardWatcher)
     try {
         if !ClipboardSuspendActive() && !CapsLockHeld && AllowClipboardWatcher {
@@ -940,9 +941,11 @@ HandleClipboardChange(dataType) {
     }
 }
 
-SaveClipboardSlot(slot) {
+SaveClipboardSlot(slot, expectedSequence := 0) {
     global CapsClipboard, CapsAltClipboard, SystemClipboard
     savedClipboard := ClipboardAll()
+    if expectedSequence && ClipboardSequenceNumber() != expectedSequence
+        return 0
     if slot = 0
         SystemClipboard := savedClipboard
     else if slot = 1
@@ -999,9 +1002,14 @@ CopyToClipboardSlot(slot, isCut := false) {
             success := WaitClipboardSequenceChange(sequenceBefore, 0.15, &copySequence)
         }
         if success {
-            copiedSnapshot := SaveClipboardSlot(slot)
-            ClipboardHistoryMarkOwnedSequence(copySequence, isCut ? "user-cut" : "user-copy")
-            WhichClipboardNow := slot
+            copiedSnapshot := SaveClipboardSlot(slot, copySequence)
+            if !IsObject(copiedSnapshot) || ClipboardSequenceNumber() != copySequence {
+                success := false
+                copiedSnapshot := 0
+            } else {
+                ClipboardHistoryMarkOwnedSequence(copySequence, isCut ? "user-cut" : "user-copy")
+                WhichClipboardNow := slot
+            }
         }
     } finally {
         ClipboardSuspendEnd(suspendToken)

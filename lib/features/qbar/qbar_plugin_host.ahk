@@ -78,6 +78,9 @@ QbarPluginHostRegisterCatalog() {
                 for alias in aliases
                         if !QbarStoreEnsureAlias(commandId, alias, "manifest-default", true)
                             throw Error(QbarStoreError != "" ? QbarStoreError : "保存命令别名失败")
+                if commandId = "builtin.clipboard.open"
+                    if !QbarStoreRemoveManifestAlias(commandId, "剪贴板历史")
+                        throw Error(QbarStoreError != "" ? QbarStoreError : "清理剪贴板历史本名别名失败")
             }
             settings := instance.Has("settings") ? instance["settings"] : Map()
             if !QbarStoreEnsurePluginSettings(instance["pluginId"], 1, settings)

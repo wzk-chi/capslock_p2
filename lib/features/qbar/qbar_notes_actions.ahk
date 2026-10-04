@@ -217,7 +217,7 @@ NotesAssetIdFromFileName(fileName) {
 ; text, so this goes through GDI+ (the token shared with the qbar icon cache)
 ; and SetClipboardData. The HBITMAP handed to the clipboard becomes the system's
 ; to own and must not be deleted here.
-NotesSetClipboardImage(path) {
+NotesSetClipboardImage(path, reason := "temporary-paste") {
     global WhichClipboardNow
     if path = "" || !FileExist(path) || !IconGdiplusStart()
         return false
@@ -225,18 +225,44 @@ NotesSetClipboardImage(path) {
     if DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", path, "ptr*", &bitmap, "int") != 0 || !bitmap
         return false
     handle := 0
+    pngData := ClipboardHistoryGdipSavePngBytes(bitmap)
+    pngFormat := DllCall("user32\RegisterClipboardFormatW", "wstr", "PNG", "uint")
+    pngArchive := 0
+    pngGlobal := 0
+    if reason = "user-copy" && pngFormat && IsObject(pngData)
+        pngArchive := ClipboardHistoryBuildArchive([
+            Map("id", pngFormat, "name", "PNG", "kind", "image", "data", pngData)])
     status := DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", bitmap, "ptr*", &handle,
         "uint", 0xFFFFFFFF, "int")   ; opaque white, so alpha images paste intact
     DllCall("gdiplus\GdipDisposeImage", "ptr", bitmap)
-    if status != 0 || !handle
-        return false
-    if !DllCall("user32\OpenClipboard", "ptr", 0, "int") {
-        DllCall("gdi32\DeleteObject", "ptr", handle, "int")
+    if status != 0 || !handle {
+        if handle
+            DllCall("gdi32\DeleteObject", "ptr", handle, "int")
         return false
     }
-    suspendToken := ClipboardSuspendBegin("temporary-paste")
+    if pngFormat && IsObject(pngData) {
+        pngGlobal := DllCall("kernel32\GlobalAlloc", "uint", 0x42, "uptr", pngData.Size, "ptr")
+        pngLocked := pngGlobal ? DllCall("kernel32\GlobalLock", "ptr", pngGlobal, "ptr") : 0
+        if pngLocked {
+            DllCall("Kernel32\RtlMoveMemory", "ptr", pngLocked, "ptr", pngData.Ptr, "uptr", pngData.Size)
+            DllCall("kernel32\GlobalUnlock", "ptr", pngGlobal)
+        } else if pngGlobal {
+            DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
+            pngGlobal := 0
+        }
+    }
+    if !DllCall("user32\OpenClipboard", "ptr", 0, "int") {
+        DllCall("gdi32\DeleteObject", "ptr", handle, "int")
+        if pngGlobal
+            DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
+        return false
+    }
+    suspendToken := ClipboardSuspendBegin(reason)
     try {
-        DllCall("user32\EmptyClipboard", "int")
+        if !DllCall("user32\EmptyClipboard", "int") {
+            DllCall("gdi32\DeleteObject", "ptr", handle, "int")
+            return false
+        }
         ; CF_BITMAP (2) takes an HBITMAP. CF_DIB (8) is the neighbouring value
         ; and takes a global memory block holding a BITMAPINFO followed by the
         ; bits; handing it a bitmap handle makes every reader -- including this
@@ -244,15 +270,28 @@ NotesSetClipboardImage(path) {
         ; the handle as a pointer and corrupts the heap.
         if !DllCall("user32\SetClipboardData", "uint", 2, "ptr", handle, "ptr") {
             DllCall("gdi32\DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
+            if pngGlobal
+                DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
+            pngGlobal := 0
             return false
         }
-        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
+        if pngGlobal {
+            if DllCall("user32\SetClipboardData", "uint", pngFormat, "ptr", pngGlobal, "ptr")
+                pngGlobal := 0
+        }
+        sequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(sequence, reason)
         WhichClipboardNow := 0
+        success := true
     } finally {
         DllCall("user32\CloseClipboard", "int")
         ClipboardSuspendEnd(suspendToken)
+        if pngGlobal
+            DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
     }
-    return true
+    if success && reason = "user-copy" && IsObject(pngArchive)
+        ClipboardHistoryPublishExplicit(sequence, pngArchive, reason)
+    return success
 }
 
 NotesPasteImageToTarget(path, targetHwnd := 0) {
@@ -286,16 +325,21 @@ NotesPasteImageToTarget(path, targetHwnd := 0) {
     }
 }
 
-NotesSetClipboard(text) {
+NotesSetClipboard(text, reason := "user-copy") {
     global A_Clipboard, WhichClipboardNow
-    suspendToken := ClipboardSuspendBegin("temporary-paste")
+    sequence := 0
+    suspendToken := ClipboardSuspendBegin(reason)
     try {
         A_Clipboard := String(text)
-        ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "temporary-paste")
+        sequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(sequence, reason)
         WhichClipboardNow := 0
     } finally {
         ClipboardSuspendEnd(suspendToken)
     }
+    if reason = "user-copy"
+        ClipboardHistoryPublishExplicit(sequence, 0, reason)
+    return sequence != 0
 }
 
 NotesPasteToTarget(text, targetHwnd := 0) {

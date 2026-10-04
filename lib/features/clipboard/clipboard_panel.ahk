@@ -12,48 +12,67 @@ global ClipboardHistoryTargetContext := 0
 global ClipboardHistoryPendingSearch := ""
 global ClipboardHistoryPendingType := "all"
 global ClipboardHistoryPendingFavorite := false
-global ClipboardHistoryPendingCursor := 0
+global ClipboardHistoryPendingDateFilter := "all"
+global ClipboardHistoryPendingSelectedDate := ""
+global ClipboardHistoryPendingDateAfter := ""
+global ClipboardHistoryPendingDateBefore := ""
+global ClipboardHistoryPendingPage := 1
+global ClipboardHistoryPendingPageSize := 20
 global ClipboardHistoryWidth := ScreenFitSize(860, 640, 720, 480)[1]
 global ClipboardHistoryHeight := ScreenFitSize(860, 640, 720, 480)[2]
 global ClipboardHistoryPasteBusy := false
 global ClipboardHistoryClearTokens := Map()
 
-ClipboardHistoryToggle(*) {
-    global ClipboardHistoryVisible
-    if ClipboardHistoryVisible
-        ClipboardHistoryHide()
-    else
-        ClipboardHistoryShow()
+ClipboardHistoryOpen(*) {
+    shown := ClipboardHistoryShow()
+    DebugLog("ClipboardHistoryOpen outcome=show result=" . shown)
 }
 
-ClipboardHistoryShow(initialSearch := "", targetContext := 0) {
+ClipboardHistoryWindowVisible() {
+    global ClipboardHistoryHost
+    panelGui := PanelHostGui(ClipboardHistoryHost)
+    if !IsObject(panelGui)
+        return false
+    hwnd := panelGui.Hwnd
+    if !hwnd || !DllCall("IsWindowVisible", "ptr", hwnd, "int")
+        return false
+    try return WinGetMinMax("ahk_id " . hwnd) != -1
+    catch
+        return false
+}
+
+ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := false) {
     global ClipboardHistoryHost, ClipboardHistoryVisible, ClipboardHistoryPageReady
     global ClipboardHistorySessionSerial, ClipboardHistorySessionId
     global ClipboardHistoryTargetHwnd, ClipboardHistoryPendingSearch
     global ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
     global ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
-    global ClipboardHistoryPendingCursor, ClipboardHistoryQuerySerial
-    if ClipboardHistoryVisible
+    global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
+    global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
+    global ClipboardHistoryPendingPage, ClipboardHistoryPendingPageSize, ClipboardHistoryQuerySerial
+    DebugLog("ClipboardHistoryShow enter logicalVisible=" . ClipboardHistoryVisible
+        . " windowVisible=" . ClipboardHistoryWindowVisible()
+        . " hostExists=" . IsObject(ClipboardHistoryHost))
+    if ClipboardHistoryVisible && ClipboardHistoryWindowVisible() {
+        panelGui := PanelHostGui(ClipboardHistoryHost)
+        if IsObject(panelGui)
+            WinActivate("ahk_id " . panelGui.Hwnd)
+        if refreshSession {
+            ClipboardHistoryResetSession(initialSearch, targetContext, false)
+            SetTimer(ClipboardHistorySendState, -1)
+        }
+        ShowSystemCursor()
+        DebugLog("ClipboardHistoryShow reused pageReady=" . PanelHostPageReady(ClipboardHistoryHost))
         return true
-
-    if !IsObject(targetContext) {
-        targetContext := targetContext
-            ? ClipboardHistoryTargetContextFromHwnd(targetContext)
-            : ClipboardHistoryCaptureTargetContext()
     }
-    ClipboardHistoryTargetContext := IsObject(targetContext) ? targetContext : 0
-    ClipboardHistoryTargetHwnd := IsObject(targetContext) ? targetContext["hwnd"] : 0
-    ClipboardHistoryTargetPid := IsObject(targetContext) ? targetContext["pid"] : 0
-    ClipboardHistoryPendingSearch := String(initialSearch)
-    ClipboardHistoryPendingType := "all"
-    ClipboardHistoryPendingFavorite := false
-    ClipboardHistoryPendingCursor := 0
-    ClipboardHistoryQuerySerial := 0
-    ClipboardHistorySessionSerial += 1
-    ClipboardHistorySessionId := "clipboard-history-" . ClipboardHistorySessionSerial . "-" . A_TickCount
+    ClipboardHistoryVisible := false
 
-    if !ClipboardHistoryEnsureWebView()
+    ClipboardHistoryResetSession(initialSearch, targetContext, !refreshSession)
+
+    if !ClipboardHistoryEnsureWebView() {
+        DebugLog("ClipboardHistoryShow failed ensureWebView")
         return false
+    }
     ClipboardHistoryVisible := true
     ClipboardHistoryPageReady := PanelHostPageReady(ClipboardHistoryHost)
     PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, true)
@@ -64,14 +83,50 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0) {
     WindowBarApplyPinnedState(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost),
         true, ClipboardHistoryHide, Map("autoHide", false))
     WindowBarSetPinnedPage(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost))
+    ShowSystemCursor()
     SetTimer(ClipboardHistorySendState, -1)
+    DebugLog("ClipboardHistoryShow completed pageReady=" . ClipboardHistoryPageReady
+        . " windowVisible=" . ClipboardHistoryWindowVisible())
     return true
+}
+
+ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget := true) {
+    global ClipboardHistorySessionSerial, ClipboardHistorySessionId
+    global ClipboardHistoryTargetHwnd, ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
+    global ClipboardHistoryPendingSearch, ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
+    global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
+    global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
+    global ClipboardHistoryPendingPage, ClipboardHistoryQuerySerial, ClipboardHistoryClearTokens
+    if !IsObject(targetContext) {
+        if targetContext
+            targetContext := ClipboardHistoryTargetContextFromHwnd(targetContext)
+        else if captureMissingTarget
+            targetContext := ClipboardHistoryCaptureTargetContext()
+    }
+    ClipboardHistoryTargetContext := IsObject(targetContext) ? targetContext : 0
+    ClipboardHistoryTargetHwnd := IsObject(targetContext) ? targetContext["hwnd"] : 0
+    ClipboardHistoryTargetPid := IsObject(targetContext) ? targetContext["pid"] : 0
+    ClipboardHistoryPendingSearch := String(initialSearch)
+    ClipboardHistoryPendingType := "all"
+    ClipboardHistoryPendingFavorite := false
+    ClipboardHistoryPendingDateFilter := "all"
+    ClipboardHistoryPendingSelectedDate := ""
+    ClipboardHistoryPendingDateAfter := ""
+    ClipboardHistoryPendingDateBefore := ""
+    ClipboardHistoryPendingPage := 1
+    ClipboardHistoryQuerySerial := 0
+    ClipboardHistoryClearTokens := Map()
+    ClipboardHistorySessionSerial += 1
+    ClipboardHistorySessionId := "clipboard-history-" . ClipboardHistorySessionSerial . "-" . A_TickCount
 }
 
 ClipboardHistoryHide(*) {
     global ClipboardHistoryHost, ClipboardHistoryVisible, ClipboardHistorySessionId, ClipboardHistoryPageReady
     global ClipboardHistoryClearTokens, ClipboardHistoryTargetHwnd
     global ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
+    DebugLog("ClipboardHistoryHide session=" . ClipboardHistorySessionId
+        . " windowVisible=" . ClipboardHistoryWindowVisible())
+    ClipboardHistoryPost(Map("type", "sessionEnd", "sessionId", ClipboardHistorySessionId))
     ClipboardHistoryVisible := false
     ClipboardHistoryPageReady := false
     ClipboardHistorySessionId := ""
@@ -93,8 +148,12 @@ ClipboardHistoryEnsureWebView() {
     if IsObject(ClipboardHistoryHost) {
         try {
             PanelHostEnsure(ClipboardHistoryHost)
+            ClipboardHistoryDisableExternalDrop()
+            DebugLog("ClipboardHistoryEnsureWebView existing success pageReady="
+                . PanelHostPageReady(ClipboardHistoryHost))
             return true
         } catch as existingError {
+            DebugLog("ClipboardHistoryEnsureWebView existing failed: " . existingError.Message)
             PanelHostHide(ClipboardHistoryHost)
             ShowMsg("剪贴板历史页面初始化失败：" . existingError.Message, 5000)
             return false
@@ -114,11 +173,28 @@ ClipboardHistoryEnsureWebView() {
                 "message", ClipboardHistoryWebMessageReceived)))
     try {
         PanelHostEnsure(ClipboardHistoryHost)
+        ClipboardHistoryDisableExternalDrop()
+        DebugLog("ClipboardHistoryEnsureWebView created success pageReady="
+            . PanelHostPageReady(ClipboardHistoryHost))
         return true
     } catch as webViewError {
+        DebugLog("ClipboardHistoryEnsureWebView create failed: " . webViewError.Message)
         PanelHostHide(ClipboardHistoryHost)
         ShowMsg("剪贴板历史页面初始化失败：" . webViewError.Message, 5000)
         return false
+    }
+}
+
+ClipboardHistoryDisableExternalDrop() {
+    global ClipboardHistoryHost
+    ; AllowExternalDrop belongs to ICoreWebView2Controller4, not the base controller.
+    try {
+        controller4 := ComObjQuery(ClipboardHistoryHost["controller"], WebView2.Controller.IID_4)
+        if !controller4
+            throw Error("ICoreWebView2Controller4 不可用")
+        ComCall(37, controller4, "int", 0)
+    } catch as dropError {
+        DebugLog("Clipboard history external drop disable failed")
     }
 }
 
@@ -147,11 +223,19 @@ ClipboardHistorySendState(*) {
     global ClipboardHistoryVisible, ClipboardHistoryPageReady
     global ClipboardHistorySessionId, ClipboardHistoryPendingSearch
     global ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
+    global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
+    global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
+    global ClipboardHistoryPendingPageSize
     if !ClipboardHistoryVisible || !ClipboardHistoryPageReady
         return
     ClipboardHistoryPost(Map("type", "hostState", "sessionId", ClipboardHistorySessionId,
         "search", ClipboardHistoryPendingSearch, "primaryType", ClipboardHistoryPendingType,
-        "favoriteOnly", ClipboardHistoryPendingFavorite))
+        "favoriteOnly", ClipboardHistoryPendingFavorite,
+        "dateFilter", ClipboardHistoryPendingDateFilter,
+        "selectedDate", ClipboardHistoryPendingSelectedDate,
+        "dateAfter", ClipboardHistoryPendingDateAfter,
+        "dateBefore", ClipboardHistoryPendingDateBefore,
+        "pageSize", ClipboardHistoryPendingPageSize))
 }
 
 ClipboardHistoryPanelChanged() {
@@ -160,27 +244,46 @@ ClipboardHistoryPanelChanged() {
         SetTimer(ClipboardHistorySendState, -1)
 }
 
-ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, cursor, sessionId, queryId) {
+ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, dateFilter, selectedDate,
+    dateAfter, dateBefore, page, pageSize, sessionId, queryId) {
     global ClipboardHistoryVisible, ClipboardHistorySessionId
     global ClipboardHistoryPendingSearch, ClipboardHistoryPendingType
-    global ClipboardHistoryPendingFavorite, ClipboardHistoryPendingCursor
+    global ClipboardHistoryPendingFavorite, ClipboardHistoryPendingDateFilter
+    global ClipboardHistoryPendingSelectedDate, ClipboardHistoryPendingDateAfter
+    global ClipboardHistoryPendingDateBefore, ClipboardHistoryPendingPage, ClipboardHistoryPendingPageSize
     global ClipboardHistoryQuerySerial
     if !ClipboardHistoryVisible || sessionId != ClipboardHistorySessionId
         return
     ClipboardHistoryPendingSearch := String(searchText)
     ClipboardHistoryPendingType := String(primaryType)
     ClipboardHistoryPendingFavorite := !!favoriteOnly
-    ClipboardHistoryPendingCursor := Max(0, Integer(cursor))
+    ClipboardHistoryPendingDateFilter := String(dateFilter)
+    ClipboardHistoryPendingSelectedDate := String(selectedDate)
+    ClipboardHistoryPendingDateAfter := String(dateAfter)
+    ClipboardHistoryPendingDateBefore := String(dateBefore)
+    ClipboardHistoryPendingPage := Max(1, Integer(page))
+    ClipboardHistoryPendingPageSize := Max(1, Min(100, Integer(pageSize)))
     ClipboardHistoryQuerySerial += 1
     actualQueryId := queryId ? queryId : ClipboardHistoryQuerySerial
     rows := ClipboardHistoryRows(ClipboardHistoryPendingSearch, ClipboardHistoryPendingType,
-        ClipboardHistoryPendingFavorite, ClipboardHistoryPendingCursor, 50)
+        ClipboardHistoryPendingFavorite, ClipboardHistoryPendingDateAfter,
+        ClipboardHistoryPendingDateBefore,
+        ClipboardHistoryPendingPage, ClipboardHistoryPendingPageSize)
     counts := ClipboardHistoryCounts(ClipboardHistoryPendingSearch, ClipboardHistoryPendingType,
-        ClipboardHistoryPendingFavorite)
-    nextCursor := rows.Length ? rows[rows.Length]["cursor"] : 0
+        ClipboardHistoryPendingFavorite, ClipboardHistoryPendingDateAfter,
+        ClipboardHistoryPendingDateBefore)
+    pageCount := Max(1, Ceil(Integer(counts["matching"]) / ClipboardHistoryPendingPageSize))
+    if ClipboardHistoryPendingPage > pageCount {
+        ClipboardHistoryPendingPage := pageCount
+        rows := ClipboardHistoryRows(ClipboardHistoryPendingSearch, ClipboardHistoryPendingType,
+            ClipboardHistoryPendingFavorite, ClipboardHistoryPendingDateAfter,
+            ClipboardHistoryPendingDateBefore,
+            ClipboardHistoryPendingPage, ClipboardHistoryPendingPageSize)
+    }
     ClipboardHistoryPost(Map("type", "historyResults", "sessionId", sessionId,
         "queryId", actualQueryId, "rows", rows, "counts", counts,
-        "nextCursor", nextCursor, "append", ClipboardHistoryPendingCursor > 0))
+        "page", ClipboardHistoryPendingPage, "pageSize", ClipboardHistoryPendingPageSize,
+        "pageCount", pageCount, "append", JSON.false))
 }
 
 ClipboardHistoryPanelImagePreview(id, sessionId, *) {
@@ -195,6 +298,9 @@ ClipboardHistoryPanelImagePreview(id, sessionId, *) {
 ClipboardHistoryWebMessageReceived(sender, args) {
     global ClipboardHistorySessionId, ClipboardHistoryPageReady, ClipboardHistoryHost
     global ClipboardHistoryPendingSearch, ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
+    global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
+    global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
+    global ClipboardHistoryPendingPageSize
     global ClipboardHistoryClearTokens
     try message := args.TryGetWebMessageAsString()
     catch
@@ -203,28 +309,44 @@ ClipboardHistoryWebMessageReceived(sender, args) {
     if WindowBarHandleDebugMessage(msg, "clipboard")
         return
     messageType := LLMMsgField(msg, "type")
+    if WindowBarHandleMessage(ClipboardHistoryHost, messageType, ClipboardHistoryHide, 0,
+        Map("autoHide", false, "requireActive", false))
+        return
+    if messageType = "cursorMove" {
+        ShowSystemCursor()
+        return
+    }
     sessionId := LLMMsgField(msg, "sessionId")
     if messageType = "ready" {
         ClipboardHistoryPageReady := true
         ClipboardHistoryPost(Map("type", "hostState", "sessionId", ClipboardHistorySessionId,
             "search", ClipboardHistoryPendingSearch, "primaryType", ClipboardHistoryPendingType,
-            "favoriteOnly", ClipboardHistoryPendingFavorite))
+            "favoriteOnly", ClipboardHistoryPendingFavorite,
+            "dateFilter", ClipboardHistoryPendingDateFilter,
+            "selectedDate", ClipboardHistoryPendingSelectedDate,
+            "dateAfter", ClipboardHistoryPendingDateAfter,
+            "dateBefore", ClipboardHistoryPendingDateBefore,
+            "pageSize", ClipboardHistoryPendingPageSize))
         return
     }
     if sessionId != ClipboardHistorySessionId
-        return
-    if WindowBarHandleMessage(ClipboardHistoryHost, messageType, ClipboardHistoryHide, 0,
-        Map("requireActive", false))
         return
     if messageType = "query" {
         queryId := LLMMsgField(msg, "queryId")
         SetTimer(ClipboardHistoryPanelQuery.Bind(
             LLMMsgField(msg, "search"), LLMMsgField(msg, "primaryType"),
             LLMMsgBoolean(msg, "favoriteOnly", &favoriteValid, false),
-            LLMMsgNumber(msg, "cursor", &cursorValid, 0, true), sessionId,
+            LLMMsgField(msg, "dateFilter"), LLMMsgField(msg, "selectedDate"),
+            LLMMsgField(msg, "dateAfter"), LLMMsgField(msg, "dateBefore"),
+            LLMMsgNumber(msg, "page", &pageValid, 1, true),
+            LLMMsgNumber(msg, "pageSize", &pageSizeValid, 20, true), sessionId,
             LLMMsgNumber(msg, "queryId", &queryValid, 0, true)), -1)
     } else if messageType = "imagePreview" {
         SetTimer(ClipboardHistoryPanelImagePreview.Bind(LLMMsgField(msg, "id"), sessionId), -1)
+    } else if messageType = "fileDrag" || messageType = "imageDrag" {
+        dragKind := messageType = "fileDrag" ? "files" : "image"
+        SetTimer(ClipboardHistoryPanelNativeDrag.Bind(
+            LLMMsgField(msg, "id"), sessionId, dragKind), -1)
     } else if messageType = "copy" {
         SetTimer(ClipboardHistoryPanelCopy.Bind(LLMMsgField(msg, "id"), sessionId), -1)
     } else if messageType = "paste" {
@@ -232,6 +354,23 @@ ClipboardHistoryWebMessageReceived(sender, args) {
     } else if messageType = "favorite" {
         desired := LLMMsgBoolean(msg, "desired", &desiredValid, false)
         SetTimer(ClipboardHistoryPanelFavorite.Bind(LLMMsgField(msg, "id"), desired,
+            sessionId), -1)
+    } else if messageType = "note" {
+        SetTimer(ClipboardHistoryPanelNote.Bind(LLMMsgField(msg, "id"),
+            LLMMsgField(msg, "note"), sessionId), -1)
+    } else if messageType = "bulkNote" || messageType = "bulkDelete" {
+        ids := []
+        if msg.Has("ids")
+            if Type(msg["ids"]) = "Array"
+                ids := msg["ids"]
+        if messageType = "bulkNote"
+            SetTimer(ClipboardHistoryPanelBulkNote.Bind(ids,
+                LLMMsgField(msg, "note"), sessionId), -1)
+        else
+            SetTimer(ClipboardHistoryPanelBulkDelete.Bind(ids, sessionId), -1)
+    } else if messageType = "pin" {
+        desired := LLMMsgBoolean(msg, "desired", &desiredValid, false)
+        SetTimer(ClipboardHistoryPanelPin.Bind(LLMMsgField(msg, "id"), desired,
             sessionId), -1)
     } else if messageType = "delete" {
         SetTimer(ClipboardHistoryPanelDelete.Bind(LLMMsgField(msg, "id"), sessionId), -1)
@@ -243,8 +382,6 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             ClipboardHistoryClearTokens.Delete(token)
     } else if messageType = "clear" {
         SetTimer(ClipboardHistoryPanelClear.Bind(LLMMsgField(msg, "token"), sessionId), -1)
-    } else if messageType = "cursorMove" {
-        ShowSystemCursor()
     }
 }
 
@@ -253,7 +390,47 @@ ClipboardHistoryPanelCopy(id, sessionId, *) {
     if sessionId != ClipboardHistorySessionId
         return
     ok := ClipboardHistoryCopyItem(id)
-    ClipboardHistoryActionResult("copy", ok, ok ? "已复制" : "复制失败")
+    ClipboardHistoryActionResult("copy", ok, ok ? "已复制" : "复制失败", "", false, sessionId)
+}
+
+ClipboardHistoryPanelNativeDrag(id, sessionId, dragKind, *) {
+    global ClipboardHistorySessionId, ClipboardHistoryHost
+    if sessionId != ClipboardHistorySessionId
+        return
+    item := ClipboardHistoryStoreGetItem(id)
+    expectedType := dragKind = "files" ? "file" : "image"
+    action := dragKind = "files" ? "fileDrag" : "imageDrag"
+    if !IsObject(item) || item["primary_type"] != expectedType {
+        ClipboardHistoryActionResult(action, false, "该记录不支持此类拖放", id, false, sessionId)
+        return
+    }
+    if !ClipboardHistoryCopyPrepared(item, dragKind) {
+        ClipboardHistoryActionResult(action, false, "无法准备拖放数据", id, false, sessionId)
+        return
+    }
+
+    ; Give Windows Shell an IDataObject containing only the requested native format.
+    dataObject := 0
+    try {
+        result := DllCall("ole32\OleGetClipboard", "ptr*", &dataObject, "int")
+        if result < 0 || !dataObject
+            throw Error("无法读取文件拖放数据对象")
+        panelGui := PanelHostGui(ClipboardHistoryHost)
+        if !IsObject(panelGui)
+            throw Error("剪贴板历史窗口不可用")
+        effect := 0
+        result := DllCall("shell32\SHDoDragDrop", "ptr", panelGui.Hwnd,
+            "ptr", dataObject, "ptr", 0, "uint", 1, "uint*", &effect, "int")
+        if result < 0
+            throw Error("Windows Shell 拖放失败（HRESULT " . Format("0x{:08X}", result & 0xFFFFFFFF) . "）")
+    } catch as dragError {
+        ClipboardHistoryActionResult(action, false,
+            "无法拖出内容：" . dragError.Message, id, false, sessionId)
+    } finally {
+        if dataObject
+            ObjRelease(dataObject)
+        ClipboardHistoryPost(Map("type", "nativeDragFinished", "sessionId", sessionId, "id", id))
+    }
 }
 
 ClipboardHistoryPanelPaste(id, sessionId, *) {
@@ -265,65 +442,85 @@ ClipboardHistoryPanelPaste(id, sessionId, *) {
         return
     ClipboardHistoryPasteBusy := true
     item := ClipboardHistoryStoreGetItem(id)
+    if sessionId != ClipboardHistorySessionId {
+        ClipboardHistoryPasteBusy := false
+        return
+    }
     targetContext := ClipboardHistoryTargetContext
     targetHwnd := ClipboardHistoryTargetHwnd
     targetPid := ClipboardHistoryTargetPid
     if !IsObject(item) {
-        ClipboardHistoryActionResult("paste", false, "历史内容已不可用")
+        ClipboardHistoryActionResult("paste", false, "历史内容已不可用", "", false, sessionId)
         ClipboardHistoryPasteBusy := false
         return
     }
     if !IsObject(targetContext) || !ClipboardHistoryTargetContextValid(targetContext) {
+        if sessionId != ClipboardHistorySessionId
+            return ClipboardHistoryPanelPasteFailure(item, sessionId)
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
-            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴")
+            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴", "", false, sessionId)
         ClipboardHistoryPasteBusy := false
         return
     }
     if !ClipboardHistoryTargetWindowValid(targetHwnd, targetPid) {
-        ClipboardHistoryActionResult("paste", false, "目标窗口已失效，未发送粘贴")
+        ClipboardHistoryActionResult("paste", false, "目标窗口已失效，未发送粘贴", "", false, sessionId)
         ClipboardHistoryPasteBusy := false
         return
     }
     WinActivate("ahk_id " . targetHwnd)
     if !WinWaitActive("ahk_id " . targetHwnd, , 0.4) {
+        if sessionId != ClipboardHistorySessionId
+            return ClipboardHistoryPanelPasteFailure(item, sessionId)
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
-            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴")
+            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴", "", false, sessionId)
         ClipboardHistoryPasteBusy := false
         return
     }
+    if sessionId != ClipboardHistorySessionId
+        return ClipboardHistoryPanelPasteFailure(item, sessionId)
     if WinActive("ahk_id " . targetHwnd) != targetHwnd
-        return ClipboardHistoryPanelPasteFailure(item)
-    clipboardSequenceBeforePaste := ClipboardSequenceNumber()
-    sessionBeforeHide := ClipboardHistorySessionId
-    ClipboardHistoryVisible := false
-    PanelHostHide(ClipboardHistoryHost)
-    if sessionBeforeHide != ClipboardHistorySessionId
-        return ClipboardHistoryPanelPasteFailure(item)
-    if !ClipboardHistoryTargetContextValid(targetContext)
-        return ClipboardHistoryPanelPasteFailure(item)
-    ok := ClipboardHistoryPastePrepared(item, targetContext, false, clipboardSequenceBeforePaste)
+        return ClipboardHistoryPanelPasteFailure(item, sessionId)
+    canProceed := false
+    Critical("On")
+    try {
+        if sessionId = ClipboardHistorySessionId
+            && ClipboardHistoryTargetContextValid(targetContext) {
+            clipboardSequenceBeforePaste := ClipboardSequenceNumber()
+            sessionBeforeHide := ClipboardHistorySessionId
+            ClipboardHistoryVisible := false
+            PanelHostHide(ClipboardHistoryHost)
+            canProceed := true
+        }
+    } finally {
+        Critical("Off")
+    }
+    if !canProceed
+        return ClipboardHistoryPanelPasteFailure(item, sessionId)
+    ok := ClipboardHistoryPastePrepared(item, targetContext, false,
+        clipboardSequenceBeforePaste, sessionId)
     if !ok && ClipboardHistorySessionId = sessionBeforeHide {
         ClipboardHistoryVisible := true
         PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, false)
         SetTimer(ClipboardHistorySendState, -1)
     }
     if !ok
-        ClipboardHistoryActionResult("paste", false, "粘贴失败，面板已恢复")
+        ClipboardHistoryActionResult("paste", false, "粘贴失败，面板已恢复", "", false, sessionId)
     ClipboardHistoryPasteBusy := false
 }
 
-ClipboardHistoryPanelPasteFailure(item) {
+ClipboardHistoryPanelPasteFailure(item, expectedSessionId) {
     global ClipboardHistoryVisible, ClipboardHistorySessionId, ClipboardHistoryPasteBusy
     global ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight
-    if ClipboardHistorySessionId != "" {
+    if ClipboardHistorySessionId = expectedSessionId {
         ClipboardHistoryVisible := true
         PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, false)
         SetTimer(ClipboardHistorySendState, -1)
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
-            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴")
+            ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴",
+            "", false, expectedSessionId)
     }
     ClipboardHistoryPasteBusy := false
     return false
@@ -334,7 +531,47 @@ ClipboardHistoryPanelFavorite(id, desiredState, sessionId, *) {
     if sessionId != ClipboardHistorySessionId
         return
     ok := ClipboardHistorySetFavoriteItem(id, desiredState)
-    ClipboardHistoryActionResult("favorite", ok, ok ? "已更新收藏" : "收藏更新失败", id, desiredState)
+    ClipboardHistoryActionResult("favorite", ok, ok ? "已更新收藏" : "收藏更新失败",
+        id, desiredState, sessionId)
+}
+
+ClipboardHistoryPanelNote(id, noteText, sessionId, *) {
+    global ClipboardHistorySessionId
+    if sessionId != ClipboardHistorySessionId
+        return
+    noteText := SubStr(String(noteText), 1, 4000)
+    ok := ClipboardHistorySetNoteItem(id, noteText)
+    ClipboardHistoryActionResult("note", ok, ok ? "备注已保存" : "备注保存失败",
+        id, noteText, sessionId)
+}
+
+ClipboardHistoryPanelBulkNote(ids, noteText, sessionId, *) {
+    global ClipboardHistorySessionId
+    if sessionId != ClipboardHistorySessionId || Type(ids) != "Array" || !ids.Length
+        return
+    ok := ClipboardHistorySetNotesItems(ids, noteText)
+    ClipboardHistoryActionResult("bulkNote", ok,
+        ok ? "已为所选 " . ids.Length . " 项添加备注" : "批量备注保存失败",
+        "", false, sessionId)
+}
+
+ClipboardHistoryPanelBulkDelete(ids, sessionId, *) {
+    global ClipboardHistorySessionId
+    if sessionId != ClipboardHistorySessionId || Type(ids) != "Array" || !ids.Length
+        return
+    ok := ClipboardHistoryDeleteItems(ids)
+    ClipboardHistoryActionResult("bulkDelete", ok,
+        ok ? "已删除所选 " . ids.Length . " 项" : "批量删除失败", "", ids, sessionId)
+}
+
+ClipboardHistoryPanelPin(id, desiredState, sessionId, *) {
+    global ClipboardHistorySessionId
+    if sessionId != ClipboardHistorySessionId
+        return
+    ok := ClipboardHistorySetPinnedItem(id, desiredState)
+    ClipboardHistoryActionResult("pin", ok,
+        ok ? (desiredState ? "已置顶" : "已取消置顶") : "置顶更新失败",
+        id, desiredState, sessionId)
 }
 
 ClipboardHistoryPanelDelete(id, sessionId, *) {
@@ -342,7 +579,7 @@ ClipboardHistoryPanelDelete(id, sessionId, *) {
     if sessionId != ClipboardHistorySessionId
         return
     ok := ClipboardHistoryDeleteItem(id)
-    ClipboardHistoryActionResult("delete", ok, ok ? "已删除" : "删除失败")
+    ClipboardHistoryActionResult("delete", ok, ok ? "已删除" : "删除失败", id, false, sessionId)
 }
 
 ClipboardHistoryPrepareClear(sessionId) {
@@ -365,15 +602,29 @@ ClipboardHistoryPanelClear(token, sessionId, *) {
         return
     ClipboardHistoryClearTokens.Delete(token)
     ok := ClipboardHistoryClearNonFavorites()
-    ClipboardHistoryActionResult("clear", ok, ok ? "已清空未收藏历史" : "清空失败")
+    ClipboardHistoryActionResult("clear", ok, ok ? "已清空未收藏历史" : "清空失败",
+        "", false, sessionId)
 }
 
-ClipboardHistoryActionResult(action, ok, message, itemId := "", desiredState := false) {
+ClipboardHistoryActionResult(action, ok, message, itemId := "", value := false, sessionId := "") {
     payload := Map("type", "actionResult", "action", action,
-        "ok", ok ? JSON.true : JSON.false, "message", message)
+        "ok", ok ? JSON.true : JSON.false, "message", message,
+        "sessionId", String(sessionId))
     if action = "favorite" {
         payload["id"] := itemId
-        payload["desired"] := desiredState ? JSON.true : JSON.false
+        payload["desired"] := value ? JSON.true : JSON.false
+    } else if action = "note" {
+        payload["id"] := itemId
+        payload["note"] := value
+    } else if action = "pin" {
+        payload["id"] := itemId
+        payload["desired"] := value ? JSON.true : JSON.false
+    } else if action = "fileDrag" || action = "imageDrag" {
+        payload["id"] := itemId
+    } else if action = "delete" {
+        payload["id"] := itemId
+    } else if action = "bulkDelete" {
+        payload["ids"] := value
     }
     ClipboardHistoryPost(payload)
 }

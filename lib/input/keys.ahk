@@ -231,20 +231,32 @@ keyFunc_qbar(*) {
 }
 
 keyFunc_clipboardHistory(*) {
-    global QbarVisible
-    if AiChatIsActive() || LLMTranslateIsActive() || DictionaryIsActive()
+    global QbarVisible, ClipboardHistoryVisible
+    aiChatActive := AiChatIsActive()
+    translateActive := LLMTranslateIsActive()
+    dictionaryActive := DictionaryIsActive()
+    everythingActive := EverythingIsActive()
+    notesActive := NotesIsActive()
+    if aiChatActive || translateActive || dictionaryActive || everythingActive || notesActive {
+        DebugLog("CapsLock+Z blocked activePane ai=" . aiChatActive
+            . " translate=" . translateActive . " dictionary=" . dictionaryActive
+            . " everything=" . everythingActive . " notes=" . notesActive)
         return
-    if EverythingIsActive() || NotesIsActive()
-        return
+    }
+    DebugLog("CapsLock+Z accepted qbarVisible=" . QbarVisible
+        . " historyLogicalVisible=" . ClipboardHistoryVisible
+        . " historyWindowVisible=" . ClipboardHistoryWindowVisible())
     if QbarVisible {
         ; Freeze Qbar's validated external target before hiding it. This makes
         ; CapsLock+Z a direct one-press switch instead of a swallowed command.
+        DebugLog("CapsLock+Z switching from Qbar")
         targetContext := ClipboardHistoryCaptureTargetContext()
         QbarHide()
-        ClipboardHistoryShow("", targetContext)
+        shown := ClipboardHistoryShow("", targetContext, true)
+        DebugLog("CapsLock+Z Qbar switch showResult=" . shown)
         return
     }
-    ClipboardHistoryToggle()
+    ClipboardHistoryOpen()
 }
 
 keyFunc_translate(*) {

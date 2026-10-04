@@ -309,5 +309,9 @@
     return controller.result.then(result => result && result.action === 'confirm' ? result.value : null);
   }
 
-  window.AppDialog = Object.freeze({ open, alert: alertDialog, confirm, prompt });
+  function dismiss() {
+    if (active) active.close({ action: 'dismiss' });
+  }
+
+  window.AppDialog = Object.freeze({ open, alert: alertDialog, confirm, prompt, dismiss });
 })();

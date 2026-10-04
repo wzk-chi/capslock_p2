@@ -358,6 +358,15 @@ QbarStoreEnsureAlias(commandId, alias, origin := "manifest-default", isDefault :
         . (isDefault ? 1 : 0) . "," . QbarStoreSql(now) . "," . QbarStoreSql(now) . ");")
 }
 
+QbarStoreRemoveManifestAlias(commandId, alias) {
+    normalized := QbarNormalizeAlias(alias)
+    if commandId = "" || normalized = ""
+        return false
+    return QbarStoreExec("DELETE FROM command_aliases WHERE command_id="
+        . QbarStoreSql(commandId) . " AND normalized_alias="
+        . QbarStoreSql(normalized) . " AND origin='manifest-default';")
+}
+
 QbarStoreRememberUsage(usageKey, commandId, candidateKey := "") {
     if usageKey = "" || commandId = ""
         return false
