@@ -295,6 +295,7 @@ QbarRegistryPluginSnapshot() {
                     || command["definitionId"] = "builtin.search"
                     || command["definitionId"] = "builtin.run"),
                 "settings", command["settings"],
+                "settingsSchema", command["settingsSchema"],
                 "toolSettings", toolSettings,
                 "enabled", command["pluginEnabled"],
                 "commands", [])

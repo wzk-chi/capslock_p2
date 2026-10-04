@@ -83,6 +83,9 @@ QbarPluginHostRegisterCatalog() {
                         throw Error(QbarStoreError != "" ? QbarStoreError : "清理剪贴板历史本名别名失败")
             }
             settings := instance.Has("settings") ? instance["settings"] : Map()
+            for key, settingSchema in definition["settingsSchema"]
+                if !settings.Has(key) && settingSchema.Has("default")
+                    settings[key] := settingSchema["default"]
             if !QbarStoreEnsurePluginSettings(instance["pluginId"], 1, settings)
                 throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件设置失败")
         }

@@ -45,7 +45,6 @@ Initialize() {
     ConfigLoad()
     AppProfilesLoad()
     EnsureConfiguredElevation()
-    try ClipboardHistoryInitialize()
     AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
         "ptr", 0, "int", 0, "wstr", "Local\capslock_p2-running", "ptr")
     if !AppInstanceMutex
@@ -55,6 +54,7 @@ Initialize() {
     ; Initialize the plugin store after debug logging is enabled, but before
     ; feature hotkeys are registered, so registration failures are observable.
     try QbarPluginHostInitialize()
+    try ClipboardHistoryInitialize()
     TrayMenuInitialize()
     DebugLog("Initialize settings")
     if ConfigGlobalRead("loadingAnimation") != "0"
@@ -369,8 +369,6 @@ ApplyConfigChanges(changes, deferCustomHotkeys := false) {
                 refreshAi := true
             case "Qbar":
                 ; esMaxResults is read at query time; no index rebuild is needed.
-            case "ClipboardHistory":
-                try ClipboardHistoryOnSettingsChanged()
         }
     }
 

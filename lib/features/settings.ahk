@@ -173,6 +173,15 @@ SettingsApplyQbarPlugin(message) {
     commandCount := plugin.Has("commands") && Type(plugin["commands"]) = "Array"
         ? plugin["commands"].Length : 0
     DebugLog("Settings Qbar save start plugin=" . pluginId . " commands=" . commandCount)
+    if pluginId = "builtin.clipboard" {
+        clipboardSettingsError := ""
+        if !SettingsValidateClipboardPluginSettings(plugin, &clipboardSettingsError) {
+            DebugLog("Settings Qbar save rejected plugin=" . pluginId
+                . " invalid settings=" . clipboardSettingsError)
+            SettingsSendQbarPluginSaved(false, clipboardSettingsError)
+            return
+        }
+    }
     maxResults := ""
     if pluginId = "builtin.everything" && toolSettings.Has("esMaxResults") {
         maxResults := Trim(String(toolSettings["esMaxResults"]))
@@ -204,6 +213,8 @@ SettingsApplyQbarPlugin(message) {
                 "Tool settings could not be saved.", "工具设置保存失败。"))
             return
         }
+        if pluginId = "builtin.clipboard"
+            ClipboardHistoryOnPluginSettingsChanged()
         DebugLog("Settings Qbar save success plugin=" . pluginId)
         SettingsSendQbarPluginSaved(true, LLMText("Tool settings saved.", "工具设置已保存。"))
         try SettingsPushSnapshot()
@@ -216,6 +227,89 @@ SettingsApplyQbarPlugin(message) {
             . " store=" . QbarStoreError . " registry=" . QbarRegistryError)
         SettingsSendQbarPluginSaved(false, LLMText("Tool settings could not be saved.", "工具设置保存失败。"))
     }
+}
+
+SettingsValidateClipboardPluginSettings(plugin, &errorText := "") {
+    errorText := ""
+    if !plugin.Has("settings") || Type(plugin["settings"]) != "Map" {
+        errorText := "剪贴板历史设置无效。"
+        return false
+    }
+    definition := QbarPluginCatalogDefinitionById("builtin.clipboard")
+    if !IsObject(definition) || !definition.Has("settingsSchema") {
+        errorText := "剪贴板历史设置定义不可用。"
+        return false
+    }
+    settings := plugin["settings"]
+    normalized := Map()
+    for key, field in definition["settingsSchema"] {
+        label := field.Has("label") ? field["label"] : key
+        if !settings.Has(key) {
+            errorText := "缺少设置项：" . label
+            return false
+        }
+        if field["type"] = "boolean" {
+            if !SettingsQbarBoolean(settings[key], &value) {
+                errorText := "设置项“" . label . "”必须是开关。"
+                return false
+            }
+            normalized[key] := value ? JSON.true : JSON.false
+        } else if field["type"] = "integer" {
+            rawValue := Trim(String(settings[key]))
+            if !RegExMatch(rawValue, "^\d+$") {
+                errorText := "设置项“" . label . "”必须是整数。"
+                return false
+            }
+            value := Integer(rawValue)
+            minimum := field.Has("min") ? Integer(field["min"]) : value
+            maximum := field.Has("max") ? Integer(field["max"]) : value
+            if value < minimum || value > maximum {
+                displayScale := field.Has("displayScale") ? Integer(field["displayScale"]) : 1
+                errorText := "设置项“" . label . "”必须在 "
+                    . (minimum / displayScale) . " 到 " . (maximum / displayScale) . " 之间。"
+                return false
+            }
+            normalized[key] := value
+        } else {
+            errorText := "剪贴板历史设置类型不受支持：" . key
+            return false
+        }
+    }
+    plugin["settings"] := normalized
+    return true
+}
+
+SettingsQbarBoolean(value, &result := false) {
+    if Type(value) = "ComValue" {
+        try {
+            if value == JSON.true {
+                result := true
+                return true
+            }
+            if value == JSON.false {
+                result := false
+                return true
+            }
+        }
+        return false
+    }
+    if Type(value) = "Integer" {
+        if value = 1 || value = 0 {
+            result := value = 1
+            return true
+        }
+        return false
+    }
+    normalized := StrLower(Trim(String(value)))
+    if normalized = "true" || normalized = "1" {
+        result := true
+        return true
+    }
+    if normalized = "false" || normalized = "0" {
+        result := false
+        return true
+    }
+    return false
 }
 
 SettingsDeleteQbarPlugin(message) {

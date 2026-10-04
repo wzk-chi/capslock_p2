@@ -11,6 +11,7 @@ global ClipboardHistoryOwnedSequences := Map()
 global ClipboardHistoryPendingTasks := Map()
 global ClipboardHistoryCaptureQueue := []
 global ClipboardHistoryActiveCaptureEventId := ""
+global ClipboardHistoryMaxCaptureBytes := 256 * 1024 * 1024
 global ClipboardHistoryRetentionDays := 30
 global ClipboardHistoryRetainedSnapshotBytes := 0
 global ClipboardHistoryMaxRetainedSnapshotBytes := 256 * 1024 * 1024
@@ -21,11 +22,13 @@ ClipboardHistoryInitialize() {
     global ClipboardHistoryEvents, ClipboardHistorySequenceEvents, ClipboardHistoryOwnedSequences
     global ClipboardHistoryPendingTasks, ClipboardHistoryCaptureQueue
     global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryRetainedSnapshotBytes
-    global ClipboardHistoryStoreMaxItems, ClipboardHistoryRetentionDays
+    global ClipboardHistoryStoreMaxItems, ClipboardHistoryMaxCaptureBytes
+    global ClipboardHistoryRetentionDays
     if ClipboardHistoryLoaded
         return true
     ClipboardHistoryLoaded := true
-    ClipboardHistoryEnabled := ConfigRead("ClipboardHistory", "enabled", "1") != "0"
+    settings := ClipboardHistoryPluginSettings()
+    ClipboardHistoryEnabled := settings["enabled"]
     ClipboardHistoryEpoch += 1
     ClipboardHistoryEvents := Map()
     ClipboardHistorySequenceEvents := Map()
@@ -35,8 +38,9 @@ ClipboardHistoryInitialize() {
     ClipboardHistoryActiveCaptureEventId := ""
     ClipboardHistoryRetainedSnapshotBytes := 0
     ClipboardHistoryBaselineSequence := ClipboardSequenceNumber()
-    ClipboardHistoryStoreMaxItems := ClipboardHistoryIntegerConfig("maxItems", 500, 20, 5000)
-    ClipboardHistoryRetentionDays := ClipboardHistoryIntegerConfig("retentionDays", 30, 1, 3650)
+    ClipboardHistoryStoreMaxItems := settings["maxItems"]
+    ClipboardHistoryMaxCaptureBytes := settings["maxCaptureBytes"]
+    ClipboardHistoryRetentionDays := settings["retentionDays"]
     if !ClipboardHistoryStoreInit() {
         ClipboardHistoryLoaded := false
         return false
@@ -62,12 +66,57 @@ ClipboardHistoryShutdown(*) {
     ClipboardHistoryLoaded := false
 }
 
-ClipboardHistoryIntegerConfig(key, fallback, minimum, maximum) {
-    value := ConfigRead("ClipboardHistory", key, String(fallback))
-    try value := Integer(value)
-    catch
+ClipboardHistoryPluginSettings() {
+    fallback := Map("enabled", true, "maxItems", 500,
+        "maxCaptureBytes", 256 * 1024 * 1024, "retentionDays", 30)
+    definition := QbarPluginCatalogDefinitionById("builtin.clipboard")
+    if !IsObject(definition) || !definition.Has("settingsSchema")
         return fallback
-    return Max(minimum, Min(maximum, value))
+    schema := definition["settingsSchema"]
+    if !IsObject(schema) || !schema.Count
+        return fallback
+    command := QbarRegistryCommand("builtin.clipboard.open")
+    stored := IsObject(command) && command.Has("settings") && Type(command["settings"]) = "Map"
+        ? command["settings"] : Map()
+    result := Map()
+    for key, field in schema {
+        fallback := field.Has("default") ? field["default"] : ""
+        value := stored.Has(key) ? stored[key] : fallback
+        if field["type"] = "boolean"
+            value := ClipboardHistorySettingBoolean(value, fallback)
+        else if field["type"] = "integer" {
+            try {
+                value := Integer(value)
+            } catch {
+                value := Integer(fallback)
+            }
+            minimum := field.Has("min") ? Integer(field["min"]) : value
+            maximum := field.Has("max") ? Integer(field["max"]) : value
+            value := Max(minimum, Min(maximum, value))
+        }
+        result[key] := value
+    }
+    return result
+}
+
+ClipboardHistorySettingBoolean(value, fallback := false) {
+    if Type(value) = "ComValue" {
+        try {
+            if value == JSON.true
+                return true
+            if value == JSON.false
+                return false
+        }
+        return fallback
+    }
+    if Type(value) = "Integer"
+        return value != 0
+    normalized := StrLower(Trim(String(value)))
+    if normalized = "true" || normalized = "1"
+        return true
+    if normalized = "false" || normalized = "0"
+        return false
+    return fallback
 }
 
 ClipboardHistoryRetentionCutoff() {
@@ -97,12 +146,19 @@ ClipboardHistorySetEnabled(enabled) {
     return ClipboardHistoryEnabled
 }
 
-ClipboardHistoryOnSettingsChanged() {
-    global ClipboardHistoryStoreMaxItems, ClipboardHistoryRetentionDays
-    enabled := ConfigRead("ClipboardHistory", "enabled", "1") != "0"
-    ClipboardHistoryStoreMaxItems := ClipboardHistoryIntegerConfig("maxItems", 500, 20, 5000)
-    ClipboardHistoryRetentionDays := ClipboardHistoryIntegerConfig("retentionDays", 30, 1, 3650)
-    ClipboardHistorySetEnabled(enabled)
+ClipboardHistoryOnPluginSettingsChanged() {
+    global ClipboardHistoryEnabled, ClipboardHistoryStoreMaxItems, ClipboardHistoryMaxCaptureBytes
+    global ClipboardHistoryRetentionDays
+    settings := ClipboardHistoryPluginSettings()
+    ClipboardHistoryStoreMaxItems := settings["maxItems"]
+    ClipboardHistoryMaxCaptureBytes := settings["maxCaptureBytes"]
+    ClipboardHistoryRetentionDays := settings["retentionDays"]
+    if ClipboardHistoryEnabled != settings["enabled"]
+        ClipboardHistorySetEnabled(settings["enabled"])
+    DebugLog("Clipboard history plugin settings applied enabled=" . settings["enabled"]
+        . " maxItems=" . ClipboardHistoryStoreMaxItems
+        . " retentionDays=" . ClipboardHistoryRetentionDays)
+    return true
 }
 
 ClipboardHistoryMarkOwnedSequence(sequence, reason := "internal") {
@@ -413,6 +469,7 @@ ClipboardHistoryPublishExplicit(sequence, snapshot := 0, reason := "user-copy") 
 ClipboardHistoryProcessEvent(eventId, *) {
     global ClipboardHistoryEnabled, ClipboardHistoryEvents, ClipboardHistoryEpoch
     global ClipboardHistoryActiveCaptureEventId
+    global ClipboardHistoryMaxCaptureBytes
     global ClipboardHistoryStoreError
     Critical("On")
     try {
@@ -442,8 +499,7 @@ ClipboardHistoryProcessEvent(eventId, *) {
             return false
         if event["reason"] != "external" && !event["explicit"]
             return false
-        maxBytes := ClipboardHistoryIntegerConfig("maxCaptureBytes", 256 * 1024 * 1024,
-            1024 * 1024, 256 * 1024 * 1024)
+        maxBytes := ClipboardHistoryMaxCaptureBytes
         if IsObject(event["slotSnapshot"])
             record := ClipboardHistoryCaptureSnapshot(event["slotSnapshot"], event["sequence"],
                 maxBytes, event.Has("formatContext") ? event["formatContext"] : 0)

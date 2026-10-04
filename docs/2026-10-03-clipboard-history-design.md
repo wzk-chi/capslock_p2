@@ -430,7 +430,7 @@ native 图片解码工作空间还受像素/stride/位深和预计展开字节�
 
 | 接口 | 职责 |
 | --- | --- |
-| `ClipboardHistoryInitialize()` / `Shutdown()` | 加载配置、打开存储、只建立序号基线不补录；退出时停止任务并关闭存储 |
+| `ClipboardHistoryInitialize()` / `Shutdown()` | 加载 Qbar 剪贴板工具的插件设置、打开存储、只建立序号基线不补录；退出时停止任务并关闭存储 |
 | `ClipboardHistoryNotify(dataType, reason, sequence)` | 回调前端只登记；返回事件凭据，不读取格式正文、不直接判定复制成功 |
 | `ClipboardHistoryOfferSlotSnapshot(eventId, sequence, snapshot, formatContext)` | 公共回调或显式成功入口提供同序号快照引用，有限占额，不复制/解析正文 |
 | `ClipboardHistoryFinalizeNotify(eventId)` | 回调 finally 结束登记、决定是否排队，保证先有机会提供槽位快照 |
@@ -494,7 +494,7 @@ WebView2 消息回调只解析、校验与排队，不同步 `await2` 创建面�
 
 文本和文件预览用 `textContent`。富文本优先使用同次采集的 CF_UNICODETEXT 后备显示可读文字，不把原始 HTML/RTF 注入页面、不执行链接、不加载其中的远程资源。没有后备时保留格式化载荷、显示类型占位，不为检索手写 HTML/RTF 解析器。以后若增加格式化预览或文字提取，应使用现有 DOMPurify/不可执行的片段处理或 Windows 原生能力，禁用外部资源加载；派生文字不替代重放原文。
 
-日志继续遵守项目红线：不写正文、快照、文件路径、查询词或 API 凭据；错误使用本地类别与计数，避免直接转储含 SQL 参数或路径的异常信息。首版不宣称数据库已加密，设置页和使用说明明确“历史会保存在本机，关闭记录不会自动删除已有历史”。
+日志继续遵守项目红线：不写正文、快照、文件路径、查询词或 API 凭据；错误使用本地类别与计数，避免直接转储含 SQL 参数或路径的异常信息。首版不宣称数据库已加密，Qbar 剪贴板工具设置和使用说明明确“历史会保存在本机，关闭记录不会自动删除已有历史”。
 
 ## 12. 建议文件落点与实施顺序
 
@@ -508,8 +508,8 @@ WebView2 消息回调只解析、校验与排队，不同步 `await2` 创建面�
 | `pages/clipboard-history.html` | 搜索/筛选、列表、底栏、右键菜单、确认流程 |
 | `lib/app/core.ahk` | 挂起计数/token/reason 与实际写入序号公共接口；先 Notify、槽位快照提供、finally Finalize 的监听分派 |
 | `lib/input/keys.ahk`、`capslock_p2-default.ini` | 新动作、CapsLock+Z 默认映射 |
-| `lib/app/config.ahk`、`lib/features/settings.ahk`、`pages/settings.html` | 建议 `[ClipboardHistory]` 开关与容量元数据、运行时应用 |
-| QBar catalog、host、execution、history/index 等实际入口 | 工具注册、搜索/延迟打开；执行前重新选择前台目标，会话内维护最近外部目标上下文 |
+| QBar catalog、host、registry、store、`pages/settings.html` | 剪贴板工具注册、设置 schema、插件设置持久化与配置弹窗 |
+| QBar execution、history/index 等实际入口 | 工具搜索/延迟打开；执行前重新选择前台目标，会话内维护最近外部目标上下文 |
 | `tabHotString.ahk`、笔记文本/图片及 Everything 复制模块 | 全部迁移到公共 token/reason 接口，底层写入继承原因，实际成功才发布，包含嵌套和 finally 恢复 |
 | `capslock_p2.ahk` | include 新 AHK 模块 |
 | `pages/theme.css` | 必需的新共享控件状态；不得引入第二套主题 |
