@@ -5,66 +5,90 @@
 
 global AppProfiles := Map()
 global AppProfilesStamp := ""
+global AppProfilesLastLoadFailure := ""
 
-; Returns whether the file was read successfully; `changed` reports profile changes.
-AppProfilesLoad(&changed := false) {
-    global AppProfiles, AppProfilesStamp, SettingsFile
+; Builds a profile candidate from a fresh read or a supplied INI snapshot.
+; `changed` compares it to the published stamp; `publish` controls replacement.
+AppProfilesLoad(&changed := false, publish := true, source := 0) {
+    global AppProfiles, AppProfilesStamp, SettingsFile, AppProfilesLastLoadFailure
     changed := false
     previousStamp := AppProfilesStamp
-    sections := ConfigParseIni(SettingsFile, &loaded)
-    if !loaded
-        return false
-    AppProfiles := Map()
-
-    for sectionName, values in sections {
-        if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+)$", &match)
-            continue
-        profileId := String(match[1])
-        if !AppProfileIsValidId(profileId)
-            continue
-        exePath := values.Has("exePath") ? AppProfileNormalizePath(values["exePath"]) : ""
-        if exePath = ""
-            continue
-        displayName := values.Has("displayName") ? Trim(String(values["displayName"])) : ""
-        if displayName = ""
-            displayName := AppProfileDisplayName(exePath)
-        enabled := values.Has("enabled") ? AppProfileBoolean(values["enabled"], true) : true
-        AppProfiles[profileId] := Map(
-            "id", profileId,
-            "displayName", displayName,
-            "exePath", exePath,
-            "enabled", enabled ? "1" : "0",
-            "sections", Map("Keys", Map(), "CustomHotkey", Map()))
-    }
-
-    for sectionName, values in sections {
-        if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+):(Keys|CustomHotkey)$", &match)
-            continue
-        profileId := String(match[1])
-        sectionName := String(match[2])
-        if !AppProfiles.Has(profileId)
-            continue
-        for key, value in values {
-            if !ConfigValidateKey(sectionName, key)
-                continue
-            if !ConfigValidateValue(sectionName, key, value, &normalized)
-                continue
-            if Trim(String(normalized)) = ""
-                continue
-            AppProfiles[profileId]["sections"][sectionName][String(key)] := String(normalized)
+    if IsObject(source) {
+        sections := source
+    } else {
+        sections := ConfigParseIni(SettingsFile, &loaded)
+        if !loaded {
+            if AppProfilesLastLoadFailure != "read"
+                DebugLog("Application profiles load failed stage=read")
+            AppProfilesLastLoadFailure := "read"
+            return false
         }
     }
+    try {
+        candidateProfiles := Map()
 
-    AppProfilesStamp := AppProfilesCurrentStamp()
-    changed := previousStamp != AppProfilesStamp
+        for sectionName, values in sections {
+            if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+)$", &match)
+                continue
+            profileId := String(match[1])
+            if !AppProfileIsValidId(profileId)
+                continue
+            exePath := values.Has("exePath") ? AppProfileNormalizePath(values["exePath"]) : ""
+            if exePath = ""
+                continue
+            displayName := values.Has("displayName") ? Trim(String(values["displayName"])) : ""
+            if displayName = ""
+                displayName := AppProfileDisplayName(exePath)
+            enabled := values.Has("enabled") ? AppProfileBoolean(values["enabled"], true) : true
+            candidateProfiles[profileId] := Map(
+                "id", profileId,
+                "displayName", displayName,
+                "exePath", exePath,
+                "enabled", enabled ? "1" : "0",
+                "sections", Map("Keys", Map(), "CustomHotkey", Map()))
+        }
+
+        for sectionName, values in sections {
+            if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+):(Keys|CustomHotkey)$", &match)
+                continue
+            profileId := String(match[1])
+            sectionName := String(match[2])
+            if !candidateProfiles.Has(profileId)
+                continue
+            for key, value in values {
+                if !ConfigValidateKey(sectionName, key)
+                    continue
+                if !ConfigValidateValue(sectionName, key, value, &normalized)
+                    continue
+                if Trim(String(normalized)) = ""
+                    continue
+                candidateProfiles[profileId]["sections"][sectionName][String(key)] := String(normalized)
+            }
+        }
+        candidateStamp := AppProfilesCurrentStamp(candidateProfiles)
+    } catch {
+        if AppProfilesLastLoadFailure != "candidate"
+            DebugLog("Application profiles load failed stage=candidate")
+        AppProfilesLastLoadFailure := "candidate"
+        return false
+    }
+
+    AppProfilesLastLoadFailure := ""
+    changed := previousStamp != candidateStamp
+    if publish {
+        AppProfiles := candidateProfiles
+        AppProfilesStamp := candidateStamp
+    }
     return true
 }
 
-AppProfilesCurrentStamp() {
+AppProfilesCurrentStamp(profiles := 0) {
     ; File timestamps are only precise to whole seconds, so compare the parsed
     ; profile data to detect fast external edits.
     global AppProfiles
-    return JSON.stringify(AppProfiles, 0)
+    if !IsObject(profiles)
+        profiles := AppProfiles
+    return JSON.stringify(profiles, 0)
 }
 
 AppProfilesStampValue() {

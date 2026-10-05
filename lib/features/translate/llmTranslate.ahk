@@ -8,7 +8,7 @@ global LLMTranslatePinned := false
 global LLMTranslateNativeWindow := false
 global LLMTranslatePendingText := ""
 global LLMTranslateRequestRunning := false
-global LLMTranslateStreamId := 0
+global LLMTranslateRequestOperation := 0
 global LLMTranslateStreamAnswer := ""
 global LLMTranslatePendingSourceLanguage := ""
 global LLMTranslatePendingTargetLanguage := ""
@@ -173,8 +173,8 @@ LLMTranslateWebMessageReceived(sender, args) {
         LLMTranslatePendingTargetLanguage := LLMMsgField(msg, "targetLanguage")
         manualValid := false
         LLMTranslatePendingDirectionManual := LLMMsgBoolean(msg, "directionManual", &manualValid, false)
-        LLMTranslateSetLoading()
         requestId := LLMTranslateInvalidateRequest()
+        LLMTranslateSetLoading()
         SetTimer(LLMTranslateStartRequest.Bind(requestId), -1)
     } else if messageType = "openDictionary" {
         text := LLMMsgField(msg, "text")
@@ -214,13 +214,10 @@ LLMTranslateSetError(text) {
     LLMTranslateExec("window.setError(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
-LLMTranslateSetNeedsDirection(text) {
-    LLMTranslateExec("window.setNeedsDirection(" . LLMJsonQuote(text) . ");window.setLoading(false);")
-}
-
-LLMTranslateSetDirection(sourceLanguage, targetLanguage, manual := false) {
+LLMTranslateSetDirection(sourceLanguage, targetLanguage, manual := false, fallback := false) {
     LLMTranslateExec("window.setDirection(" . LLMJsonQuote(sourceLanguage) . ","
-        . LLMJsonQuote(targetLanguage) . "," . (manual ? "true" : "false") . ");")
+        . LLMJsonQuote(targetLanguage) . "," . (manual ? "true" : "false") . ","
+        . (fallback ? "true" : "false") . ");")
 }
 
 LLMTranslatePushLanguage() {
@@ -291,20 +288,20 @@ LLMTranslateSetNativeState(value) {
 
 LLMTranslateInvalidateRequest() {
     global LLMTranslateRequestSerial, LLMTranslateActiveRequest
-    global LLMTranslateStreamId, LLMTranslateRequestRunning
+    global LLMTranslateRequestOperation, LLMTranslateRequestRunning
     LLMTranslateRequestSerial += 1
     LLMTranslateActiveRequest := LLMTranslateRequestSerial
-    if LLMTranslateStreamId {
-        LLMAbortChatStream(LLMTranslateStreamId)
-        LLMTranslateStreamId := 0
-    }
+    operation := LLMTranslateRequestOperation
+    LLMTranslateRequestOperation := 0
     LLMTranslateRequestRunning := false
+    if IsObject(operation)
+        operation.Cancel()
     return LLMTranslateActiveRequest
 }
 
 LLMTranslateStartRequest(requestId) {
     global LLMTranslatePendingText, LLMTranslateRequestRunning
-    global LLMTranslateStreamId, LLMTranslateStreamAnswer
+    global LLMTranslateRequestOperation, LLMTranslateStreamAnswer
     global LLMTranslateActiveRequest, LLMTranslatePendingSourceLanguage
     global LLMTranslatePendingTargetLanguage, LLMTranslatePendingDirectionManual
     if requestId != LLMTranslateActiveRequest || LLMTranslateRequestRunning || LLMTranslatePendingText = ""
@@ -322,12 +319,8 @@ LLMTranslateStartRequest(requestId) {
         LLMTranslateRequestRunning := false
         return
     }
-    if resolution["status"] = "needsDirection" {
-        LLMTranslateSetNeedsDirection(resolution["message"])
-        LLMTranslateRequestRunning := false
-        return
-    }
-    LLMTranslateSetDirection(resolution["sourceLanguage"], resolution["targetLanguage"], resolution["manual"])
+    LLMTranslateSetDirection(resolution["sourceLanguage"], resolution["targetLanguage"],
+        resolution["manual"], resolution["fallback"])
     provider := TranslateResolve(GetTranslateProvider())
     if !IsObject(provider) {
         LLMTranslateSetError(LLMText(
@@ -347,13 +340,29 @@ LLMTranslateStartRequest(requestId) {
         LLMTranslateStartStreaming()
     overrides := Map("targetLanguage", resolution["targetLanguage"],
         "sourceLanguage", resolution["sourceLanguage"])
+    operation := LLMAsyncOperation()
+    LLMTranslateRequestOperation := operation
     try {
-        LLMTranslateStreamId := provider["translate"].Call(text,
+        childOperation := provider["translate"].Call(text,
             LLMTranslateStreamDelta.Bind(requestId),
-            LLMTranslateStreamFinished.Bind(requestId), overrides)
+            LLMTranslateStreamFinished.Bind(requestId, operation), overrides)
+        if IsObject(childOperation)
+            operation.SetCancel(LLMTranslateCancelChild.Bind(childOperation))
+        else {
+            childOperation := LLMScheduleAsyncCallback(LLMAsyncOperation(),
+                LLMTranslateStreamFinished.Bind(requestId, operation), "", false,
+                LLMText("The translation request could not be started.", "无法启动翻译请求。"))
+            operation.SetCancel(LLMTranslateCancelChild.Bind(childOperation))
+        }
     } catch as requestError {
-        LLMTranslateStreamFinished(requestId, "", false, requestError.Message)
+        childOperation := LLMScheduleAsyncCallback(LLMAsyncOperation(),
+            LLMTranslateStreamFinished.Bind(requestId, operation), "", false, requestError.Message)
+        operation.SetCancel(LLMTranslateCancelChild.Bind(childOperation))
     }
+}
+
+LLMTranslateCancelChild(childOperation) {
+    childOperation.Cancel()
 }
 
 LLMTranslateStartStreaming() {
@@ -362,26 +371,40 @@ LLMTranslateStartStreaming() {
 
 LLMTranslateStreamDelta(requestId, delta) {
     global LLMTranslateStreamAnswer, LLMTranslateActiveRequest
-    if requestId != LLMTranslateActiveRequest
-        return
-    LLMTranslateStreamAnswer .= delta
-    LLMTranslateExec("window.appendStreaming(" . LLMJsonQuote(delta) . ");")
+    criticalState := A_IsCritical
+    Critical "On"
+    try {
+        if requestId = LLMTranslateActiveRequest {
+            LLMTranslateStreamAnswer .= delta
+            LLMTranslateExec("window.appendStreaming(" . LLMJsonQuote(delta) . ");")
+        }
+    } finally {
+        if !criticalState
+            Critical "Off"
+    }
 }
 
-LLMTranslateStreamFinished(requestId, answer, success, errorText) {
-    global LLMTranslateRequestRunning, LLMTranslateStreamId, LLMTranslateStreamAnswer
+LLMTranslateStreamFinished(requestId, operation, answer, success, errorText) {
+    global LLMTranslateRequestRunning, LLMTranslateRequestOperation, LLMTranslateStreamAnswer
     global LLMTranslateActiveRequest
-    if requestId != LLMTranslateActiveRequest
-        return
-    LLMTranslateStreamId := 0
-    if success {
-        if answer = ""
-            answer := LLMTranslateStreamAnswer
-        LLMTranslateSetResult(answer)
-    } else {
-        LLMTranslateSetError(LLMContextLimitHint(errorText))
+    criticalState := A_IsCritical
+    Critical "On"
+    try {
+        if requestId != LLMTranslateActiveRequest || !operation.Complete()
+            return
+        LLMTranslateRequestOperation := 0
+        if success {
+            if answer = ""
+                answer := LLMTranslateStreamAnswer
+            LLMTranslateSetResult(answer)
+        } else {
+            LLMTranslateSetError(LLMContextLimitHint(errorText))
+        }
+        LLMTranslateRequestRunning := false
+    } finally {
+        if !criticalState
+            Critical "Off"
     }
-    LLMTranslateRequestRunning := false
 }
 
 ; Build the translation-specific messages. Request construction and transport
@@ -403,7 +426,7 @@ TranslateLlmMessages(text, overrides := 0) {
 
 TranslateLlmStartStream(text, onDelta, onFinished, overrides := 0) {
     messages := TranslateLlmMessages(text, overrides)
-    return LLMChatStream(messages, onDelta, onFinished, overrides)
+    return LLMChatStreamOperation(messages, onDelta, onFinished, overrides)
 }
 
 ; ---- "llm" provider glue (registered at the bottom of this file) ----
@@ -424,7 +447,7 @@ LLMTranslateFocusHideGuard() {
 
 LLMTranslateHide(*) {
     global LLMTranslateHost, LLMTranslateVisible
-    global LLMTranslateStreamId, LLMTranslateRequestRunning, LLMTranslateNativeWindow
+    global LLMTranslateRequestOperation, LLMTranslateRequestRunning, LLMTranslateNativeWindow
     LLMTranslateInvalidateRequest()
     LLMTranslateVisible := false
     LLMTranslateNativeWindow := false
@@ -433,7 +456,7 @@ LLMTranslateHide(*) {
 
 LLMTranslateShutdown(*) {
     global LLMTranslateHost, LLMTranslateVisible
-    global LLMTranslateStreamId
+    global LLMTranslateRequestOperation
     LLMTranslateInvalidateRequest()
     LLMTranslateVisible := false
     PanelHostDestroy(LLMTranslateHost)

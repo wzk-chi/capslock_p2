@@ -321,8 +321,9 @@ DictionaryFocusSearch(*) {
 
 ; Word suggestions for the search box, in three tiers: words starting with the
 ; query, words containing it, then fuzzy subsequence matches ("helo" → hello;
-; the regexp scalar function registered by CSQLite does the matching). Capped
-; at 12 words, deduplicated across tiers.
+; the regexp scalar function registered by CSQLite does the matching). Query
+; text is bound as data so apostrophes cannot change the SQL. Capped at 12 words,
+; deduplicated across tiers.
 DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
     global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
     if !IsObject(DictionaryHost)
@@ -338,16 +339,16 @@ DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
         freqOrder := " ORDER BY (CASE WHEN frq > 0 THEN frq ELSE 1000000 END), word"
         escaped := DictionarySqlLikeEscape(word)
         DictionarySuggestCollect(db,
-            "SELECT word FROM stardict WHERE word LIKE '" . escaped . "%' ESCAPE '\'" . freqOrder,
-            words, seen, 12)
+            "SELECT word FROM stardict WHERE word LIKE ? ESCAPE '\'" . freqOrder,
+            [escaped . "%"], words, seen, 12, "prefix", StrLen(word))
         DictionarySuggestCollect(db,
-            "SELECT word FROM stardict WHERE word LIKE '%" . escaped . "%' ESCAPE '\'" . freqOrder,
-            words, seen, 12)
+            "SELECT word FROM stardict WHERE word LIKE ? ESCAPE '\'" . freqOrder,
+            ["%" . escaped . "%"], words, seen, 12, "contains", StrLen(word))
         if words.Length < 12 && StrLen(word) >= 3
             DictionarySuggestCollect(db,
-                "SELECT word FROM stardict WHERE word LIKE '" . SubStr(word, 1, 1)
-                . "%' AND word REGEXP '" . DictionaryFuzzyPattern(word) . "'" . freqOrder,
-                words, seen, 12)
+                "SELECT word FROM stardict WHERE word LIKE ? AND word REGEXP ?" . freqOrder,
+                [SubStr(word, 1, 1) . "%", DictionaryFuzzyPattern(word)],
+                words, seen, 12, "fuzzy", StrLen(word))
     }
     if sessionId && (!DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq)
         return
@@ -355,20 +356,91 @@ DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
 }
 
 ; Run one suggestion query and merge new words into the capped list.
-DictionarySuggestCollect(db, sql, words, seen, cap) {
+DictionarySuggestCollect(db, sql, parameters, words, seen, cap, tier, inputLength) {
     if words.Length >= cap
         return
-    table := 0, gotTable := false
-    try gotTable := db.GetTable(sql . " LIMIT 24", &table)
-    if !gotTable
+    failed := false
+    querySucceeded := false
+    candidateWords := []
+    candidateSeen := Map()
+    stage := "prepare"
+    statement := 0
+    try statement := db.Prepare(sql . " LIMIT 24")
+    catch {
+        DebugLog("dictionary suggestions failed tier=" . tier
+            . " stage=prepare result=exception inputLength=" . inputLength)
         return
-    for row in table.Rows {
-        w := row[1]
-        if !seen.Has(w) {
-            seen[w] := true
-            words.Push(w)
-            if words.Length >= cap
+    }
+    if !statement {
+        ; Prepare is the only statement helper here that exposes SQLite's
+        ; return code through db.ErrorCode. Capture it before doing anything else.
+        errorCode := db.ErrorCode
+        DebugLog("dictionary suggestions failed tier=" . tier
+            . " stage=prepare rc=" . errorCode . " inputLength=" . inputLength)
+        return
+    }
+
+    try {
+        stage := "bind"
+        for index, value in parameters {
+            if !db.StatementBindText(statement, index, value) {
+                ; StatementBindText exposes success/failure, not the SQLite code.
+                DebugLog("dictionary suggestions failed tier=" . tier
+                    . " stage=bind index=" . index . " result=false inputLength=" . inputLength)
+                failed := true
                 break
+            }
+        }
+        if !failed {
+            loop {
+                stage := "step"
+                resultCode := db.StatementStep(statement)
+                if resultCode = 101 {
+                    querySucceeded := true
+                    break
+                }
+                if resultCode != 100 {
+                    ; Do not use db.ErrorCode here: Step returns its own code and
+                    ; does not refresh the CSQLite error properties.
+                    DebugLog("dictionary suggestions failed tier=" . tier
+                        . " stage=step rc=" . resultCode . " inputLength=" . inputLength)
+                    failed := true
+                    break
+                }
+                stage := "column"
+                suggestedWord := db.StatementColumnText(statement, 0)
+                stage := "collect"
+                if !seen.Has(suggestedWord) && !candidateSeen.Has(suggestedWord) {
+                    candidateSeen[suggestedWord] := true
+                    candidateWords.Push(suggestedWord)
+                    if candidateWords.Length >= cap - words.Length {
+                        ; Reaching the caller's cap is a successful early stop.
+                        querySucceeded := true
+                        break
+                    }
+                }
+            }
+        }
+    } catch {
+        failed := true
+        DebugLog("dictionary suggestions failed tier=" . tier
+            . " stage=" . stage . " result=exception inputLength=" . inputLength)
+    } finally {
+        finalized := false
+        try finalized := db.StatementFinalize(statement)
+        catch {
+            finalized := false
+        }
+        if !finalized
+            ; StatementFinalize also exposes only success/failure.
+            DebugLog("dictionary suggestions failed tier=" . tier
+                . " stage=finalize result=false inputLength=" . inputLength)
+    }
+    ; Keep a failed tier from leaking partially stepped rows into later tiers.
+    if querySucceeded && finalized && !failed {
+        for suggestedWord in candidateWords {
+            seen[suggestedWord] := true
+            words.Push(suggestedWord)
         }
     }
 }

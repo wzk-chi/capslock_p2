@@ -9,23 +9,32 @@ global QbarStoreDb := 0
 global QbarStoreReady := false
 global QbarStoreError := ""
 global QbarStoreSchemaVersion := 1
-global QbarStoreRoot := A_AppData . "\capslock_p2"
+global QbarStoreRoot := A_ScriptDir . "\data\qbar"
 
 QbarStorePath() {
     global QbarStoreRoot
     return QbarStoreRoot . "\qbar.db"
 }
 
+QbarStoreLegacyPath() => A_AppData . "\capslock_p2\qbar.db"
+
 QbarStoreInit() {
-    global QbarStoreDb, QbarStoreReady, QbarStoreError, QbarStoreRoot
+    global QbarStoreDb, QbarStoreReady, QbarStoreError
     if QbarStoreReady && IsObject(QbarStoreDb)
         return true
 
     QbarStoreError := ""
+    db := 0
+    phase := "创建数据库"
+    if FileExist(QbarStorePath()) && FileExist(QbarStoreLegacyPath())
+        phase := "验证并存数据库"
+    else if FileExist(QbarStorePath())
+        phase := "打开安装目录数据库"
+    else if FileExist(QbarStoreLegacyPath())
+        phase := "迁移旧数据库"
     try {
-        DirCreate(QbarStoreRoot)
-        if !DirExist(QbarStoreRoot)
-            throw Error("Qbar 数据目录不可写：" . QbarStoreRoot)
+        QbarStorePrepareDataPath()
+        phase := "打开数据库"
 
         db := CSQLite(A_ScriptDir . "\resources")
         if !db.OpenDB(QbarStorePath(), "W", true)
@@ -35,19 +44,314 @@ QbarStoreInit() {
         if !db.Exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;")
             throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法初始化 Qbar SQLite")
 
+        phase := "初始化数据库结构"
         QbarStoreMigrate(db)
         QbarStoreDb := db
         QbarStoreReady := true
         return true
     } catch as initError {
-        QbarStoreError := "Qbar 数据库初始化失败（" . QbarStorePath() . "）：" . initError.Message
+        QbarStoreError := QbarStoreInitUserError(phase)
+        if IsObject(db)
+            try db.CloseDB()
         if IsObject(QbarStoreDb)
             try QbarStoreDb.CloseDB()
         QbarStoreDb := 0
         QbarStoreReady := false
-        DebugLog(QbarStoreError)
+        DebugLog("Qbar database initialization failed phase=" . phase
+            . " target=" . QbarStorePath() . " detail=" . initError.Message)
+        try ShowMsg(QbarStoreError, 8000)
         return false
     }
+}
+
+QbarStoreInitUserError(phase) {
+    targetPath := QbarStorePath()
+    legacyPath := QbarStoreLegacyPath()
+    hasBothDatabases := FileExist(targetPath) && FileExist(legacyPath)
+    if hasBothDatabases && (phase = "验证并存数据库" || phase = "迁移旧数据库")
+        return "安装目录中的 Qbar 数据库无法通过校验：" . targetPath
+            . "。旧数据库仍保留在：" . legacyPath
+            . "。为避免覆盖或合并数据，程序已停止初始化。请先备份两处数据库，再修复或移开安装目录中的数据库后重试；详细原因已写入日志。"
+    if phase = "迁移旧数据库"
+        return "Qbar 历史数据迁移未完成，旧数据库仍保留在：" . legacyPath
+            . "。请关闭所有 capslock_p2 程序实例，确认安装目录可写且磁盘空间充足后重新启动。"
+    return "Qbar 数据库无法在安装目录创建或写入：" . targetPath
+        . "。请确认安装目录及 data\qbar 子目录可写、磁盘空间充足，然后重新启动。已有旧数据库不会被自动覆盖或改作备用位置。"
+}
+
+QbarStorePrepareDataPath() {
+    global QbarStoreRoot
+    targetPath := QbarStorePath()
+    legacyPath := QbarStoreLegacyPath()
+
+    if FileExist(targetPath)
+        return QbarStoreUseExistingTarget(targetPath, legacyPath)
+
+    try DirCreate(QbarStoreRoot)
+    catch as directoryError
+        throw Error("无法创建安装目录下的 Qbar 数据文件夹：" . directoryError.Message)
+    if !DirExist(QbarStoreRoot)
+        throw Error("无法创建安装目录下的 Qbar 数据文件夹：" . QbarStoreRoot)
+
+    ; Another process may have published the target while this process created
+    ; the directory. Existing targets are never replaced by a migration.
+    if FileExist(targetPath)
+        return QbarStoreUseExistingTarget(targetPath, legacyPath)
+    if !FileExist(legacyPath)
+        return true
+
+    stagePath := QbarStoreNewMigrationStagePath()
+    QbarStoreBackupLegacyDatabase(legacyPath, stagePath)
+    moveSucceeded := DllCall("Kernel32\MoveFileW", "WStr", stagePath,
+        "WStr", targetPath, "Int")
+    if !moveSucceeded {
+        moveError := A_LastError
+        if FileExist(targetPath) {
+            DebugLog("Qbar migration target appeared during publication; keeping staged copy="
+                . stagePath)
+            return QbarStoreUseExistingTarget(targetPath, legacyPath)
+        }
+        DebugLog("Qbar migration publication failed; legacy=" . legacyPath
+            . " staged=" . stagePath . " target=" . targetPath
+            . " win32=" . moveError)
+        throw Error("无法发布已验证的 Qbar 迁移数据库。旧数据库仍保留在：" . legacyPath)
+    }
+
+    DebugLog("Qbar database migration completed source=" . legacyPath
+        . " target=" . targetPath)
+    return true
+}
+
+QbarStoreLogPathConflict(targetPath, legacyPath) {
+    if FileExist(legacyPath)
+        DebugLog("Qbar database path conflict; using install-directory database="
+            . targetPath . "; preserving legacy AppData database=" . legacyPath)
+}
+
+QbarStoreUseExistingTarget(targetPath, legacyPath) {
+    QbarStoreLogPathConflict(targetPath, legacyPath)
+    if FileExist(legacyPath) {
+        targetError := ""
+        if !QbarStoreValidateExistingTarget(targetPath, &targetError) {
+            DebugLog("Qbar conflicting target database is invalid target=" . targetPath
+                . " legacy=" . legacyPath . " detail=" . targetError)
+            throw Error("安装目录中的 Qbar 数据库未通过校验")
+        }
+    }
+    return true
+}
+
+QbarStoreValidateExistingTarget(path, &errorText) {
+    global QbarStoreSchemaVersion
+    db := 0
+    isValid := false
+    errorText := ""
+    try {
+        db := CSQLite(A_ScriptDir . "\resources")
+        if !db.OpenDB(path, "R", false)
+            throw Error("无法只读打开目标数据库：" . db.ErrorMsg)
+        if !db.SetTimeout(2000)
+            throw Error("无法设置目标数据库读取超时：" . db.ErrorMsg)
+        if !QbarStoreDatabaseIntegrity(db, &errorText)
+            throw Error(errorText)
+        for tableName in QbarStoreRequiredTables()
+            if !QbarStoreDatabaseHasTable(db, tableName, &errorText)
+                throw Error(errorText)
+
+        if !db.GetTable("SELECT value FROM schema_meta WHERE key='schema_version';", &meta)
+            throw Error("无法读取目标数据库版本：" . db.ErrorMsg)
+        if meta.RowCount != 1 || meta.Rows[1].Length < 1
+            throw Error("目标数据库缺少有效的 schema 版本")
+        if String(meta.Rows[1][1]) != String(QbarStoreSchemaVersion)
+            throw Error("目标数据库 schema 版本不受当前程序支持")
+        isValid := true
+    } catch as validationError {
+        errorText := validationError.Message
+    }
+
+    if IsObject(db) && !db.CloseDB() {
+        errorText := "无法关闭目标数据库只读连接：" . db.ErrorMsg
+        isValid := false
+    }
+    return isValid
+}
+
+QbarStoreRequiredTables() {
+    return ["schema_meta", "plugin_definitions", "plugins", "commands",
+        "command_aliases", "plugin_settings", "plugin_state", "command_usage", "command_history"]
+}
+
+QbarStoreNewMigrationStagePath() {
+    global QbarStoreRoot
+    Loop 20 {
+        stagePath := QbarStoreRoot . "\qbar-migration-" . A_TickCount
+            . "-" . Random(100000, 999999) . ".tmp"
+        if !FileExist(stagePath)
+            return stagePath
+    }
+    throw Error("无法为 Qbar 数据迁移创建唯一的暂存文件名")
+}
+
+QbarStoreBackupLegacyDatabase(sourcePath, stagePath) {
+    sourceDb := 0
+    stageDb := 0
+    backup := 0
+    try {
+        if FileExist(stagePath)
+            throw Error("迁移暂存路径已存在：" . stagePath)
+
+        sourceDb := CSQLite(A_ScriptDir . "\resources")
+        if !sourceDb.OpenDB(sourcePath, "R", false)
+            throw Error("无法只读打开旧数据库：" . sourceDb.ErrorMsg)
+        if !sourceDb.SetTimeout(2000)
+            throw Error("无法设置旧数据库读取超时：" . sourceDb.ErrorMsg)
+
+        stageDb := CSQLite(A_ScriptDir . "\resources")
+        if !stageDb.OpenDB(stagePath, "W", true)
+            throw Error("无法创建迁移暂存数据库：" . stageDb.ErrorMsg)
+        if !stageDb.SetTimeout(2000)
+            throw Error("无法设置迁移暂存数据库超时：" . stageDb.ErrorMsg)
+
+        backup := DllCall("SQLite3.dll\sqlite3_backup_init", "Ptr", stageDb.ptr,
+            "AStr", "main", "Ptr", sourceDb.ptr, "AStr", "main", "Cdecl Ptr")
+        if !backup
+            throw Error("SQLite 一致性备份无法开始：" . QbarStoreSQLiteError(stageDb))
+
+        stepCode := 0
+        busyRetries := 0
+        Loop {
+            stepCode := DllCall("SQLite3.dll\sqlite3_backup_step", "Ptr", backup,
+                "Int", -1, "Cdecl Int")
+            if stepCode = 101 ; SQLITE_DONE
+                break
+            if stepCode = 0 { ; SQLITE_OK: more pages remain, continue stepping.
+                Sleep(1)
+                continue
+            }
+            if stepCode != 5 && stepCode != 6 ; SQLITE_BUSY / SQLITE_LOCKED
+                throw Error("SQLite 一致性备份失败，代码 " . stepCode . "："
+                    . QbarStoreSQLiteError(stageDb))
+            busyRetries += 1
+            if busyRetries >= 20
+                throw Error("旧数据库持续被占用，SQLite 一致性备份未能完成")
+            Sleep(50)
+        }
+
+        finishCode := DllCall("SQLite3.dll\sqlite3_backup_finish", "Ptr", backup,
+            "Cdecl Int")
+        backup := 0
+        if stepCode != 101
+            throw Error("SQLite 一致性备份未完成，代码 " . stepCode)
+        if finishCode != 0 ; SQLITE_OK
+            throw Error("SQLite 一致性备份收尾失败，代码 " . finishCode . "："
+                . QbarStoreSQLiteError(stageDb))
+
+        if !QbarStoreVerifyBackup(sourceDb, stageDb, &verifyError)
+            throw Error("迁移暂存数据库验证失败：" . verifyError)
+        if !stageDb.CloseDB()
+            throw Error("无法关闭迁移暂存数据库：" . stageDb.ErrorMsg)
+        if !sourceDb.CloseDB()
+            throw Error("无法关闭旧数据库：" . sourceDb.ErrorMsg)
+        return true
+    } catch as backupError {
+        if backup
+            try DllCall("SQLite3.dll\sqlite3_backup_finish", "Ptr", backup, "Cdecl Int")
+        if IsObject(stageDb)
+            try stageDb.CloseDB()
+        if IsObject(sourceDb)
+            try sourceDb.CloseDB()
+        DebugLog("Qbar database migration staging failed source=" . sourcePath
+            . " staged=" . stagePath . " detail=" . backupError.Message)
+        throw Error("Qbar 旧数据库迁移失败；旧数据库仍保留在：" . sourcePath)
+    }
+}
+
+QbarStoreVerifyBackup(sourceDb, stageDb, &errorText) {
+    requiredTables := QbarStoreRequiredTables()
+    if !QbarStoreDatabaseIntegrity(sourceDb, &errorText)
+        return false
+    if !QbarStoreDatabaseIntegrity(stageDb, &errorText)
+        return false
+
+    for tableName in requiredTables {
+        if !QbarStoreDatabaseHasTable(sourceDb, tableName, &errorText)
+            return false
+        if !QbarStoreDatabaseHasTable(stageDb, tableName, &errorText)
+            return false
+        sourceCount := 0
+        stageCount := 0
+        if !QbarStoreDatabaseRowCount(sourceDb, tableName, &sourceCount, &errorText)
+            return false
+        if !QbarStoreDatabaseRowCount(stageDb, tableName, &stageCount, &errorText)
+            return false
+        if sourceCount != stageCount {
+            errorText := "关键表记录数不一致：" . tableName
+                . "（旧库 " . sourceCount . "，暂存库 " . stageCount . "）"
+            return false
+        }
+    }
+    errorText := ""
+    return true
+}
+
+QbarStoreDatabaseIntegrity(db, &errorText) {
+    if !db.GetTable("PRAGMA integrity_check;", &table) {
+        errorText := "完整性检查无法执行：" . db.ErrorMsg
+        return false
+    }
+    if table.RowCount != 1 || table.Rows[1].Length < 1 || table.Rows[1][1] != "ok" {
+        errorText := "完整性检查未返回 ok"
+        return false
+    }
+    if !db.GetTable("PRAGMA foreign_key_check;", &foreignKeyTable) {
+        errorText := "外键一致性检查无法执行：" . db.ErrorMsg
+        return false
+    }
+    if foreignKeyTable.RowCount != 0 {
+        errorText := "数据库存在外键不一致记录"
+        return false
+    }
+    return true
+}
+
+QbarStoreDatabaseHasTable(db, tableName, &errorText) {
+    sql := "SELECT count(*) FROM sqlite_master WHERE type='table' AND name="
+        . QbarStoreSql(tableName) . ";"
+    if !db.GetTable(sql, &table) {
+        errorText := "无法检查关键表 " . tableName . "：" . db.ErrorMsg
+        return false
+    }
+    if table.RowCount != 1 || table.Rows[1].Length < 1 || Integer(table.Rows[1][1]) != 1 {
+        errorText := "数据库缺少关键表：" . tableName
+        return false
+    }
+    return true
+}
+
+QbarStoreDatabaseRowCount(db, tableName, &rowCount, &errorText) {
+    if !db.GetTable("SELECT count(*) FROM " . tableName . ";", &table) {
+        errorText := "无法读取关键表记录数 " . tableName . "：" . db.ErrorMsg
+        return false
+    }
+    if table.RowCount != 1 || table.Rows[1].Length < 1 {
+        errorText := "无法读取关键表记录数：" . tableName
+        return false
+    }
+    try rowCount := Integer(table.Rows[1][1])
+    catch {
+        errorText := "关键表记录数无效：" . tableName
+        return false
+    }
+    return true
+}
+
+QbarStoreSQLiteError(db) {
+    if IsObject(db) && db.ptr {
+        errorPointer := DllCall("SQLite3.dll\sqlite3_errmsg", "Ptr", db.ptr, "Cdecl Ptr")
+        if errorPointer
+            return StrGet(errorPointer, "UTF-8")
+    }
+    return IsObject(db) && db.ErrorMsg != "" ? db.ErrorMsg : "未知 SQLite 错误"
 }
 
 QbarStoreMigrate(db) {
@@ -223,7 +527,7 @@ QbarStoreRowMap(table, row) {
     return result
 }
 
-QbarStoreLoadRuntimeRows() {
+QbarStoreLoadRuntimeRows(&rows) {
     rows := []
     if !QbarStoreRows("SELECT p.id AS plugin_id,p.definition_id,p.source AS plugin_source,p.display_name,p.enabled AS plugin_enabled,"
         . "p.deleted_at AS plugin_deleted,d.name AS plugin_name,d.icon AS plugin_icon,"
@@ -237,10 +541,10 @@ QbarStoreLoadRuntimeRows() {
         . "JOIN commands c ON c.plugin_id=p.id "
         . "LEFT JOIN command_aliases a ON a.command_id=c.id "
         . "ORDER BY c.id,a.normalized_alias;", &table)
-        return 0
+        return false
     for raw in table.Rows
         rows.Push(QbarStoreRowMap(table, raw))
-    return rows
+    return true
 }
 
 QbarStoreUpsertDefinition(definition) {
@@ -307,6 +611,9 @@ QbarStoreRetirePlugin(pluginId) {
         return false
     if !QbarStoreExec("UPDATE commands SET enabled=0,deleted_at=" . QbarStoreSql(now)
         . ",updated_at=" . QbarStoreSql(now) . " WHERE plugin_id=" . QbarStoreSql(pluginId) . ";")
+        return false
+    if !QbarStoreExec("UPDATE command_history SET replayable=0 WHERE plugin_id="
+        . QbarStoreSql(pluginId) . ";")
         return false
     return QbarStoreExec("UPDATE plugins SET enabled=0,deleted_at=" . QbarStoreSql(now)
         . ",updated_at=" . QbarStoreSql(now) . " WHERE id=" . QbarStoreSql(pluginId) . ";")
@@ -451,26 +758,38 @@ QbarStoreSetPluginSettings(pluginId, values, schemaVersion := 1, pendingRestart 
         . (pendingRestart ? 1 : 0) . "," . QbarStoreSql(now) . ");")
 }
 
-QbarStoreLoadPluginSettings() {
-    result := Map()
+QbarStoreLoadPluginSettings(&settings, &invalidPluginSettings) {
+    global QbarStoreError
+    settings := Map()
+    invalidPluginSettings := Map()
     if !QbarStoreRows("SELECT plugin_id,values_json FROM plugin_settings;", &table)
-        return result
+        return false
     for raw in table.Rows {
         row := QbarStoreRowMap(table, raw)
-        values := QbarStoreJsonMap(row["values_json"])
-        result[row["plugin_id"]] := values
+        try values := JSON.Parse(row["values_json"], false, true)
+        catch {
+            invalidPluginSettings[row["plugin_id"]] := true
+            DebugLog("Qbar plugin settings JSON invalid plugin=" . row["plugin_id"])
+            continue
+        }
+        if Type(values) != "Map" {
+            invalidPluginSettings[row["plugin_id"]] := true
+            DebugLog("Qbar plugin settings JSON is not a map plugin=" . row["plugin_id"])
+            continue
+        }
+        settings[row["plugin_id"]] := values
     }
-    return result
+    return true
 }
 
-QbarStoreLoadUsageRows() {
+QbarStoreLoadUsageRows(&rows) {
     rows := []
     if !QbarStoreRows("SELECT usage_key,command_id,candidate_key,score,use_count,last_used_at "
         . "FROM command_usage;", &table)
-        return rows
+        return false
     for raw in table.Rows
         rows.Push(QbarStoreRowMap(table, raw))
-    return rows
+    return true
 }
 
 QbarStoreLoadHistoryRows(limit := 10) {
@@ -510,13 +829,14 @@ QbarStoreSaveHistoryEntry(entry, command) {
     payload := entry.Has("payload") && IsObject(entry["payload"]) ? entry["payload"] : Map()
     args := entry.Has("args") && IsObject(entry["args"]) ? entry["args"] : Map()
     pluginId := command["pluginId"]
-    title := command["title"]
+    title := entry.Has("label") && String(entry["label"]) != ""
+        ? String(entry["label"]) : command["displayName"]
     candidateKey := entry.Has("candidateKey") ? String(entry["candidateKey"]) : ""
     input := entry.Has("input") ? String(entry["input"]) : ""
     now := QbarStoreNow()
     createdAt := entry.Has("createdAt") && String(entry["createdAt"]) != ""
         ? entry["createdAt"] : now
-    replayable := entry.Has("replayable") && !entry["replayable"] ? 0 : 1
+    replayable := entry.Has("replayable") && QbarHistoryBoolValue(entry["replayable"]) ? 1 : 0
     return QbarStoreExec("INSERT OR REPLACE INTO command_history(id,command_id,plugin_id,command_title,"
         . "candidate_key,input_text,args_json,payload_json,replayable,created_at,last_used_at) VALUES ("
         . QbarStoreSql(id) . "," . QbarStoreSql(command["commandId"]) . ","

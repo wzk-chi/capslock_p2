@@ -1,191 +1,206 @@
 ; qbar command dispatch, configured actions, and safe launching.
 
-QbarExecute(text, selected, ctrlHeld, selectedType := "", commandId := "", registryGeneration := 0,
-    queryId := 0, sessionId := "", candidateId := "") {
-    text := Trim(text, " `t")
-    if commandId != "" {
-        command := QbarRegistryCommand(commandId)
-        if !IsObject(command)
+QbarExecute(ctrlHeld, registryGeneration, queryId, sessionId, candidateId) {
+    if !QbarResultSnapshotCurrent(registryGeneration, queryId, sessionId, &snapshot)
+        return false
+    if candidateId != "" {
+        if !snapshot["candidates"].Has(candidateId) {
+            DebugLog("Qbar candidate execution rejected: unknown candidate")
             return false
-        if registryGeneration && registryGeneration != QbarRegistryGeneration()
-            return false
-        if sessionId != "" && sessionId != QbarSessionId
-            return false
-        if queryId && queryId != QbarPageQueryId
-            return false
-        if candidateId != "" && sessionId != "" {
-            candidatePrefix := sessionId . ":" . queryId . ":"
-            if SubStr(candidateId, 1, StrLen(candidatePrefix)) != candidatePrefix
-                return false
         }
-        resolution := QbarRegistryResolve(text)
-        args := resolution["args"]
-        if args = ""
-            args := QbarRegisteredCommandDisplayArguments(command, text)
-        if command["handlerId"] = "builtin.search" && args = "" && selected != "" {
-            QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
+        candidate := snapshot["candidates"][candidateId]
+        if Type(candidate) != "Map"
+            return false
+        return QbarExecuteSnapshotCandidate(candidate, ctrlHeld, registryGeneration)
+    }
+    return QbarExecuteRawText(snapshot["query"], ctrlHeld, registryGeneration)
+}
+
+QbarExecuteSnapshotCandidate(candidate, ctrlHeld, registryGeneration) {
+    if candidate.Has("commandId") {
+        commandId := candidate["commandId"]
+        command := QbarRegistryCommand(commandId)
+        if !IsObject(command) || !command["enabled"]
+            return false
+        args := candidate.Has("args") ? String(candidate["args"]) : ""
+        if command["handlerId"] = "builtin.search" && args = "" {
+            QbarExec("window.startSearch(" . LLMJsonQuote(candidate["short"]) . ");")
             return true
         }
-        return QbarExecuteRegistered(commandId, args, ctrlHeld, registryGeneration)
+        payload := 0
+        if command["handlerId"] = "builtin.start-menu.open" {
+            if !candidate.Has("value") || !candidate.Has("exe")
+                return false
+            payload := Map(
+                "value", candidate["value"],
+                "exe", candidate["exe"],
+                "label", candidate["label"],
+                "candidateKey", candidate.Has("candidateKey") ? candidate["candidateKey"] : "")
+        } else if command["handlerId"] = "builtin.open-path" && candidate.Has("value") {
+            payload := Map(
+                "path", candidate["value"],
+                "candidateKey", candidate.Has("candidateKey") ? candidate["candidateKey"] : "")
+        }
+        return QbarExecuteRegistered(commandId, args, ctrlHeld, registryGeneration, payload)
     }
-    ; Keep the settings shortcut usable when the SQLite registry could not be
-    ; opened and Qbar is showing its static fallback rows.
-    if selectedType = "settings" {
-        QbarHide()
-        QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",
-            Map("page", "general")))
-        return true
+    if candidate.Has("staticAction")
+        return QbarStaticFallbackActionExecute(candidate["staticAction"],
+            candidate.Has("args") ? String(candidate["args"]) : "")
+
+    itemType := candidate.Has("type") ? candidate["type"] : ""
+    if itemType = "app" && candidate.Has("value") && candidate.Has("exe") {
+        if ctrlHeld {
+            text := candidate["short"]
+            url := QbarNormalizeUrl("www." . text . ".com")
+            if QbarOpenUrl(url)
+                return QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
+            return false
+        }
+        if QbarRunShortcut(candidate)
+            return QbarHistoryRemember(QbarHistoryShortcutEntry(candidate))
+        return false
     }
+    if (itemType = "file" || itemType = "folder") && candidate.Has("value") {
+        path := candidate["value"]
+        if ctrlHeld {
+            if QbarLocateInExplorer(path)
+                return QbarHistoryRemember(QbarHistoryNew("reveal", path, path,
+                    Map("path", path)))
+            return false
+        }
+        if QbarOpenPath(path)
+            return QbarHistoryRemember(QbarHistoryNew("path", path, path,
+                Map("path", path)))
+    }
+    return false
+}
+
+QbarStaticFallbackActionExecute(action, args) {
+    switch action {
+        case "ai":
+            if QbarAiAsk(args)
+                return QbarHistoryRemember(QbarHistoryAiEntry(args))
+        case "everything":
+            QbarHide()
+            runQuery := Trim(args) != ""
+            if EverythingShow(args, runQuery)
+                return QbarHistoryRemember(QbarHistoryEverythingEntry(args, runQuery))
+        case "notes":
+            return QbarScheduleNotes(args, true)
+        case "clipboard":
+            targetContext := ClipboardHistoryCaptureTargetContext()
+            QbarHide()
+            if ClipboardHistoryShow(args, targetContext, true)
+                return QbarHistoryRemember(QbarHistoryClipboardEntry(args))
+        case "settings":
+            QbarHide()
+            QbarScheduleSettingsHistory(QbarHistoryNew("settings", "cl set", "cl set",
+                Map("page", "general")))
+            return true
+    }
+    return false
+}
+
+QbarExecuteRawText(text, ctrlHeld, registryGeneration) {
+    text := Trim(String(text), " `t")
+    if text = ""
+        return false
+
     resolution := QbarRegistryResolve(text)
     if resolution["candidates"].Length {
         candidate := resolution["candidates"][1]
-        return QbarExecuteRegistered(candidate["commandId"], resolution["args"], ctrlHeld,
-            QbarRegistryGeneration())
+        return QbarExecuteRegistered(candidate["commandId"], resolution["args"],
+            ctrlHeld, registryGeneration)
     }
-    if QbarEsAlias(text) && !QbarConfigShortKeyExists(text) {
-        QbarHide()
-        if EverythingShow("", false)
-            QbarHistoryRemember(QbarHistoryEverythingEntry("", false))
-        return
+    if QbarEsAlias(text) && !QbarConfigShortKeyExists(text)
+        return QbarStaticFallbackActionExecute("everything", "")
+    if !QbarConfigShortKeyExists(text) && QbarNotesAlias(text)
+        return QbarStaticFallbackActionExecute("notes", "")
+
+    if QbarSplitCommand(text, &typedToken, &typedRest) {
+        if !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken)
+            return QbarStaticFallbackActionExecute("everything", typedRest)
+        if !QbarConfigShortKeyExists(typedToken) && QbarNotesAlias(typedToken)
+            return QbarStaticFallbackActionExecute("notes", typedRest)
+        if !QbarConfigShortKeyExists(typedToken) && QbarAiAlias(typedToken)
+            return QbarStaticFallbackActionExecute("ai", typedRest)
     }
-    if !QbarConfigShortKeyExists(text) && QbarNotesAlias(text) {
-        QbarScheduleNotes("", true)
-        return
-    }
-    ; Preserve the complete argument from all four built-in aliases before
-    ; considering whichever row the page last highlighted. This makes Enter
-    ; reliable even when the debounce result has not reached WebView2 yet.
-    if QbarSplitCommand(text, &typedToken, &typedRest)
-        && !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken) {
-        QbarHide()
-        if EverythingShow(typedRest, typedRest != "")
-            QbarHistoryRemember(QbarHistoryEverythingEntry(typedRest, typedRest != ""))
-        return
-    }
-    if QbarSplitCommand(text, &typedToken, &typedRest)
-        && !QbarConfigShortKeyExists(typedToken) && QbarNotesAlias(typedToken) {
-        QbarScheduleNotes(typedRest, true)
-        return
-    }
-    if selected != "" {
-        if selectedType = "everything" {
-            query := QbarEverythingArgument(text)
-            QbarHide()
-            if EverythingShow(query, query != "")
-                QbarHistoryRemember(QbarHistoryEverythingEntry(query, query != ""))
-            return
-        }
-        ; An explicit AI result row asks with the typed text as-is. A bare
-        ; trigger word opens the chat with an empty composer.
-        if selectedType = "ai" {
-            question := QbarAiQuestion(selected)
-            if QbarAiAsk(selected)
-                QbarHistoryRemember(QbarHistoryAiEntry(question))
-            return
-        }
-        if selectedType = "notes" {
-            QbarScheduleNotes(QbarSearchArgument(text, selected), true)
-            return
-        }
-        if selectedType = "search" {
-            ; An engine row is armed only while there is nothing to search for
-            ; yet: it fills the trigger in and leaves the caret after it. Once
-            ; the line already reads "trigger query", the row is just the pinned
-            ; match for its own trigger, so fall through and search with it
-            ; rather than clearing what was typed.
-            if QbarSearchArgument(text, selected) = "" {
-                ; The built-in q row is also the short form of the AI command.
-                ; A bare q opens the chat; a configured q trigger keeps its
-                ; normal search precedence.
-                if QbarAiAlias(selected) && !QbarConfigShortKeyExists(selected) {
-                    if QbarAiAsk(selected)
-                        QbarHistoryRemember(QbarHistoryAiEntry(""))
-                    return
-                }
-                QbarExec("window.startSearch(" . LLMJsonQuote(selected) . ");")
-                return
-            }
-        } else {
-            ; A highlighted row wins over the typed text. In folder mode the
-            ; selected name replaces the leaf of the typed path.
-            if QbarIsFolderQuery(text)
-                text := QbarFolderOf(text) . selected
-            else
-                text := selected
-        }
-    }
-    if text = ""
-        return
-    ; AI is an explicit command. A bare q is normally handled by the built-in
-    ; search row above; this branch covers bare ai and a q/ai input when the
-    ; page has no selectable row yet.
-    if !QbarConfigShortKeyExists(text) && QbarAiAlias(text) {
-        if QbarAiAsk(text)
-            QbarHistoryRemember(QbarHistoryAiEntry(""))
-        return
-    }
+    if !QbarConfigShortKeyExists(text) && QbarAiAlias(text)
+        return QbarStaticFallbackActionExecute("ai", "")
+
     DebugLog("QbarExecute")
     DebugLogPrivate("Qbar execute", text)
-
     if ctrlHeld {
-        ; A highlighted file or folder row is revealed in Explorer instead of
-        ; the domain fallback -- mainly for Everything results, but folder
-        ; browsing gets it too.
-        if selected != "" && (selectedType = "file" || selectedType = "folder") {
-            if QbarLocateInExplorer(text)
-                QbarHistoryRemember(QbarHistoryNew("reveal", text, text,
-                    Map("path", Trim(text))))
-            return
-        }
-        ; Ctrl+Enter otherwise treats the typed text as a domain name.
         url := QbarNormalizeUrl("www." . text . ".com")
-        if QbarOpenUrl(url)
-            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
-        return
+        return QbarExecuteOpenUrl(url, text, registryGeneration)
     }
 
-    if QbarSplitCommand(text, &firstToken, &rest) {
-        ; Everything trigger: close qbar and hand the complete remainder to the
-        ; independent Everything panel. All four built-in aliases share this
-        ; path; configured commands with the same token win above it.
-        if !QbarConfigShortKeyExists(firstToken) && QbarEsAlias(firstToken) {
-            QbarHide()
-            if EverythingShow(rest, rest != "")
-                QbarHistoryRemember(QbarHistoryEverythingEntry(rest, rest != ""))
-            return
-        }
-        ; "ai <question>" / "q <question>" -- the configured LLM answers or
-        ; explains; an ini entry named ai/q wins over the built-in command.
-        if !QbarConfigShortKeyExists(firstToken) && QbarAiAlias(firstToken) {
-            if QbarAiAsk(rest)
-                QbarHistoryRemember(QbarHistoryAiEntry(rest))
-            return
-        }
-    }
     app := QbarFindByShort(QbarStartMenuItems(), text)
-    if IsObject(app) {
-        if QbarRunShortcut(app)
-            QbarHistoryRemember(QbarHistoryShortcutEntry(app))
-        return
-    }
-
-    ; "type" would shadow the built-in Type() function in the global namespace.
+    if IsObject(app)
+        return QbarExecuteStartMenuItem(app, text, registryGeneration)
     stringType := CheckStringType(text)
-    if stringType = "file" || stringType = "folder" || stringType = "ftp" {
-        if QbarOpenPath(text)
-            QbarHistoryRemember(QbarHistoryNew("path", text, text,
-                Map("path", Trim(text))))
-        return
-    }
+    if stringType = "file" || stringType = "folder" || stringType = "ftp"
+        return QbarExecuteOpenPath(text, false, registryGeneration)
     if stringType = "web" {
         url := QbarNormalizeUrl(text)
-        if QbarOpenUrl(url)
-            QbarHistoryRemember(QbarHistoryUrlEntry(text, url))
-        return
+        return QbarExecuteOpenUrl(url, text, registryGeneration)
     }
-
-    ; Unmatched text has no action. AI requires an explicit q/ai prefix.
     DebugLog("QbarExecute no match")
+    return false
+}
+
+QbarExecuteStartMenuItem(item, text, registryGeneration) {
+    provider := QbarRegistryDynamicProviderByHandler("builtin.start-menu.open")
+    if IsObject(provider) {
+        item := QbarIndexAttachDynamicProvider(item, provider)
+        if item.Has("dynamicBlocked")
+            return false
+        payload := Map(
+            "value", item["value"],
+            "exe", item["exe"],
+            "label", item["label"],
+            "candidateKey", item["candidateKey"])
+        return QbarExecuteRegistered(provider["commandId"], text, false,
+            registryGeneration, payload)
+    }
+    if QbarRegistryDynamicProviderUnavailable("builtin.start-menu.open")
+        return false
+    if QbarRunShortcut(item)
+        return QbarHistoryRemember(QbarHistoryShortcutEntry(item))
+    return false
+}
+
+QbarExecuteOpenPath(path, ctrlHeld, registryGeneration) {
+    candidateKey := StrLower(StrReplace(Trim(path), "/", Chr(92)))
+    provider := QbarRegistryDynamicProviderByHandler("builtin.open-path")
+    if IsObject(provider)
+        return QbarExecuteRegistered(provider["commandId"], path, ctrlHeld,
+            registryGeneration, Map("path", path, "candidateKey", candidateKey))
+    if QbarRegistryDynamicProviderUnavailable("builtin.open-path")
+        return false
+    if ctrlHeld {
+        if QbarLocateInExplorer(path)
+            return QbarHistoryRemember(QbarHistoryNew("reveal", path, path,
+                Map("path", path)))
+        return false
+    }
+    if QbarOpenPath(path)
+        return QbarHistoryRemember(QbarHistoryNew("path", path, path,
+            Map("path", path)))
+    return false
+}
+
+QbarExecuteOpenUrl(url, input, registryGeneration) {
+    candidateKey := Trim(url)
+    provider := QbarRegistryDynamicProviderByHandler("builtin.open-url")
+    if IsObject(provider)
+        return QbarExecuteRegistered(provider["commandId"], input, false,
+            registryGeneration, Map("url", url, "candidateKey", candidateKey))
+    if QbarRegistryDynamicProviderUnavailable("builtin.open-url")
+        return false
+    if QbarOpenUrl(url)
+        return QbarHistoryRemember(QbarHistoryUrlEntry(input, url))
+    return false
 }
 
 QbarRegisteredCommandDisplayArguments(command, text) {
@@ -269,24 +284,20 @@ QbarHistoryShortcutEntry(item) {
         "exe", item["exe"]))
 }
 
-QbarAiQuestion(text) {
-    text := Trim(text)
-    return QbarAiAlias(text) ? "" : text
-}
-
 ; Replay an already-resolved history entry. The caller owns the successful
 ; replay's remember/move-to-front step; settings is deferred because its
 ; WebView2 creation must happen outside the qbar message callback.
 
-QbarHistoryExecuteEntry(entry) {
+QbarHistoryExecuteEntry(entry, command, runArgs) {
     kind := entry["kind"]
     payload := entry["payload"]
     switch kind {
         case "run":
-            return QbarRunCommandAction(payload["command"], payload["command"])
+            return QbarRunCommandAction(QbarRunCommand(payload["command"], runArgs),
+                command["displayName"])
         case "shortcut":
             item := Map(
-                "label", entry["label"],
+                "label", entry["input"],
                 "value", payload["shortcutPath"],
                 "exe", payload["exe"])
             return QbarRunShortcut(item)

@@ -4,7 +4,7 @@
 复核日期：2026-10-05
 细化及再次复核日期：2026-10-05
 
-状态：原文 36 项已逐条复核，并已细化到实际文件、当前行号、接口和关联调用点。本版替代初审中的优先级、影响判断和整改建议；编号对应初审条目。仅更新本审查文档，实现代码未修改。
+状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改进行中：第 02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、17、18、20、21、29、30、32 项已完成代码修改及静态核查；第 35 项按复核结论保留现实现；其余逐项跟进。编号对应初审条目。未按项目约束运行程序、脚本或测试。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -58,11 +58,19 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/app/config.ahk:10](../lib/app/config.ahk#L10) ConfigLoad()（10–24）、[lib/app/config.ahk:428](../lib/app/config.ahk#L428) ConfigParseIni()（428–442）；调用端为 [lib/app/core.ahk:45](../lib/app/core.ahk#L45) Initialize()、[lib/app/core.ahk:164](../lib/app/core.ahk#L164) ReloadSettings()、[lib/app/core.ahk:278](../lib/app/core.ahk#L278) MonitorSettings()。
+- 位置：[lib/app/config.ahk:11](../lib/app/config.ahk#L11) ConfigLoad()、[lib/app/config.ahk:490](../lib/app/config.ahk#L490) ConfigParseIni()；调用端为 [lib/app/core.ahk:46](../lib/app/core.ahk#L46) Initialize()、[lib/app/core.ahk:183](../lib/app/core.ahk#L183) ReloadSettings()、[lib/app/core.ahk:315](../lib/app/core.ahk#L315) MonitorSettings()。profile 候选位于 [lib/input/appProfiles.ahk:12](../lib/input/appProfiles.ahk#L12)。保存调用为 [lib/features/settings.ahk:160](../lib/features/settings.ahk#L160) SettingsApplyQbarPlugin() 和 [lib/features/settings.ahk:617](../lib/features/settings.ahk#L617) SettingsApplyDraft()。
 - ConfigLoad() 先在局部变量中读默认模板和用户文档，接收每次读取的 loaded 标志。默认 raw 文档只读一次并保留原副本；分别解码原 default 与“default 副本叠加 user raw”的候选，完成后才赋 ConfigDefaults/Config。不要混合已解码默认值和仍带存储编码的用户值，也不要原地 Overlay 污染默认副本。用户文件不存在仍是合法空覆盖，默认模板不存在必须单独识别。
-- 建议 ConfigLoad(&errorCode) 返回成功与否；保持 ConfigParseIni() 现有可选 loaded 接口，必要时增加不含配置正文的错误类别。ReloadSettings() 失败立即返回且不 ApplyConfigChanges、不重建快捷键、不推送默认回退快照；它当前返回 registrationErrors 数组，可新增可选加载结果输出，让 [lib/features/settings.ahk:705](../lib/features/settings.ahk#L705) 区分“已写盘但未能应用”。
-- 删除 MonitorSettings() 第 282 行提前接受修改时间的行为，由成功加载路径更新 SettingsModifyTime；未接受的新版本会在后续 500ms 调度中重试。Initialize() 第 45 行必须检查结果：无有效初始配置时给出清楚提示并结束初始化，不能继续注册不完整配置的热键。
+- ConfigLoad(&errorCode) 返回成功与否；ConfigParseIni() 保留可选 loaded 接口并增加 exists 输出。ReloadSettings() 失败立即返回且不 ApplyConfigChanges、不重建快捷键、不推送默认回退快照；它保留 registrationErrors 数组，并新增可选加载结果输出供 [lib/features/settings.ahk:720](../lib/features/settings.ahk#L720) 区分“已写盘但未能应用”。
+- MonitorSettings() 不提前接受新修改时间，只有完整配置加载成功才更新 SettingsModifyTime；失败版本由后续 500ms 调度重试。Initialize() 检查首次读取结果，无有效初始配置时提示并退出，不能继续注册不完整配置的热键。
 - 保留现有 codec、默认覆盖和未知段保存规则；本条不新增整份 INI 的严格 schema 拒绝策略。与第 24 项结合时可共享一次成功读取的文档，避免 Config 与 profile 在两个读时刻分别取到不同版本。
+
+**实施状态：已完成第 02 项代码修复。** [lib/app/config.ahk](../lib/app/config.ahk) 的 `ConfigLoad()` 现在一次读取默认文档和用户文档，额外取得文件存在状态；用户文件不存在仍按空覆盖处理，默认文件缺失、现存用户文件读取失败或文件时间不可确认均返回分类错误。默认原始 Map 只解析一次，以克隆副本叠加用户值，分别解码候选默认值和生效配置；两者构建成功后才发布 `ConfigDefaults`、`Config` 与 `SettingsModifyTime`，并把成功读取的用户 Map 交给同一次初始化/重载的 profile 解析。用户文件在读取前后时间戳变化时拒绝本次候选并重试。失败日志仅记录阶段类别并对连续同类重试去重，不记录配置正文。
+
+[lib/input/appProfiles.ahk](../lib/input/appProfiles.ahk) 的 `AppProfilesLoad()` 改为先构造 profile 候选，可按调用选择暂不发布；初始化/重载会复用 ConfigLoad 已读取的用户 Map，避免二次读取到另一个文件版本。[lib/app/core.ahk](../lib/app/core.ahk) 的 `Initialize()` 检查配置和 profile 首次解析结果；失败时显示错误并退出，不注册不完整配置的热键。`ReloadSettings()` 增加可选 `loadSucceeded` 输出；配置或 profile 候选读取失败均不应用差异、不重建快捷键、不推送设置快照，profile 解析失败时同时恢复旧配置 Map 和已接受时间戳。`MonitorSettings()` 不再预先接受新时间戳；profile 检查只读候选，任一读取失败都会设置重试标志，每 500ms 继续尝试，直到一次完整加载成功并更新接受时间。
+
+[lib/features/settings.ahk](../lib/features/settings.ahk) 的保存调用检查 reload 结果：若 INI 已写入但读取/应用失败，会明确提示“已写入但未应用”，保留失败态，并在普通设置保存失败分支提前返回，避免随后推送旧配置快照。设置页的 profile 冲突检查也只比较未发布候选；只有完整重载成功才替换运行态。写入 helper 和 profile 保存路径不再抢先更新 `SettingsModifyTime`，使监视器保留重试机会。**第 03 项仍需继续处理：** 本次只添加配置未应用时的必要状态提示和快照保护；完整跨存储回执、插件部分提交后的草稿基线/重试行为仍未实现。
+
+**静态核查：** 已检索并检查 `ConfigLoad()`、`ReloadSettings()`、`MonitorSettings()` 及全部显式 reload 调用点；缺失用户 INI 与读取失败走不同路径，重载失败最终保留旧配置/profile 运行态，不应用差异或推送设置快照；初始读取失败会退出初始化。未运行程序、脚本或测试；AHK 语法和文件监视重试的运行时行为未验证。
 
 ### 03 设置保存跨存储部分提交——成立，P2
 
@@ -72,12 +80,20 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/settings.ahk:160](../lib/features/settings.ahk#L160) SettingsApplyQbarPlugin()（160–229，194–207 先写 esMaxResults）、[lib/features/settings.ahk:607](../lib/features/settings.ahk#L607) SettingsApplyDraft()（670–712 两存储提交）；回执发送在 [lib/features/settings.ahk:770](../lib/features/settings.ahk#L770)，页面回执在 [pages/settings.html:2156](../pages/settings.html#L2156)，草稿拒绝普通快照在 [pages/settings.html:2072](../pages/settings.html#L2072)。
+- 位置：[lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) `SettingsApplyQbarPlugin()`（172–306，先准备并写入 `esMaxResults`、重载，再提交插件事务）、[lib/features/settings.ahk:642](../lib/features/settings.ahk#L642) `SettingsApplyDraft()`（642–824，准备 INI/profile 候选并按域提交）；回执构建/发送在 [lib/features/settings.ahk:592](../lib/features/settings.ahk#L592) 与 [lib/features/settings.ahk:877](../lib/features/settings.ahk#L877)。页面接收保存回执在 [pages/settings.html:2124](../pages/settings.html#L2124)、普通结果处理在 [pages/settings.html:2247](../pages/settings.html#L2247)、独立工具保存及基线更新在 [pages/settings.html:1545](../pages/settings.html#L1545)；普通外部快照仍由 [pages/settings.html:2086](../pages/settings.html#L2086) 的 dirty 守卫保护。
 - 先做第 15 项的插件 patch 校验，再调用 ConfigPrepareUserOverrides() 准备 INI 候选；当前 profilesDirty=false 分支第 681 行直接写盘，建议也先 prepare，使所有输入错误发生在首次落盘前。INI 与 profile 已合并成同一文件，应维持一次 ConfigAtomicWrite()。
 - 若保留两存储，回执必须表达实际提交结果，不能只发送 ok/text。建议附带 iniCommitted、pluginsCommitted、runtimeApplied，以及已提交字段的实际值/基线；提交成功后的 registry/UI 刷新问题与第 12 项共同处理。不要在失败时把旧 INI 全文件回写覆盖外部编辑。
 - 页面 settingsSaved() 只清理已确认提交的 dirtyFields/profiles/plugins 标记，更新相应 baseSections/baseProfileStamp，重新比较仍未保存的 draft。**再次复核补充：**仅调用 SettingsPushSnapshot() 不够，因为 receiveSnapshot() 第 2073–2076 行会拒绝带草稿的快照；需要专门的保存回执更新基线，同时保留保存期间用户继续编辑的新值。
 - 独立 Everything 工具弹窗也需更新 qbarPluginSaved() 和 [pages/settings.html:1540](../pages/settings.html#L1540) applySavedQbarPluginToDraft()：INI 已提交而别名失败时说明已保存部分并保留弹窗重试，不能关闭并清空全部编辑。若后续将 esMaxResults 归到插件 store 的同一事务，须同步 QbarEsMaxResults() 读取和设置快照，不能只改表单。
 - 静态确认：任何“保存失败/部分保存”分支与实际提交标志一致；取消、失败和普通外部快照均不会抹掉未提交草稿。不需要跨文件/SQLite 通用事务框架。
+
+**实施状态：已完成代码修改并静态复核。** `SettingsApplyDraft()` 先校验插件 patch、全局配置和应用 profile，再用 `ConfigPrepareUserOverrides()` 构造 INI 候选；若有 profile 修改，会合并到同一候选文件，全部校验完成后最多原子写入一次。配置写入后才进行运行态重载，再提交独立的插件数据库事务；未引入通用跨存储事务。
+
+宿主 `settingsSaved()` / `qbarPluginSaved()` 回执现在携带 `settingsFileCommitted`、`runtimeApplied` 及各存储域的提交标记和已提交域快照。INI 已写但重载失败时明确报告“已写入、未应用”，不把运行态旧快照标成已提交基线；INI/profile 已应用但插件数据库失败时报告部分成功，并仅刷新已提交域的页面基线。页面保留用户保存期间新增的草稿差异，后续重试只重新提交未完成部分。独立的 Everything 工具保存也会保留弹窗，并在文件搜索数量已保存而插件事务失败时明确指出部分提交；对应 Qbar 设置基线同步到已应用值，避免主页面之后把旧数量写回。插件事务已提交后若剪贴板通知等后续刷新失败，回执仍反映已提交，并显示刷新提示。
+
+插件创建、删除及独立保存也通过保存回执更新内存中的插件基线，因此带有全局未保存草稿时，页面拒收普通外部 snapshot 也不会丢失已提交的 Qbar 状态。回执刷新会保留草稿中相对旧基线已变化的字段；成功保存后再按新基线重新计算 dirty 状态。
+
+静态核查覆盖两种保存入口、全部 `SettingsSendSaved`/`SettingsSendQbarPluginSaved` 回执、INI candidate/write/reload 顺序和页面的 committed-domain baseline 合并。按项目约束未运行 AHK、WebView、脚本或测试；文件监视器遇到部分保存、用户保存期间继续编辑、真实数据库提交失败与 WebView 回执时序仍未运行确认。
 
 ### 04 LLM 连接测试同步等待——部分成立，P2 响应风险
 
@@ -87,12 +103,16 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/settings.ahk:803](../lib/features/settings.ahk#L803) SettingsRunTest()（803–836）、838–842 结果派发、1050–1068 Hide/Shutdown；[lib/shared/llm.ahk:393](../lib/shared/llm.ahk#L393) 请求构建（393–458）及 462–516 同步完成；页面 [pages/settings.html:2056](../pages/settings.html#L2056) 的 payload、2201–2207 回执、2228/2231/2232 三个测试按钮。
-- 建议新增 LLMChatCompleteAsync(messages, onFinished, overrides, structuredOn) → operation，operation 有幂等 Cancel()，onFinished(responseText, success, errorText) 保留现响应契约。使用 LLMBuildRequest(stream=false)，不发 SSE Accept、不解析 delta。
-- 在 [lib/shared/llm.ahk:608](../lib/shared/llm.ahk#L608) 的现有 WinHTTP sink/连接（608–713）、749–822 排队调度和 1013–1047 释放基础上抽取薄的事件传输能力；非流式和 SSE 分别解析，不复制另一套 COM 连接/vtable。finish/error/cancel 只允许一次终态，先失效再 Abort，并释放事件连接及闭包。
-- Settings 增加“当前测试代次 + operation”，新测试先取消旧请求；完成时核对代次和宿主可用状态，Hide/Shutdown 增加代次并取消。所有完成回调（含参数验证失败）在入口返回后调度，避免回调先结束、随后返回对象又覆盖已清理状态。
-- 与第 18 项一起把 provider.test(msg,&ok,&text) 改成 test(msg,onFinished) → operation，Settings 三类测试共用“最新请求有效”。保留草稿 overrides、Hello 请求和成功提示，结果继续走 SettingsSendTestResult()/现有 AppDialog；旧完成不能清除新请求的 busy。
-- 静态确认：测试链不再使用同步 Open/WaitForResponse/轮询等待；取消和释放覆盖新测试、隐藏、关闭与页面重建。网络阶段 timeout 和端到端截止时间明确区分，实际响应改善仍待后续运行确认。
+- 位置：[lib/features/settings.ahk:846](../lib/features/settings.ahk#L846) `SettingsRunTest()`、[903](../lib/features/settings.ahk#L903) operation/回执、[76](../lib/features/settings.ahk#L76) 导航完成以及 [1158](../lib/features/settings.ahk#L1158) Hide / [1168](../lib/features/settings.ahk#L1168) Shutdown；[lib/shared/llm.ahk:393](../lib/shared/llm.ahk#L393) 请求构建、[463](../lib/shared/llm.ahk#L463) 非流式异步完成、[516](../lib/shared/llm.ahk#L516) 共用异步 HTTP transport、[743](../lib/shared/llm.ahk#L743) WinHTTP event sink、[828](../lib/shared/llm.ahk#L828) 事件连接、[900](../lib/shared/llm.ahk#L900) 队列调度、[1016](../lib/shared/llm.ahk#L1016) 非 SSE 完成及 [1207](../lib/shared/llm.ahk#L1207) 释放；页面 [pages/settings.html:2056](../pages/settings.html#L2056) 的 payload、2201–2207 回执、2228/2231/2232 三个测试按钮。
+- `LLMChatCompleteAsync(messages, onFinished, overrides, structuredOn) -> operation` 已接入 [lib/shared/llm.ahk:463](../lib/shared/llm.ahk#L463)。operation 有幂等 `Cancel()`，`onFinished(responseText, success, errorText)` 保留响应契约；请求使用 `LLMBuildRequest(stream=false)`，不发 SSE Accept、不解析 delta。
+- [lib/shared/llm.ahk:743](../lib/shared/llm.ahk#L743) 的共用 WinHTTP sink、[828](../lib/shared/llm.ahk#L828) 事件连接、[900](../lib/shared/llm.ahk#L900) 队列调度及 [1207](../lib/shared/llm.ahk#L1207) 释放由 SSE 与普通 HTTP 共用，响应消费者分开；未复制 COM vtable。finish/error/cancel 经一次终态门，取消先使请求状态失效再 Abort，并释放事件连接与闭包。
+- Settings 使用当前测试代次与 owner operation：新测试先递增代次、清空并取消旧 owner；完成回调同时核对代次、窗口可见和页面就绪。Hide、Shutdown、页面加载/导航都会增加代次并取消。验证失败同样通过 `SetTimer` 回调，owner 在启动 child 前发布并通过 `SetCancel()` 接入 child，避免完成或取消后被后续返回值覆盖。
+- `provider.test(msg,onFinished) -> operation` 已统一供 Settings 调用。有道/火山都保留草稿 overrides、Hello 请求、成功提示和既有 `settingsTestResult` 回执；最新代次唯一有效，旧完成不能操作新页面。
+- 静态调用点检查确认设置测试不再同步调用 `LLMChatComplete()`；因全仓已无调用点，旧的 `LLMChatComplete()`、`LLMSendChatBody()` 和 `LLMResponseText()` 同步实现已移除。设置测试不存在同步等待、轮询或 SSE 降级；取消和释放覆盖新测试、隐藏、关闭与重新导航。网络阶段 timeout 和端到端截止时间仍明确区分，实际响应改善仍待后续允许运行确认。
+
+**实施状态：代码已完成，静态核查通过；未运行程序、脚本或测试。** `lib/shared/llm.ahk` 新增 `LLMChatCompleteAsync()`，以 `LLMBuildRequest(..., stream=false)` 发送普通 JSON 请求，并复用现有 WinHTTP event sink、事件连接点、队列调度和释放函数；完整响应体按 UTF-8 字节累积后交回现有 HTTP/API 错误解析，不发 SSE Accept、不解析 delta。`lib/features/settings.ahk` 的测试消息现在先增加最新测试代次、清空并取消旧 operation，之后异步启动 LLM 或 provider 测试；完成回调要求代次一致、设置窗口可见且页面就绪。Hide、Shutdown 和页面加载失败均先使代次失效再取消 operation。草稿 overrides、Hello 正文、“连接正常”与现有 `settingsTestResult` 回执均保留。全仓没有 `LLMChatComplete()` 的其他调用点，旧同步请求函数已删除，避免保留第二条阻塞传输实现。
+
+**静态核查与未运行边界：**检查了 `SettingsRunTest()`、唯一 `test` 分发点、operation 父子取消绑定、Hide/Shutdown/NavigationCompleted 失效路径和 `LLMChatCompleteAsync()` 完成路径；无同步等待、轮询或 SSE 降级，取消/完成只接受一次终态。此次遵循项目约束，未运行 AHK 语法验证、应用、脚本或测试；实际 COM 事件顺序、取消竞态、网络响应时间及页面重新导航时序仍未运行确认。超时仍是 WinHTTP 网络阶段 timeout，没有新增端到端截止时间。
 
 ### 05 用户提示直接展示内部错误——成立，P2
 
@@ -102,11 +122,15 @@
 
 **具体位置与建议改法**
 
-- 首批位置：[lib/app/core.ahk:297](../lib/app/core.ahk#L297) ConfigSet() 的 301/307 行，[lib/app/core.ahk:579](../lib/app/core.ahk#L579) RunConfiguredAction() 的 605/611/620 行；[lib/features/settings.ahk:36](../lib/features/settings.ahk#L36) 初始化的 46/68 行、选择器的 526/857/874/892 行；[lib/features/windows.ahk:197](../lib/features/windows.ahk#L197) 保存异常 213 行。
+- 首批位置：[lib/app/core.ahk:348](../lib/app/core.ahk#L348) `ConfigSet()`、[lib/app/core.ahk:635](../lib/app/core.ahk#L635) `RunConfiguredAction()`；[lib/features/settings.ahk:39](../lib/features/settings.ahk#L39) `SettingsEnsureWebView()`、[82](../lib/features/settings.ahk#L82) 导航回执、[524](../lib/features/settings.ahk#L524) 文件选择器、[1045](../lib/features/settings.ahk#L1045) 窗口选择器及 [1065–1085](../lib/features/settings.ahk#L1065) 应用选择器；[lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) `SaveWindowBinding()`。
 - 逐个 catch 把“原始 Message 直接拼 UI”的语句改成按功能生成的两语言说明。例如设置写入失败说明“请确认安装目录可写后重试”，面板初始化失败说明“无法打开此面板，请重试或重新启动”，动作配置错误引导到快捷键设置，而不是把内部函数名当正文。
 - 复用当前语言判断/文本 helper（[lib/shared/llm.ahk:14](../lib/shared/llm.ahk#L14) LLMUiLanguage()/LLMText()、core 的 IsChineseLanguage()）；不另外维护一套语言配置。用户主动配置的可读参数错误继续显示，不把所有验证提示变成空泛的“失败”。
 - 同一 catch 记录功能、阶段、错误类别和脱敏诊断；不要 dump 传入配置 Map、API 凭据、完整 endpoint/用户正文。core 第 618–619 行当前已经记录底层动作错误，须一起审查敏感字段，避免 UI 修复后将原文无条件搬进日志。
 - 静态确认：错误路径均有用户能采取的下一步；页面通知仍用 AppToast/AppDialog，宿主 ToolTip 仍走 ShowMsg()。本条只统一呈现，不改变异常是否返回/重试的业务语义。
+
+**实施状态：已完成首批用户可见错误修正并静态核查。** `ConfigSet()` 的 schema 错误改为本地化字段校验提示；写文件失败提示检查安装目录可写并重试，日志只留 section/key 和错误类型。`RunConfiguredAction()` 的无效 handler 与执行异常改成本地化“检查快捷键设置/重试”提示，日志保留经过格式约束的函数名及错误类型，不再写异常原文。设置 WebView 创建/导航与窗口、应用选择器失败都给出本地化重开/重试说明，不把 WebView/COM/文件选择器消息直接显示给用户。窗口绑定保存失败提示检查所选窗口后重试；读取/写入异常日志改为阶段、绑定号和错误类型。
+
+静态检索确认 core、settings、windows 的目标 UI catch 不再拼接 `Error.Message`；设置整体保存仍按提交状态提示成功、部分成功或失败，应用产生的字段验证错误保留。未运行程序、脚本或 UI；本地化实际显示、各类异常的重试路径以及用户能否据提示修复问题仍未运行验证。
 
 ### 06 AI 使用说明仍描述旧会话规则——成立，P2
 
@@ -121,6 +145,8 @@
 - 页面目前每批读取 100 个轮次、会话列表每页 50 条（host 第 606/639/675 行）；模型上下文从最近 50 个完成轮次构建后还会再裁剪。README 可用“按页加载”描述，不把这些加载批次数字写成保存上限。
 - 补齐切换、重命名、置顶、删除和 data/ai-chat/ai-chat.db 的数据保留/迁移说明，与 [docs/architecture.md:84](architecture.md#L84) 和 [docs/packaging.md:94](packaging.md#L94) 的当前多会话说明一致。
 - **再次复核补充：**[pages/usage.html:133](../pages/usage.html#L133) 与第 135 行是相同 AI 功能卡片。后续同步用户介绍时保留一份卡片，并补一句可从历史会话继续；这属于相关文案/布局整理，不需要修改会话存储。
+
+**实施状态：已完成文档和用户介绍同步，静态核查通过。** `README.md` 已区分本机持久化历史、按页读取和模型上下文限制，说明空白新会话不会删除旧会话、历史会话可继续使用，并说明数据目录迁移、覆盖更新与卸载保留。上下文 token 限制改为估算，不再承诺保证服务端不会拒绝。`pages/usage.html` 合并重复 AI 功能卡片并补充历史会话、重命名、置顶与删除说明。架构与打包文档已有对应数据路径和迁移事实，无需改写。未运行程序、脚本或测试。
 
 ### 34 设置宿主职责较宽——部分成立，P3 结构建议
 
@@ -146,13 +172,21 @@
 
 **具体位置与建议改法**
 
-- 入口 [lib/features/qbar/qbar_panel.ahk:81](../lib/features/qbar/qbar_panel.ahk#L81)（81–156，88–120 query/execute）；查询/发布 [lib/features/qbar/qbar_index.ahk:123](../lib/features/qbar/qbar_index.ahk#L123)（123–186、199–233、307–359）；执行 [lib/features/qbar/qbar_commands.ahk:3](../lib/features/qbar/qbar_commands.ahk#L3)（3–189）；页面 [pages/qbar.html:236](../pages/qbar.html#L236) requestQuery()、387–413 execute()、476–488 setResults()。
+- 入口 [lib/features/qbar/qbar_panel.ahk:40](../lib/features/qbar/qbar_panel.ahk#L40) 页面导航失效及 [lib/features/qbar/qbar_panel.ahk:90](../lib/features/qbar/qbar_panel.ahk#L90) `QbarWebMessageReceived()`（query/execute）；查询和发布 [lib/features/qbar/qbar_index.ahk:150](../lib/features/qbar/qbar_index.ahk#L150) `QbarQuery()`、[lib/features/qbar/qbar_index.ahk:338](../lib/features/qbar/qbar_index.ahk#L338) `QbarSendResults()` 与 [lib/features/qbar/qbar_index.ahk:412](../lib/features/qbar/qbar_index.ahk#L412) `QbarSnapshotCandidate()`；验证与执行 [lib/features/qbar/qbar_commands.ahk:3](../lib/features/qbar/qbar_commands.ahk#L3) `QbarExecute()`（含 `QbarExecuteSnapshotCandidate()`、`QbarExecuteRawText()`）；页面 [pages/qbar.html:239](../pages/qbar.html#L239) `requestQuery()`、[pages/qbar.html:392](../pages/qbar.html#L392) `execute()`、[pages/qbar.html:476](../pages/qbar.html#L476) `setResults()`。
 - 仅保存一个宿主当前查询快照：session、querySeq/queryId、generation、查询原文及 Map<candidateId,candidate>。QbarRegistryResolutionRows() 保留解析所得 args；FilterItems() 保留真实 value/exe/path 对象；文件夹条目复用 279–304 行的可信完整路径，不以 label/short 反查对象。
 - QbarQuery() 各发布分支把原文/解析结果传到快照构建。QbarSendResults() 发布前再次核对可见状态和代次，先整体建立 Map 再给页面显示行；沿用现 candidateId 生成形式，增加实际查表。
 - 消息入口严格解析身份，不再把缺失/非法字段默认成 0；排队执行时再次核对快照。generation 要“字段存在且与宿主当前值相等”，SQLite 不可用时的明确静态设置入口需要专门保留，不能把当前 generation=0 与缺字段混同而使设置入口失效。
 - 候选分支从 Map 取得 command/args/payload，不再采用 QbarExecute() 第 21–24 行从页面 text 重算参数却执行页面指定 commandId 的组合。原始文本分支允许无 candidate，但忽略 selected/selectedType/commandId，使用本次宿主原文和当前 registry 解析。
 - setResults() 增加批次 session/generation 元信息，即使 rows 为空也更新页面当前上下文；否则 raw 执行仍只能从不存在的 row 取身份。新 query、show、hide、shutdown 和 registry 发布清空快照（[lib/features/qbar/qbar.ahk:75](../lib/features/qbar/qbar.ahk#L75)、[lib/features/qbar/qbar_panel.ahk:53](../lib/features/qbar/qbar_panel.ahk#L53)）。
 - 保留 queryPending、别名冲突排序、无参数搜索的触发词补全、路径/文件夹操作、Ctrl+Enter 和静态设置 fallback。静态确认所有选中结果都经 Map、参数只来自宿主对象，queued 执行有二次校验；快速输入/重开/配置刷新时序仍待运行确认。
+
+**实施状态：已完成代码修改并静态复核。** `QbarSendResults()` 为每批候选在宿主建立单一快照，记录 session、页面 queryId、宿主 querySeq、registry generation、宿主保存的查询文本，以及精确 `candidateId → candidate` 映射。别名候选在快照中保存宿主解析出的 commandId/args；开始菜单、文件、文件夹等动态候选保存宿主实际的快捷方式路径、exe 或完整文件路径。SQLite 不可用时，仅允许静态内置白名单动作，例如设置入口；页面显示文本本身不成为执行身份。
+
+页面的 `setResults()` 现在即使收到空列表也保存本批 session 和 generation。`execute` 消息必须提供正 queryId、当前 session、generation 和 candidateId 字段；缺失/错误类型不会降级成 0。执行排队后再次核对当前 session、queryId、querySeq、generation 和面板可见性；candidateId 非空时必须精确命中快照 Map，再从 Map 取得 commandId、参数或动态路径。文件/文件夹仍支持 Ctrl+Enter 定位，开始菜单使用快照里的 `.lnk` 和 exe；路径、设置等静态 fallback 都走宿主已有动作。
+
+candidateId 为空时是独立的原始文本路径：宿主采用快照中的原始查询，按当前 registry 重新解析；忽略页面发送的 text、selected、selectedType、commandId。新 query 在入口处立即失效旧快照；显示/隐藏、页面成功或失败导航、关闭、shutdown 及 registry 发布也会清空它。Everything 结果发布还携带并复核启动时的 session/query/generation 上下文。
+
+静态核查确认页面不再发送 selected/commandId 作为执行授权，generic execute 的唯一入口是带完整上下文的 `QbarExecute()`；候选执行只查快照，原始文本只使用宿主快照文本，注册命令仍在 `QbarExecuteRegistered()` 检查当前命令启用状态和 handler 白名单。历史重放仍经既有 displayed-history ID 路径，独立于普通候选执行。按项目约束未运行 AHK、WebView、程序、脚本或测试；快速输入、重开、registry 更新与菜单/文件真实动作时序仍待允许运行时验证。
 
 ### 11 删除或禁用工具后旧历史仍能重放——成立，P2 功能缺陷
 
@@ -162,13 +196,19 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/qbar/qbar_history.ahk:422](../lib/features/qbar/qbar_history.ahk#L422) Replay()（422–441）、208–225 ResolveCommand()、277–308 rows、443–518 Normalize；[lib/features/qbar/qbar_store.ahk:300](../lib/features/qbar/qbar_store.ahk#L300) 退役（300–313）、425–431 enabled、476–527 history；[lib/features/qbar/qbar_commands.ahk:281](../lib/features/qbar/qbar_commands.ahk#L281) 动作（281–316）；[lib/features/qbar/qbar_execution.ahk:67](../lib/features/qbar/qbar_execution.ahk#L67) run 及执行元数据（67–96）。
+- 位置：[lib/features/qbar/qbar_history.ahk:311](../lib/features/qbar/qbar_history.ahk#L311) `QbarHistoryRows()`、[469](../lib/features/qbar/qbar_history.ahk#L469) 逐条重放授权、[554](../lib/features/qbar/qbar_history.ahk#L554) `QbarHistoryReplay()` 及 [575](../lib/features/qbar/qbar_history.ahk#L575) Normalize；[lib/features/qbar/qbar_store.ahk:604](../lib/features/qbar/qbar_store.ahk#L604) 退役事务与 [823](../lib/features/qbar/qbar_store.ahk#L823) SaveHistoryEntry；[lib/features/qbar/qbar_commands.ahk:234](../lib/features/qbar/qbar_commands.ahk#L234) 回放动作；[pages/qbar.html:324](../pages/qbar.html#L324) 不可重放样式及 [pages/qbar.html:406](../pages/qbar.html#L406) 执行门。
 - Replay() 在展示 ID 校验后**直接按 entry.commandId**查当前 registry，并核对 entry.pluginId、enabled、pluginRetired/commandRetired、handler 白名单和 payload 类型。不能用 ResolveCommand() 的授权回退：它在 ID 找不到时会按 input 别名查另一命令（216–219）。
 - 删除事务同步设置关联持久化历史 replayable=0；临时禁用不永久覆盖此标志，而显示/执行时计算“原 replayable 且当前工具启用”，重新启用可恢复。更新历史缓存/显示，否则只改数据库不影响已加载的旧 entry。
 - **再次复核补充：**NormalizeEntry() 第 503–517 行当前遗漏 replayable，应保留它，防止 Remember/Save 把缺字段当作 true。Rows()/SendResults() 向页面传有效可执行状态；[pages/qbar.html:299](../pages/qbar.html#L299) 的渲染及 392–398 的历史执行检查它，Tab 带回原文仍可用。
-- run 重放采用 QbarRunCommand(payload.command, entry.args.args) 展开当时原参数，再调用已有启动动作；严格检查 args 字符串。最小语义为“payload 是当时执行设置快照，当前稳定 ID 决定授权”。ResolveCommand() 第 222 行使用 handlerId builtin.open-url 当 commandId，实际应为 builtin.url.open，动态历史接通时同步修正。
+- run 重放采用 QbarRunCommand(payload.command, entry.args.args) 展开当时原参数，再调用已有启动动作；严格检查 args 字符串。最小语义为“payload 是当时执行设置快照，当前稳定 ID 决定授权”。旧 ResolveCommand() 回退错误已撤销；静态 url fallback 使用稳定 ID `builtin.url.open`，handler 仍是 `builtin.open-url`。
 - **不要直接把 Replay 改为 QbarExecuteRegistered()：**它自身会 Remember/usage，Replay 外层也 Remember，Notes/Settings 还有延后成功路径。最小修复先补授权/参数，动作层统一与第 16 项一起处理，成功历史和使用频率只记一次，拒绝不记。
 - 静态确认没有按别名重新授权失效历史，Normalize 不丢状态，创建 history 的各路径附真实稳定 ID；删除/禁用/再启用、带参数重放及延后计数需后续运行确认。
+
+**实施状态：已完成代码修改并静态复核。** `QbarHistoryReplay()` 先验证当前 query 与 displayed-history ID，再针对每条历史直接按 `entry.commandId` 查当前 registry，要求 pluginId 精确匹配、命令与插件当前启用且未退役、定义有效并且 handler 在白名单内；kind 与当前 handler 也必须一致。payload 按 kind 校验，run 要求保存的 command 快照和字符串 args；回放以 `QbarRunCommand(payload.command, entry.args.args)` 恢复当时参数。ResolveCommand 不再按 input/别名换授权对象；仅当新建的非插件型 URL/path/shortcut 历史尚无 ID 时，按固定内置 kind 映射 canonical ID，真正回放仍要求历史条目内已有稳定 ID 和 pluginId。
+
+删除插件事务将关联 `command_history.replayable` 持久化为 0，并在事务提交后将已加载缓存同步标为不可重放；仅禁用时保留该位，列表和执行门按当前命令 enabled/retired 即时计算，重新启用后可恢复。列表把 `replayable` 状态传给页面，禁用/删除工具的记录以淡化样式显示并提示可按 Tab 恢复输入；页面阻止直接执行，宿主再次验证。`QbarHistoryNormalizeEntry()` 严格保留 replayable，缺失或格式异常按不可重放处理；store save 缺失标记不再默认写为 1。历史工具标题以记录时快照写入并在重复执行时保留，改名不会改写旧历史名称；shortcut 的展示文本取原输入快照。
+
+静态检索确认执行授权没有通过别名回退；Run payload/args 均从历史条目取值，当前 command 只提供稳定身份授权；settings page 与 url kind 有固定值/协议校验。未运行 AHK、程序、脚本或测试；真实数据库旧历史迁移、删除/禁用/再启用流程、带参数 Run 的操作结果及延迟面板打开路径未做运行验证。
 
 ### 12 提交后重建失败导致运行态与数据库不一致——成立，P2 条件风险
 
@@ -178,27 +218,30 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/qbar/qbar_plugin_host.ahk:10](../lib/features/qbar/qbar_plugin_host.ahk#L10) 初始化/catalog（10–101）、146–238 修改/删除、270–349 创建；[lib/features/qbar/qbar_registry.ahk:10](../lib/features/qbar/qbar_registry.ahk#L10) rebuild（10–115，110–111 已一次交换）；[lib/features/qbar/qbar_store.ahk:454](../lib/features/qbar/qbar_store.ahk#L454) settings/usage loaders（454–474），usage 另有 [lib/features/qbar/qbar_history.ahk:44](../lib/features/qbar/qbar_history.ahk#L44) 消费者。
-- 将 rebuild 拆为建议的 QbarRegistryBuild(&next) 与 QbarRegistryPublish(next)。Build 只构造候选并返回明确错误；Publish 只交换表和 generation，不做 SQL/页面调用，并失效第 10 项的查询快照。
+- 修改位置：[qbar_plugin_host.ahk:10](../lib/features/qbar/qbar_plugin_host.ahk#L10) 初始化、[45](../lib/features/qbar/qbar_plugin_host.ahk#L45) catalog、[154](../lib/features/qbar/qbar_plugin_host.ahk#L154) apply、[218](../lib/features/qbar/qbar_plugin_host.ahk#L218) delete、[284](../lib/features/qbar/qbar_plugin_host.ahk#L284) create；[qbar_registry.ahk:12](../lib/features/qbar/qbar_registry.ahk#L12) `QbarRegistryBuild()` 与 [120](../lib/features/qbar/qbar_registry.ahk#L120) `QbarRegistryPublish()`；[qbar_store.ahk:530](../lib/features/qbar/qbar_store.ahk#L530) runtime rows、[758](../lib/features/qbar/qbar_store.ahk#L758) settings、[781](../lib/features/qbar/qbar_store.ahk#L781) usage loaders；history usage 消费在 [qbar_history.ahk:45](../lib/features/qbar/qbar_history.ahk#L45)。
+- 将 rebuild 拆为 `QbarRegistryBuild(&next)` 与 `QbarRegistryPublish(next)`。Build 只构造候选并返回明确错误；Publish 只交换表和 generation，不做 SQL/页面调用，并失效第 10 项的查询快照。
 - settings/usage 读取改为 bool + 输出容器，区分成功空数据与失败；同步 registry/history 全部消费者。JSON 解析失败须作为非法设置处理，不能默认成成功空 Map。rollback 前保存原错误，避免 rollback 清掉原 store error。
 - 三种修改和启动 catalog 统一为：预校验 → BEGIN → 写入 → Build → COMMIT → Publish；同一连接可以读自己的未提交数据，不需要库副本。begin 到 publish 保证 AHK 伪线程不重入共享连接，最小方案短 Critical 段且 finally 恢复先前状态；页面、网络与拼音/索引工作不放入该段。
 - Publish 后再调用 [lib/features/qbar/qbar_index.ahk:12](../lib/features/qbar/qbar_index.ahk#L12) InvalidateConfigIndex() 及 [lib/features/qbar/qbar_search.ahk:81](../lib/features/qbar/qbar_search.ahk#L81) 的相关索引刷新。**第三次复核精度：**commit 前失败可 rollback；commit 后索引/页面失败只能报告“已保存，刷新失败”并重试刷新，不能声称全部失败都已回滚。
 - 保留 next 原子交换、每次发布 generation 只增一次、失败旧 registry/索引仍服务。静态确认关键读取成功才 commit、commit 前不 publish、发布函数无副作用；数据库忙/只读/提交失败及事件重入仍需后续运行确认。
 
-### 13 Qbar 的 AppData 落点与当前约定不一致——成立，P3 设计约定待统一
+**实施状态：事务发布与查询快照失效已完成，静态核查通过。** [qbar_registry.ahk](../lib/features/qbar/qbar_registry.ahk) 已将候选构建和发布分开；运行表、插件设置、使用记录加载都通过 `bool + 输出容器` 区分读取失败与成功空结果，插件设置及定义 JSON 解析失败会拒绝构建。启动 catalog、修改、删除和创建都在 `BEGIN` 后写入并于同一连接内构建 next，成功后 `COMMIT`，随后在同一 `Critical` 保护段中一次发布；构建/提交失败先保留错误文本、回滚并继续服务旧 registry。`QbarRegistryPublish()` 交换运行表和 generation，并清空 Qbar 当前查询候选快照；它不做 SQL 或页面调用。提交后的索引失效移到事务外，单独记录异常并最多重试两次，不会将已提交数据库操作反馈为保存失败。插件修改预校验已在第 15 项实现。本项其他实际数据库忙/只读/提交失败及事件重入路径未运行确认。
 
-- 依据：[qbar_store.ahk](../lib/features/qbar/qbar_store.ahk) 使用 A_AppData；[早期插件设计](2026-10-02-qbar-plugin-refactor-design.md) 原本明确指定此位置。当前 AGENTS.md 和 [打包说明](packaging.md) 优先安装目录 data，未说明 Qbar 例外。
+### 13 Qbar 的 AppData 落点与当前约定不一致——成立，P3 已整改
+
+- 依据：[qbar_store.ahk](../lib/features/qbar/qbar_store.ahk) 原使用 A_AppData；[早期插件设计](2026-10-02-qbar-plugin-refactor-design.md) 原本明确指定此位置。当前 AGENTS.md 和 [打包说明](packaging.md) 优先安装目录 data，未说明 Qbar 例外。
 - 复核意见：不是已证实的存储故障。历史展示/加载 10 条不等于库只保存 10 条，但本轮也没有容量证据把它定为大型数据库问题。
 - 修改意见：统一数据目录归属、设计和备份/迁移说明。若迁入 data/qbar，由 store 检测新旧库冲突并验证迁移结果，不覆盖既有目标库、不删除旧库；若暂保留小型配置库例外，明确记录依据和用户迁移规则。
 
-**具体位置与建议改法**
+**实施状态：已完成代码与文档更新；仅作静态核查。**
 
-- 位置：[lib/features/qbar/qbar_store.ahk:12](../lib/features/qbar/qbar_store.ahk#L12) root/path/init（12–51）；[README.md:110](../README.md#L110) 的数据位置（110–116）；[docs/2026-10-02-qbar-plugin-refactor-design.md:221](2026-10-02-qbar-plugin-refactor-design.md#L221) 旧设计；[docs/packaging.md:73](packaging.md#L73) 安装可写与数据保留（73、83–94）；[tools/capslock_p2.iss:25](../tools/capslock_p2.iss#L25) 安装目录/权限和 46–85 资源清单。
-- 若实施统一落点，建议 store 唯一路径改为 A_ScriptDir/data/qbar/qbar.db，在打开目标库前由建议的 QbarStorePrepareDataPath() 集中判定；其他模块不自行迁移/读库。
-- 目标已存在就使用目标；旧库同时存在只提示/记录冲突，不合并覆盖。目标不存在而旧库存在时，采用 SQLite 一致性备份到新目录暂存文件，验证结构/关键表后以不覆盖方式发布；不能直接复制可能带热 journal 的单个 .db。
-- 迁移失败保留旧库及恢复所需文件并提示阶段；不能悄悄创建空库或隐式回退另一位置掩盖旧数据。安装目录不可写按当前要求引导用户选择可写目录；迁移规则和重试/中断恢复同步 README、设计和包装说明。
-- [lib/vendor/CSQLite.ahk:140](../lib/vendor/CSQLite.ahk#L140) LoadOrSaveDb()（140–173）会覆盖目标/删除临时文件，不能未经额外审查直接作为“安全迁移 helper”。安装器已有显式清单无需新增 data 文件或卸载删除项。
-- 此项仍可先只统一文档决策，实际迁移独立可审查实施。静态确认已有目标/旧库均不会被覆盖删除、路径归 store；带 journal、并存两库、目录只读和更新保留需后续运行确认。
+- [lib/features/qbar/qbar_store.ahk:12](../lib/features/qbar/qbar_store.ahk#L12) 将唯一路径改为 `A_ScriptDir\data\qbar\qbar.db`；[QbarStorePrepareDataPath()](../lib/features/qbar/qbar_store.ahk#L82) 在打开数据库前集中处理旧库迁移与并存冲突。其他 Qbar 模块仍通过 store 读写。
+- 目标库已存在时直接选目标库；若旧库也存在，[QbarStoreLogPathConflict()](../lib/features/qbar/qbar_store.ahk#L125) 记录两条路径，并由 [QbarStoreValidateExistingTarget()](../lib/features/qbar/qbar_store.ahk#L144) 只读验证目标库完整性、外键、必需表和 schema version。验证失败则停止初始化、提示两处路径并保留两库，不会将旧库覆盖或合并到无效目标。目标不存在且无旧库时才创建新数据库。
+- 仅旧库存在时，[QbarStoreBackupLegacyDatabase()](../lib/features/qbar/qbar_store.ahk#L195) 通过 SQLite 官方 `sqlite3_backup_init/step/finish` API 备份至新目录的独立暂存文件；[QbarStoreVerifyBackup()](../lib/features/qbar/qbar_store.ahk#L269) 检查源库和暂存库的 `PRAGMA integrity_check`、`PRAGMA foreign_key_check`、9 张必需表及每张表记录数。验证和连接关闭成功后，使用 `MoveFileW` 同目录发布；该调用目标存在时失败，不覆盖目标。迁移中断或失败会保留旧库和已生成的暂存文件，不进入新库创建路径，也不回退 AppData。
+- [QbarStoreInit()](../lib/features/qbar/qbar_store.ahk#L21) 在创建、打开、初始化或迁移失败时记录具体阶段与底层原因，并以 `ShowMsg()` 提示用户检查安装目录写权限/空间后重试；目标库失败时不会偷偷改用旧库。并存时以目标为准的冲突写入 DebugLog。
+- 用户说明见 [README.md:110](../README.md#L110) 与 [README.md:120](../README.md#L120)；设计路径和迁移规则见 [docs/2026-10-02-qbar-plugin-refactor-design.md:224](2026-10-02-qbar-plugin-refactor-design.md#L224)；早期 JSON 历史计划已注明被当前数据库设计取代，见 [docs/2026-09-28-qbar-history-plan.md:7](2026-09-28-qbar-history-plan.md#L7)；安装数据保留和迁移行为见 [docs/packaging.md:94](packaging.md#L94)；架构概览见 [docs/architecture.md:204](architecture.md#L204)。
+- 静态核查 Inno Setup [tools/capslock_p2.iss:25](../tools/capslock_p2.iss#L25) 安装目录、[46–85 行](../tools/capslock_p2.iss#L46) 显式 `[Files]` 清单：未列入 `data\`，脚本没有 `UninstallDelete`，因此无需改变安装器。检查 [lib/vendor/CSQLite.ahk:140](../lib/vendor/CSQLite.ahk#L140) 的 `LoadOrSaveDb()`（140–173）会覆盖发布目标并删除暂存文件，故未复用；Qbar store 使用官方备份 API 并自行无覆盖发布。
+- **未运行程序、脚本或测试。** AppData 含 WAL/journal 时的真实备份、安装目录只读、并发目标出现及升级/卸载保留行为均未做运行验证；旧库和数据库路径状态的判断只基于静态源码审查。
 
 ### 14 Everything 查询的 ES 开关边界——原论证撤回，保留 P2 参数边界问题
 
@@ -208,11 +251,13 @@
 
 **具体位置与建议改法**
 
-- 唯一构造点：[lib/features/qbar/qbar_everything.ahk:118](../lib/features/qbar/qbar_everything.ahk#L118) QbarEsStartProcess()（118–162，131–137 query/command）；probe/search 链在 19–36、88–116 和 229–285。输入链为 [lib/features/everything/everything_panel.ahk:85](../lib/features/everything/everything_panel.ahk#L85) → [lib/features/everything/everything.ahk:161](../lib/features/everything/everything.ahk#L161) BeginQuery/RunQuery（161–213），分类表达式由 71–82 BuildQuery() 生成。
+- 唯一构造点：[lib/features/qbar/qbar_everything.ahk:118](../lib/features/qbar/qbar_everything.ahk#L118) QbarEsStartProcess()（118–159，132 query、133–134 command）；probe/search 链在 19–36、88–116 和 229–285。输入链为 [lib/features/everything/everything_panel.ahk:85](../lib/features/everything/everything_panel.ahk#L85) → [lib/features/everything/everything.ahk:161](../lib/features/everything/everything.ahk#L161) BeginQuery/RunQuery（161–213），分类表达式由 71–82 BuildQuery() 生成。
 - 保留 probe query="1"、普通 query=arg；移除当前 queryArg 的 probe/空/nonempty 三分支，所有固定客户端选项之后统一追加 " -search* " + query。
 - exe、instance、CSV 目标仍用现有各自路径引用；-search* 必须是最后一个客户端选项，其后原样保留 Everything 的短语引号、OR、<…> 分组和分类表达式，不能再拼 limit/export 等选项。
 - 页面、分类和 Qbar alias 入口不再整体 quote/反斜杠变换，也不删除看似 ES 开关的搜索文本；边界只在客户端命令构造处处理，避免破坏合法搜索语法。
 - 保留 limit+1 截断判断、后端 probe/切换、job seq、取消/重试/超时与 CSV 解码。静态确认每个 ES search/probe 构造都在 -search* 后放 query，之后没有选项拼接；空查询、短语和看似 -n/-export-csv 的文本需后续运行确认。
+
+**实施状态：已完成代码修改，静态核查通过。** `lib/features/qbar/qbar_everything.ahk` 已移除 probe/空值/普通查询各自构造的 `queryArg`，probe 固定使用 `1`、普通查询保留原始 `arg`，并在全部 ES 客户端选项（含导出路径）之后统一追加 `-search*`。静态检查确认 query 不再整体引用或变换，`-search*` 后没有其他客户端开关拼接；探测/搜索仍共用原 job 生命周期与 CSV 导出流程。遵守项目约束，未运行程序、脚本或测试；空查询、短语引号和看似开关的搜索文本仍待允许运行时验证。
 
 ### 15 插件修改缺少设置和身份关系校验——成立，P2
 
@@ -222,13 +267,19 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/qbar/qbar_plugin_host.ahk:146](../lib/features/qbar/qbar_plugin_host.ahk#L146) apply（146–204）、254–268 bool、270–349 create；[lib/features/qbar/qbar_plugin_catalog.ahk:162](../lib/features/qbar/qbar_plugin_catalog.ahk#L162) search/run schema（162–199）；[lib/features/settings.ahk:143](../lib/features/settings.ahk#L143) create/独立保存/clipboard 校验（143–312）、607–731 整体保存；页面 [pages/settings.html:1520](../pages/settings.html#L1520) 创建提交、1558–1686 schema 编辑/提交。
+- 位置：[lib/features/qbar/qbar_plugin_host.ahk:155](../lib/features/qbar/qbar_plugin_host.ahk#L155) apply（155–269）、[275](../lib/features/qbar/qbar_plugin_host.ahk#L275) 严格布尔、[333](../lib/features/qbar/qbar_plugin_host.ahk#L333) settings normalizer、[438](../lib/features/qbar/qbar_plugin_host.ahk#L438) patch/身份校验及 [595](../lib/features/qbar/qbar_plugin_host.ahk#L595) user-plugin create；catalog 的 search/run schema 在 [lib/features/qbar/qbar_plugin_catalog.ahk:162](../lib/features/qbar/qbar_plugin_catalog.ahk#L162)。入口为 [lib/features/settings.ahk:147](../lib/features/settings.ahk#L147) create、[172](../lib/features/settings.ahk#L172) 独立保存及 [642](../lib/features/settings.ahk#L642) 整体保存；页面为 [pages/settings.html:1522](../pages/settings.html#L1522) 创建提交、[1565](../pages/settings.html#L1565) schema 编辑与 [1689](../pages/settings.html#L1689) 独立保存。
 - 建议新增 PreparePluginChanges(raw,&patches,&error) 与 NormalizePluginSettings(definition,raw,&settings,&error)，先提取可写 patch、全批次验证后才 BEGIN。可写项限 pluginId、enabled、displayName、settings、commandId/aliases；definition/handler/schema 只取 catalog/registry 的真实记录，页面展示字段不写库。
 - 插件和命令均须存在且未退休，command 真正 pluginId 与请求对象一致，不以命名空间前缀替代归属检查。布尔使用严格解析，非法值不默认转 false；复用 alias 归一化/冲突保留，不禁止不同命令别名相同。
 - 统一必填字符串、{q} template、非空 command、enum/bool/整数范围规则，复用现 clipboard 严格规则并覆盖整体保存入口。独立工具须在 settings 第 194 行写 INI 之前验证；整体保存须在第 681/698 行写盘之前验证，与第 03 项接线。
 - create 也走同一 normalizer，保留宿主生成稳定 ID 及只允许 search/run。**第三次复核补充：**页面创建第 1526–1527 行同时补 template/command，先改成只提交当前类型字段，才能在宿主拒绝 settings 未知字段；编辑页用既有 AppDialog 显示即时错误，仍以宿主检查为准。
 - registry Build 的数据库 settings 也经 normalizer，坏数据禁用对应可执行命令并记录诊断；保存后的 ClipboardHistoryOnPluginSettingsChanged() 等通知不能遗漏。run schema 第 191 行声明 append/replace，但执行不消费 argumentMode、create 强制 append；最小方案明确当前仅支持 append，不把 enum 通过误写成 replace 已实现，不顺便开发新模式。
 - 静态确认新建/独立/整体/DB加载同规则，未验证前不写任何存储，readonly ID不可覆写。无 {q}/空模板、整体 clipboard、跨插件 ID及配置后的通知需后续运行确认。
+
+**实施状态：已完成代码修改并静态复核。** `QbarPluginHostPreparePluginChanges()` 先从页面对象提取可写 patch，再按当前注册表核实插件、命令及其归属；只接收已存在且未退役的 commandId，不读取页面传入的 definition、handler 或 schema。显示名称、布尔值、setting schema、别名列表都在进入 store 前校验和规范化；schema 拒绝未知字段，URL 模板要求 `{q}`，命令行不能为空或含换行，枚举/布尔/整数按 catalog 限定。别名只在同一命令内按大小写与连续空白归一后去重，不因其他命令存在同名别名而拒绝，因此注册表仍能保留全部冲突候选。
+
+新建、独立工具保存与整体设置保存都先执行预校验；新建页面只发送当前工具类型的 schema 字段。`QbarRegistryBuild()` 也用同一 normalizer 检查从数据库读到的设置，错误设置或不匹配 catalog 的定义会让相应命令停用并写诊断日志，不会执行页面或数据库提供的 handler。整体设置保存路径在任何配置写入之前校验插件变更。
+
+静态复核检查了创建、独立保存、整体保存、DB registry 构建及执行 handler 白名单调用点，并确认普通字段修改不会把页面展示字段写回数据库。未运行 AHK、应用、脚本或测试；各设置值与 WebView 消息的运行时类型、数据库坏数据修复体验和多候选实际排序仍未运行确认。独立 Qbar 保存同时写 INI 与插件数据库时的部分提交回执及页面草稿基线仍由第 03 项处理；火山/搜索模板错误提示的多语言一致性也尚未做运行验证。
 
 ### 16 dynamicProviders 尚未接通查询执行——成立，P2 扩展架构落差
 
@@ -246,6 +297,14 @@
 - 第一次执行和历史最终共用动作层，但外层只一次 Remember/usage；Notes/Settings 的延后成功回调单独接入，避免第 11 项双计数。当前隐藏的 fallback 工具不随整理变成新用户开关。
 - 本项依赖 10/11/12/15，适合实际新增动态工具前实施。保留缓存/预热、拼音、重名排序、路径浏览与静态设置 fallback；静态确认 dynamicProviders 真正被消费且新增 adapter 不改页面/hotkey 业务，实际搜索/排序/定位/统计仍待运行确认。
 
+**实施状态：已完成代码修改并静态复核。** `QbarRegistryDynamicProviderByHandler()` 现在消费 RegistryBuild 收集的已启用 fallback command，适配点仍使用 catalog 中的稳定 `handlerId`，不新增数据库 provider 名称或第二套注册表。`QbarAllItems()` 为开始菜单快照附加当前 `builtin.start-menu.open` 的 commandId、pluginId 和规范化快捷方式路径 candidateKey；文件夹浏览与 Everything 导入结果通过 `builtin.open-path` adapter 保存宿主路径；用户输入的文件/网址通过 `builtin.open-path` / `builtin.open-url` adapter 进入现有注册执行入口。
+
+`QbarExecuteRegistered()` 的 start-menu handler 已执行受信快照中的 `.lnk` 与 exe，路径 handler 保留 Ctrl+Enter 定位，URL handler复用既有打开动作。候选 payload 只从第 10 项宿主快照生成，页面不负责路径解析。注册表存在但 provider 被禁用或无效时，索引不显示其动态候选、输入执行也会拒绝；仅在 SQLite registry 不可用时保留原静态 host fallback。已预热的 StartMenuItems 缓存、拼音/首字母筛选与输入路径行为保留。
+
+动态 candidateKey 用规范化路径关联到 provider commandId；QbarUsageInfo、Store 使用记录和历史重放使用相同的 `usageKey + candidateKey`，删除/禁用授权由第 11 项历史门控制。首选动作都调用 `QbarExecutionRememberRegistered()`，成功历史和使用频率各记录一次；Notes/Settings 延后成功回调未改动。
+
+静态核查确认 `dynamicProviders` 有唯一消费者、开始菜单不再命中 handler 的 `return false` 空实现、开始菜单/文件/文件夹候选执行使用宿主 payload，注册可用时没有绕过禁用状态的 host 直执行分支。按项目约束未运行 AHK、程序、脚本或测试；实际开始菜单索引、排序、Ctrl+Enter、文件打开和候选统计仍未运行验证。
+
 ## 翻译与词典
 
 ### 17 互译回退、方向显示与旧说明分叉——需重写原结论，P2
@@ -256,11 +315,13 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/translate/translate.ahk:152](../lib/features/translate/translate.ahk#L152) resolver（152–214，187–206 回退）；[lib/features/translate/llmTranslate.ahk:221](../lib/features/translate/llmTranslate.ahk#L221) SetDirection()、305–356 请求方向传递及 325–329 旧 needsDirection 分支；[pages/translate.html:517](../pages/translate.html#L517) setDirection()（517–528）、551–577 输入/手选/交换。
+- 位置：[lib/features/translate/translate.ahk:152](../lib/features/translate/translate.ahk#L152) resolver（152–219，190–210 回退）；[lib/features/translate/llmTranslate.ahk:217](../lib/features/translate/llmTranslate.ahk#L217) SetDirection() 及 314–323 请求方向传递；[pages/translate.html:509](../pages/translate.html#L509) setDirection()（509–519）、402–414 新原文/手动选择和交换（545–570）。
 - 保留目标 A 自动回退，在 resolver 结果增加 fallback 标志或 basis 字段，区别“识别到 B”与“默认按 B→A 处理”；通过 LLMTranslateSetDirection() 传入页面，不把第三语言伪装成已识别 B。
 - 最小展示方案是在现有来源控件附近固定显示“来源未确定，默认译为 A”，B/A 仍作为可手选/交换的默认控件值。不要仅写到 loading/ready 随后覆盖的状态栏。手选/交换清除标记，新原文、setSource()（397–416）及设置快照也清除旧标记。
 - 不要只把宿主 sourceLanguage 改为 auto：页面第 519–521 行当前拒绝该值，手动校验和交换也以具体语言为契约。上述标志方案无需扩大 provider 来源参数或增加第三种配置语言。
 - **再次复核补充：**[README.md:215](../README.md#L215) 第 215–217 行仍宣称识别不确定需手动选择；[docs/architecture.md:99](architecture.md#L99) 第 99–103 行也写不发 API，不只是旧计划。同步这些说明及 [docs/2026-09-28-translation-modes-plan.md:130](2026-09-28-translation-modes-plan.md#L130) 的当前实施契约。当前 resolver 不返回 needsDirection，相关分支/API应明确退役或写清保留用途。
+
+**实施状态：已完成代码与说明同步，静态核查通过。** `TranslateResolveDirection()` 对识别不确定或语言对外来源添加 `fallback=true`，仍以 A 为默认目标；`llmTranslate.ahk` 将该标记传给页面，并移除了当前无生产者的 `needsDirection` 分支。`pages/translate.html` 在语言栏下方常驻显示本地化回退说明；新原文、设置更新、手动选方向或交换后清除旧提示。README、架构说明和原计划均已同步当前行为。静态检索确认没有 `setNeedsDirection`/`LLMTranslateSetNeedsDirection` 调用。未运行程序、脚本或测试；各 provider、切换语言和失败路径的实际显示待允许运行时确认。
 - 静态确认：未知/语言对外输入仍 ready 且目标 A，但不再显示为“已识别 B”；识别成功和手动请求不带 fallback，provider target code/sign/prompt 不改。
 
 ### 18 有道/火山同步请求——部分成立，P2 响应风险
@@ -271,12 +332,18 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/translate/youdaoTranslate.ahk:24](../lib/features/translate/youdaoTranslate.ahk#L24) 主请求（24–135，87–100 同步 HTTP、268–294 glue/test/注册）；[lib/features/translate/volcengineTranslate.ahk:32](../lib/features/translate/volcengineTranslate.ahk#L32) 分批/换行（32–107）、112–213 单批签名/响应（158–175 同步 HTTP）、254–282 glue/test。宿主 [lib/features/translate/llmTranslate.ahk:292](../lib/features/translate/llmTranslate.ahk#L292) 取消/启动/完成（292–385），provider 契约 [lib/features/translate/translate.ahk:8](../lib/features/translate/translate.ahk#L8)。
-- **取消接口必须一起改：**面板现在把 provider 返回值当 LLM 数值 streamId，取消时调用 LLMAbortChatStream()。翻译局部活动请求应改为 Cancel() operation；LLM adapter（404–413）包装已有流 ID 调用 LLMAbortChatStream(id)，AI 聊天的直接 ID 接口可保留。streaming 只决定逐段 UI，不再表示是否可取消/异步。
-- 复用第 04 项异步 HTTP 层。有道只把 Send 后解析移到完成回调；保留 v3 salt/sign、form 编码、全文换行、6000 UTF-8 字节检查、from=auto、目标代码及格式化。
-- 火山 operation 保存 lines、segments、批次位置、translated、当前 HTTP operation 和终态；成功一批后才启动下一批，保留 16 条/4500 字符预算、逐批签名及最终换行重建。Cancel 同时失效队列与 Abort 当前请求；失败不再发后续批次，不增加并行批次或线程。
-- InvalidateRequest() 先递增 requestId，再 Cancel 旧 operation。StartRequest() 第 351–353 行先接收局部 operation，只有 requestId/running 仍当前才发布，否则立刻取消，避免参数错误回调与返回赋值竞争。完成只一次，并保持 requestId 守卫；有道/火山 test 同时改为回调接口。
-- 总截止时间若有需求在 operation 中独立定义、每批检查剩余时间；四阶段 timeout 不等于总时限。静态确认非流式 provider 不触发 SSE UI，签名仍归 provider，取消后的队列无新请求；真实取消时序/端到端耗时仍待运行确认。
+- 位置：[lib/features/translate/youdaoTranslate.ahk:23](../lib/features/translate/youdaoTranslate.ahk#L23) `YoudaoTranslateAsync()`、[89](../lib/features/translate/youdaoTranslate.ahk#L89) 响应解析、[266](../lib/features/translate/youdaoTranslate.ahk#L266) provider 接口；[lib/features/translate/volcengineTranslate.ahk:27](../lib/features/translate/volcengineTranslate.ahk#L27) `VolcengineTranslateAsync()`、[72](../lib/features/translate/volcengineTranslate.ahk#L72) 串行批次、[137](../lib/features/translate/volcengineTranslate.ahk#L137) 换行重建、[180](../lib/features/translate/volcengineTranslate.ahk#L180) 单批签名、[215](../lib/features/translate/volcengineTranslate.ahk#L215) 响应解析、[303](../lib/features/translate/volcengineTranslate.ahk#L303) provider 接口。宿主 [lib/features/translate/llmTranslate.ahk:289](../lib/features/translate/llmTranslate.ahk#L289) 失效、[302](../lib/features/translate/llmTranslate.ahk#L302) 启动/完成、[448](../lib/features/translate/llmTranslate.ahk#L448) Hide / [457](../lib/features/translate/llmTranslate.ahk#L457) Shutdown；provider 契约 [lib/features/translate/translate.ahk:8](../lib/features/translate/translate.ahk#L8)；传输 [lib/shared/llm.ahk:516](../lib/shared/llm.ahk#L516)。
+- **取消接口已统一：**翻译控制器保存 provider operation 并调用 `Cancel()`；LLM adapter `TranslateLlmStartStream()` 用 `LLMChatStreamOperation()` 包装底层流 ID，AI 聊天原数值 ID 接口保留。`streaming` 只决定逐段 UI，不再决定是否异步或可取消。
+- 有道完成后解析沿用第 04 项共享传输；v3 salt/sign、POST form、全文换行、6000 UTF-8 字节检查、`from=auto`、目标代码和结果格式化均保留。
+- 火山 owner operation 保存 lines、segments、批次位置、translated、当前 HTTP child 和终态；单批最多 16 条，通常按 4500 字符累计预算组合，每批独立签名，成功后才串行启动下一批，最后按原换行结构重建。单条超过预算的行仍会作为一个 segment 单独发送，不在本项中擅自拆句；后续须确认接口限制和拆分策略。Cancel 会失效 owner 并 Abort 当前 child；失败或取消都不会发后续批次，没有引入并行或线程。
+- InvalidateRequest() 先递增 requestId、清空 operation、重置 running，再 Cancel 旧 operation。StartRequest() 先安装宿主 owner operation 再启动 provider；完成回调绑定 requestId 与 owner，通过 `SetCancel()` 把 child 接入。操作已完成/取消时，后续 child 返回不会覆盖 owner；取消后接入 child 会立即将其取消。火山批次只在前一批成功后推进。有道/火山 test 同步采用回调接口。
+- 总截止时间仍未定义；各请求保留 20 秒网络阶段 timeout，不能当作整个多批请求的总时限。静态确认非流式 provider 不触发 SSE UI，签名仍归 provider，取消后的队列无新请求；真实取消时序/端到端耗时仍待运行确认。
+
+**实施状态：代码已完成，静态核查通过；未运行程序、脚本或测试。** `youdaoTranslate.ahk` 与 `volcengineTranslate.ahk` 已把 translate/test 接口改为异步回调并返回幂等 `Cancel()` operation；共享传输使用 `lib/shared/llm.ahk` 现有 WinHTTP sink 和事件队列，不另建 COM vtable。有道仍使用 v3 签名、POST form、`from=auto`、目标语言映射、保留换行和 6000 UTF-8 字节上限；HTTP/API/JSON/空译文错误仍有用户反馈。火山仍逐批最多 16 条，通常按 4500 字符预算组合、每批新签名、串行发送并停在首错；返回分段数量不符会作为失败处理。重建按输入行索引插入换行，能保留前导、连续和尾部空行；取消会中止当前批并阻止后续批次。
+
+`translate.ahk` 已明确 provider `translate(text,onDelta,onFinished,overrides) -> operation` 与 `test(msg,onFinished) -> operation` 的异步契约。`llmTranslate.ahk` 改为保存取消 operation；InvalidateRequest 先递增请求身份、清空当前 operation，再取消旧请求。新翻译回执仍校验请求身份，旧回调不会写入新翻译或已关闭页面。`settings.ahk` 的 provider 测试同样通过设置测试代次与取消句柄管理新旧测试。
+
+**静态核查与未运行边界：**检索并检查了 provider 所有调用点，确认设置测试不再同步等待，非流式有道/火山不走 SSE；请求使用异步 `Open(..., true)` 和共享回调释放路径，没有 `WaitForResponse` 或轮询。复核了有道签名/form/source/字节校验及火山签名字段、批次推进、首错停止和换行重建。火山单条超 4500 字符的 segment 未拆分，真实 API 对其上限的响应仍需确认。按项目约束，未运行 AHK 语法验证、应用、脚本或测试；COM 事件真实时序、Cancel 与响应同时到达、真实 API 签名/响应、批次耗时和页面生命周期仍需后续获准运行时核实。各阶段仍为 20 秒网络 timeout，没有新设总截止时间。
 
 ### 19 翻译语言目录多处维护——成立，P3 一致性建议
 
@@ -293,20 +360,25 @@
 - schema 在配置文件中早于 translate 文件包含（入口 18/32 行），只能在函数实际调用时派生目录，不新增包含时的跨文件初始化依赖。provider target code 映射和不支持语言提示留在各 provider。
 - 静态确认稳定代码只声明一次，两页和 schema 同源；system、手动不同语言校验及现有 provider 能力不扩大。
 
-### 30 词典联想 SQL 没有处理单引号——成立，P2 功能缺陷
+### 30 词典联想 SQL 没有处理单引号——成立，已修复，P2 功能缺陷
 
-- 依据：[dictionary.ahk](../lib/features/dictionary.ahk) 允许内部撇号，精确查询有 SQL 引号转义；联想 LIKE 与 REGEXP 却直接拼接该文本，DictionarySqlLikeEscape() 只处理 LIKE 通配符。GetTable() 失败被忽略。
-- 复核意见：带撇号的合法查询能产生无效 SQL，建议缺失有确定语法依据，无需把它扩大成脚本注入结论。
+- 依据（整改前）：[dictionary.ahk](../lib/features/dictionary.ahk) 允许内部撇号，精确查询有 SQL 引号转义；联想 LIKE 与 REGEXP 却直接拼接该文本，DictionarySqlLikeEscape() 只处理 LIKE 通配符。原 GetTable() 查询失败被忽略。
+- 复核意见：整改前带撇号的合法查询能产生无效 SQL，缺陷有确定语法依据，无需把它扩大成脚本注入结论。
 - 修改意见：复用现有 CSQLite 的 Prepare/Bind/Step 能力，将 LIKE 文本和 REGEXP 模式作为参数绑定；模式构建只负责搜索语义。给查询失败增加不含原文的诊断，避免再增加一套混合 SQL/LIKE 转义封装。
 
-**具体位置与建议改法**
+**具体位置与落实内容**
 
-- 位置：[lib/features/dictionary.ahk:24](../lib/features/dictionary.ahk#L24) 合法词规则（24–29）；[lib/features/dictionary.ahk:326](../lib/features/dictionary.ahk#L326) 三层 SQL（326–355）、358–374 Collect、377–396 模式函数；可选精确查询 55–81。已核对 [lib/vendor/CSQLite.ahk:257](../lib/vendor/CSQLite.ahk#L257) Prepare/Bind/Step/Finalize/ColumnText（257–329），只调用官方接口，不改 vendor。
-- 三层 SQL 改成固定文本和占位参数：prefix/contains 分别绑定 escaped + "%" 与 "%" + escaped + "%"；fuzzy 绑定首字母前缀和 DictionaryFuzzyPattern(word)。escaped 只处理 LIKE 通配符语义，单引号作为数据原样绑定，REGEXP 也必须绑定。
-- Collect 建议改为 DictionarySuggestCollect(db, sql, parameters, words, seen, cap, tier)。Prepare 返回 statement 指针或 0；BindText 参数从 1 开始；Step=100 读取一行，StatementColumnText(statement,0) 的列从 0 开始；Step=101 正常结束，其他返回码按错误处理。
-- 成功 Prepare 后用 try/finally Finalize，包括达到 cap 的早退、Bind 失败和 Step 错误；这些 API 不自动刷新 db.ErrorCode，日志应记录即时 stage/返回码而非上一次 ErrorCode。保留频率排序、NOCASE 行为、每层 LIMIT 24、最终 12 条、seen 去重和前后 session/query 守卫。
-- 日志只记 prefix/contains/fuzzy、prepare/bind/step、错误码及输入长度，不输出词/SQL；页面继续现有空候选/未收录状态。精确查询可以同次用单参数代替 safeWord 拼接，但不必为修联想重写整个 query 框架。
-- 静态确认合法词和 fuzzy 模式不参与 SQL 字面值拼接、statement 所有路径释放、模式与 SQL 参数各司其职。撇号破坏当前 SQL 的缺陷仍成立。
+- 位置：[lib/features/dictionary.ahk:24](../lib/features/dictionary.ahk#L24) 合法词规则；[DictionarySendSuggestions()](../lib/features/dictionary.ahk#L327) 三层查询；[DictionarySuggestCollect()](../lib/features/dictionary.ahk#L359) 准备、绑定和取行；[DictionaryFuzzyPattern()](../lib/features/dictionary.ahk#L448) 与 [DictionarySqlLikeEscape()](../lib/features/dictionary.ahk#L462) 分别构建正则和 LIKE 搜索模式。精确查询仍使用其原有引号处理，本项没有重写该查询。已核对 [lib/vendor/CSQLite.ahk:257](../lib/vendor/CSQLite.ahk#L257) Prepare、BindText、Step、Finalize 与 ColumnText 契约；未修改 vendor。
+- prefix/contains/fuzzy 三条联想 SQL 现为固定 SQL 文本。LIKE 参数分别绑定 `escaped . "%"` 与 `"%" . escaped . "%"`；fuzzy 将首字母前缀和 `DictionaryFuzzyPattern(word)` 分别绑定。`DictionarySqlLikeEscape()` 仅保留 LIKE 通配符语义，单引号作为参数数据传递，REGEXP 模式也不再拼进 SQL。
+- `DictionarySuggestCollect()` 以 `Prepare(sql . " LIMIT 24")` 创建语句，参数位置从 1 开始绑定；`StatementStep()` 返回 100 时按第 0 列读取一行，101 表示完成，其他状态视为失败。收集中的每层结果先暂存，仅在查询成功且 Finalize 成功后并入总候选，避免 Step/读取异常把半层结果带入后续候选。
+- Prepare 成功后的所有流程都处于 `try/finally` 中；达到候选上限、绑定失败、Step 失败或异常都会 Finalize。诊断仅记录 tier、stage、输入长度和 API 实际可用的结果：Prepare 可读到其 `ErrorCode`，BindText/Finalize 仅返回布尔值，Step 直接返回 SQLite 状态码；不读这些后续调用未更新的 `db.ErrorCode`，也不记录查询词、SQL 或正则文本。
+- 保留频率排序、LIKE/REGEXP 匹配语义、每层 `LIMIT 24`、最终 12 条、跨层去重及 session/query 前后检查。
+
+**实施状态：已完成（仅静态修改与核查；未运行程序、脚本或测试）**
+
+- 修改文件：[lib/features/dictionary.ahk](../lib/features/dictionary.ahk)；更新本节文档。未改页面、vendor 或精确查询。
+- 静态核查：三条 SQL 中不再拼接用户词或正则模式；每条 SQL 的占位符数与绑定参数数相符；LIKE 转义和三层查询顺序、排序及结果上限保留；每个成功 Prepare 后均进入 finally 调用 Finalize，失败层的暂存结果不会合并。`git diff --check` 通过。
+- 运行边界：按仓库约束未启动脚本/程序、未运行测试，故没有运行时验证撇号词的候选结果或各 SQLite 错误分支。
 
 ### 31 词典分层查询的潜在同步成本——部分成立，P3 待度量
 
@@ -332,12 +404,20 @@
 
 **具体位置与建议改法**
 
-- 解析入口：[lib/features/windows.ahk:23](../lib/features/windows.ahk#L23) LoadWindowBindings()（23–62）的 count 转换/Loop（39–55）；单项解析 [lib/features/windows.ahk:97](../lib/features/windows.ahk#L97)（97–105）；持久化 [lib/features/windows.ahk:197](../lib/features/windows.ahk#L197)（197–214）。
+- 解析入口：[lib/features/windows.ahk:23](../lib/features/windows.ahk#L23) LoadWindowBindings()；数量和索引校验在 [lib/features/windows.ahk:105](../lib/features/windows.ahk#L105) WindowBindingParseUnsigned()、[lib/features/windows.ahk:131](../lib/features/windows.ahk#L131) WindowBindingItemKeys()；单项句柄解析在 [lib/features/windows.ahk:171](../lib/features/windows.ahk#L171) ReadWindowBindingItem()；原子持久化从 [lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) SaveWindowBinding() 开始。
 - 数量先做非负整数字符串及可转换范围检查；按文件实际存在的合法 id_* 索引枚举并保持数值顺序，只消费声明 count 范围内的项，不按巨大 count 做空循环，也不简单 Loop Min(count,记录数) 丢掉稀疏索引。ReadWindowBindingItem() 验证 id 纯数值/指针范围，坏字段返回 0，读完整文件后再发布候选 WinBindings。
 - 失效但格式合法的 HWND（含可表示未打开的 0）仍保留有效 exe/path/class 元数据，后续恢复流程用它们找替代窗口；不能把失效句柄一律当坏格式而丢掉可找回绑定。两条当前有/无 count 分支都需要数值保护；本条不顺便添加旧格式迁移。
 - SaveWindowBinding() 改为一次准备完整内容并只复用 ConfigAtomicWrite() 文件替换能力，返回明确成功结果；不能调用带应用 ConfigSchema 校验的 ConfigWriteValue() 去写数字绑定段。序列化目标编号时清理该段已不用的旧 id/class/exe/path 项，其他编号的段保持原样。
-- **再次复核补充：**[lib/features/windows.ahk:261](../lib/features/windows.ahk#L261) BindWindowToItem()、[lib/features/windows.ahk:299](../lib/features/windows.ahk#L299) AddWindowToGroup()、[lib/features/windows.ahk:326](../lib/features/windows.ahk#L326) BindWindowToApplication() 都先更新内存、忽略 Save 的结果并提示“saved”。它们应在持久化成功后发布新绑定/提示成功，失败保留旧绑定；第 422/436 行的自动刷新保存也应检查结果，但不能因写盘失败撤销已经完成的窗口激活动作。
-- 静态确认：坏记录不会抛出到 Initialize()；成功/失败提示与持久化结果一致；启动仍可恢复单窗口、组和同应用三类绑定。
+- **再次复核补充：**当前调用点是 [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372) BindWindowToItem()、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411) AddWindowToGroup()、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) BindWindowToApplication()；原实现先更新内存、忽略 Save 结果并提示“saved”。要求是在持久化成功后发布新绑定/提示成功，失败保留旧绑定；自动刷新调用位于 [lib/features/windows.ahk:535](../lib/features/windows.ahk#L535) 和 [lib/features/windows.ahk:549](../lib/features/windows.ahk#L549)，写盘失败不能撤销已经完成的窗口激活动作。
+
+**实施状态：已完成代码修改和静态核查；未运行程序、脚本或测试。**
+
+- 已在 [lib/features/windows.ahk:23](../lib/features/windows.ahk#L23) 先解析完整 INI 到候选 Map，再一次替换 WinBindings；文件读取失败保留旧 Map。count 通过非负整数字符串及 Int64 可转换范围校验。id_* 按实际存在的索引枚举并按数值排序；有 count 时仅读取 1..count，没 count 时保留旧格式的 0 起始索引，不为巨大 count 循环。重复数字索引、越界/非法索引和非法句柄逐项跳过并 DebugLog。
+- [lib/features/windows.ahk:171](../lib/features/windows.ahk#L171) 对 HWND 做纯数字及当前指针宽度范围校验。数值合法但窗口已关闭（含 0）的记录仍带着 class/exe/path 加载，让既有窗口查找/替换流程继续恢复绑定。
+- [lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) 先在内存中生成整个绑定段，删除目标编号旧 section 后写回完整内容，通过 ConfigAtomicWrite() 替换；目标段的旧 id/class/exe/path 一并清除，其他 section 内容保留。保存函数返回成功/失败并将技术错误写日志，界面只提示保存失败。
+- [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372)、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411)、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) 的单窗口、窗口组、应用绑定现在先保存成功再发布到 WinBindings 并提示成功；自动恢复保存结果在 [lib/features/windows.ahk:535](../lib/features/windows.ahk#L535) 和 [lib/features/windows.ahk:549](../lib/features/windows.ahk#L549) 检查并记录失败，不撤销已完成的窗口激活。
+- 静态核查：代码调用链和引用位置已重新检索；针对源码的 git diff --check -- lib/features/windows.ahk 无空白错误。本项实际修改文件为 lib/features/windows.ahk 和本节文档。
+- 运行边界：依照 AGENTS.md 禁止启动或运行程序、脚本和测试，因此尚未验证 AHK 语法、实际 INI 原子替换、损坏文件恢复、窗口组/应用启动与失效 HWND 的运行行为。
 
 ### 22 快捷键条件与 handler 重复解析——部分成立，P3
 
@@ -436,6 +516,8 @@
 
 - 位置：[pages/chat.html:504](../pages/chat.html#L504) renderMarkdown()（504–514）；761–784历史/完成消息、791–800流式bubble、882–913完成渲染；1142–1148链接处理。
 - 当前自动加载若继续保留，只同步README的外部媒体说明，不必更改宿主/数据库。按需加载必须属于明确产品决定，不能当本次强制修复。
+
+**实施状态：已按当前行为补充用户说明。** `README.md` 现在说明 AI 回复中的 Markdown 图片会从原网站加载；保留现有自动加载策略，不增加代理、下载或媒体存储逻辑。页面渲染入口仍统一经过现有 `renderMarkdown()`。遵守项目约束，未运行程序、脚本或测试；真实外部请求时机没有运行时确认。
 - 若采用按需策略，集中在同一Markdown渲染/插入路径处理远程 src、srcset 及 picture/source 候选，使用现有本地化占位，用户选择后恢复已验证HTTP/HTTPS地址。处理须在进入可渲染聊天DOM前，不用load事件事后拦截。
 - 历史/完成/流式均用同一策略，流式重渲染保留本会话用户已选择的加载状态，避免每个delta丢失选择。保留marked/DOMPurify、纯文本回退、dataset.raw和复制原回答，不引入代理/新表。
 - 静态确认所有插入点共用renderMarkdown并覆盖srcset；解析/清理阶段是否提前发出资源请求及占位交互仍需后续网络运行确认。没有恶意外连/XSS的复现结论。
@@ -450,12 +532,14 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/shared/panelHost.ahk:12](../lib/shared/panelHost.ahk#L12) Create（12–60）、62–104 Ensure、106–121 navigation/message、127–136 URL/Navigate，以及 [lib/shared/panelHost.ahk:447](../lib/shared/panelHost.ahk#L447) 事件解绑（447–461）。
+- 修改位置：[lib/shared/panelHost.ahk:12](../lib/shared/panelHost.ahk#L12) `PanelHostCreate()`、[65](../lib/shared/panelHost.ahk#L65) `PanelHostEnsure()`、[111](../lib/shared/panelHost.ahk#L111) `PanelHostNavigationStarting()`、[130](../lib/shared/panelHost.ahk#L130) `PanelHostNavigationCompleted()`、[146](../lib/shared/panelHost.ahk#L146) `PanelHostWebMessageReceived()`、[168](../lib/shared/panelHost.ahk#L168) `PanelHostPageUrl()`、[181](../lib/shared/panelHost.ahk#L181) `PanelHostIsPageUri()`、[216](../lib/shared/panelHost.ahk#L216) `PanelHostNavigate()`，事件解绑在 [534](../lib/shared/panelHost.ahk#L534)。
 - PageUrl() 用 Windows 官方文件路径/URL 转换（如 UrlCreateFromPathW）生成编码正确的 file URL，避免安装目录中空格/中文/# 改变 URI 含义。共享判断仅接受该宿主的 file 页面，将 URI 还原/规范化路径后与 host.pagePath 比较；同文档 fragment 是否允许明确处理，不按字符串前缀放行整个目录。
 - WebMessageReceived() 在任何业务 callback 之前核对 args.Source；不附加 pageReady 前置条件，否则导航完成前发出的 ready/getSettings 会被误拒。业务 session/query/version 守卫仍由功能层负责。
 - Ensure() 注册 NavigationStarting 及成对 handler/token，非预期顶层文档 Cancel=true；仅允许导航才重置就绪/记录 NavigationId，完成时忽略被取消/过期导航。Detach/DestroyPage/失败清理同步注销新事件和清除导航状态，不新增 Frame 消息订阅。
 - [lib/features/qbar/qbar_notes.ahk:99](../lib/features/qbar/qbar_notes.ahk#L99) 的 qbar-notes.local 虚拟主机仅供图片子资源，不进入顶层页面来源允许列表，也不能被导航限制误禁图片。[pages/chat.html:1142](../pages/chat.html#L1142) 回答链接和宿主默认浏览器打开继续保留。
 - 静态确认 source判断先于callback、事件注册解绑成对、只接受确切本宿主页且媒体映射分离。file URI 实际编码/fragment及取消导航完成事件顺序仍需后续运行确认；本条不补造 frame 攻击路径。
+
+**实施状态：代码已完成，静态核查通过；未运行程序、脚本或测试。** [lib/shared/panelHost.ahk](../lib/shared/panelHost.ahk) 现在用 `UrlCreateFromPathW` 生成编码后的面板 file URL；来源校验将 `file:` URI 还原成本机完整路径后与当前 host 的 `pagePath` 比较，并允许同文档 fragment、不接受 query 或其他顶层来源。`WebMessageReceived` 在业务回调及共享光标消息之前核对 `args.Source`，不要求 `pageReady`。新增 `NavigationStarting` handler/token，拒绝非本页导航；只记录允许的 NavigationId，完成回调忽略拒绝或过期 ID，释放时成对解绑。没有增加 Frame 事件。笔记虚拟主机仍只用于图片子资源；聊天链接继续交由默认浏览器打开。实际 WebView2 文件 URL 规范化、片段导航和取消事件时序仍待允许运行后确认。
 
 ### 08 指针恢复约定、代码和历史调查不一致——成立，P2 约定落实
 
@@ -465,12 +549,14 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/app/core.ahk:1287](../lib/app/core.ahk#L1287) ShowSystemCursor()（1287–1296）；[lib/shared/panelHost.ahk:138](../lib/shared/panelHost.ahk#L138) Show（138–153）和117–121消息入口；聊天 [lib/features/aiChat.ahk:152](../lib/features/aiChat.ahk#L152) 显示、261–264消息；页面 [pages/chat.html:1237](../pages/chat.html#L1237) 80ms监听及237行节流变量。
-- 拟新增窄职责 pages/panel.js：只装一次 passive mousemove，performance.now() 约80ms节流，存在 chrome.webview 才发送 cursorMove。Qbar、笔记、聊天、翻译、词典、Everything、剪贴板和设置八个交互页均引用一次；移除聊天自己的监听/变量。
-- 宿主完成第07项source校验后集中消费 cursorMove，调用恢复函数并返回；聊天重复分支随之移除。PanelHostShow() 显示/激活时恢复。
-- **不能只改共享Show：**[lib/features/qbar/qbar.ahk:75](../lib/features/qbar/qbar.ahk#L75) QbarShow() 75–132经 [lib/features/qbar/qbar_panel.ahk:246](../lib/features/qbar/qbar_panel.ahk#L246) 的直接 Gui.Show 显示，需在激活118–120后恢复；[lib/features/clipboard/clipboard_panel.ahk:58](../lib/features/clipboard/clipboard_panel.ahk#L58) 已显示复用分支58–69也仅激活；[lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55) 原生模式切换重新激活同样覆盖。向外部应用粘贴的 WinActivate 不属于面板恢复入口。
+- 当前位置：[lib/app/core.ahk:1338](../lib/app/core.ahk#L1338) `ShowSystemCursor()`；[lib/shared/panelHost.ahk:224](../lib/shared/panelHost.ahk#L224) `PanelHostShow()`、[146](../lib/shared/panelHost.ahk#L146) 来源校验后消息分支。聊天原监听已删除；共享监听位于 [pages/panel.js:1](../pages/panel.js#L1)。面板专用路径分别在 [lib/features/qbar/qbar.ahk:120](../lib/features/qbar/qbar.ahk#L120)、[lib/features/clipboard/clipboard_panel.ahk:58](../lib/features/clipboard/clipboard_panel.ahk#L58) 和 [lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55)。
+- 已新增窄职责 [pages/panel.js](../pages/panel.js)：只装一次 passive mousemove，`performance.now()` 约 80ms 节流，存在 `chrome.webview` 才发送 `cursorMove`。Qbar、笔记、聊天、翻译、词典、Everything、剪贴板和设置八个交互页各引用一次；聊天自己的监听与节流变量已移除。
+- 宿主已在第 07 项来源校验后集中消费 `cursorMove`，调用 `ShowSystemCursor()` 并返回；聊天重复分支已移除。`PanelHostShow()` 显示时恢复。
+- **不能只改共享 Show：** [lib/features/qbar/qbar.ahk:75](../lib/features/qbar/qbar.ahk#L75) `QbarShow()` 经 [lib/features/qbar/qbar_panel.ahk:246](../lib/features/qbar/qbar_panel.ahk#L246) 的直接 `Gui.Show` 显示；当前在激活后调用恢复。剪贴板复用分支及 [lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55) 原生模式切换重新激活也已覆盖。向外部应用粘贴的 WinActivate 不属于面板恢复入口。
 - 保留现恢复函数“计数恰为0不回减、已经可见时平衡”的逻辑，不更改Windows全局偏好，不加轮询。[tools/capslock_p2.iss:55](../tools/capslock_p2.iss#L55) 逐项清单及 [docs/packaging.md:56](packaging.md#L56) 增加共享JS；旧调查5–9行与旧页面审查61–65行标为历史试验，不抹掉过去用户反馈。
 - 静态确认八页只有一份监听、显示/复用/模式切换均覆盖、message确实恢复、新JS已列包。真实键入后指针可见状态仍待后续运行确认。
+
+**实施状态：代码与历史记录已更新，静态核查通过；未运行程序、脚本或测试。** 八个交互页各引入 `panel.js`，聊天专有监听已移除；共享页面每约 80ms 最多发送一次 `{type:"cursorMove"}`。来源通过共享 host 校验后才会触发恢复。`PanelHostShow()`、Qbar 自行 `Gui.Show` 后的激活、剪贴板已显示复用分支及原生窗口模式重新激活路径都调用 `ShowSystemCursor()`。脚本已加入 Inno Setup 显式清单、打包说明和架构资源表；旧调查及页面审查已标为历史试验，保留用户先前反馈。实际键入后指针状态仍待运行确认。
 
 ### 20 Everything 动作缺失版本可通过——成立，P2 宿主契约缺口
 
@@ -480,11 +566,17 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/everything/everything_panel.ahk:95](../lib/features/everything/everything_panel.ahk#L95) action分支95–102；[lib/features/everything/everything.ahk:367](../lib/features/everything/everything.ahk#L367) FindResult()/HandleAction（367–402）、215–263版本发布；页面 [pages/everything.html:436](../pages/everything.html#L436) 菜单、481双击及618–619键盘动作。
-- 消息入口复用 [lib/shared/llm.ahk:162](../lib/shared/llm.ahk#L162) LLMMsgNumber(integerOnly=true)，要求解析成功且版本>0再排队。**再次复核修正：**现 Integer(version) 是转换，不是严格整数字符串验证；只能说无法转换/转换后不等于当前代次被拒，不能保证小数等非契约值一律拒绝。
-- FindResult() 去掉 version="" 默认值，严格拒绝缺失、非正整数或与 EverythingResultsVersion 不符，再按resultId查找。该函数目前只有HandleAction一个调用点，必须同步其参数；不能只在消息入口比较版本，因为timer执行前结果集可能变化。
-- 保留当前版本递增、结果ID、resultsInteractive、菜单 menuResultVersion快照和“结果已不可用”反馈，不为本项新建第二套候选快照。
-- 静态确认所有动作不能省略version，入队前严格解析，执行前再检查当前代次；正常页面仍发送它。菜单打开后刷新、排队间结果改变及文件动作反馈需后续运行确认。
+- 位置：[lib/features/everything/everything_panel.ahk:95](../lib/features/everything/everything_panel.ahk#L95) action分支95–104；[lib/features/everything/everything.ahk:368](../lib/features/everything/everything.ahk#L368) FindResult()/HandleAction（368–399）、164–190查询启动及250–263版本发布；页面 [pages/everything.html:436](../pages/everything.html#L436) 菜单、481双击及618–619键盘动作。
+- 消息入口复用 [lib/shared/llm.ahk:162](../lib/shared/llm.ahk#L162) LLMMsgNumber(integerOnly=true)，要求解析成功、结果为 Integer 且版本大于 0 才排队；定时回调接收解析后的整数，不传原始字符串。
+- FindResult() 去掉 version="" 默认值，拒绝非 Integer、非正数或与 EverythingResultsVersion 不符，再按 resultId 查找。该函数目前只有 HandleAction 一个调用点，必须同步其参数；不能只在消息入口比较版本，因为 timer 执行前结果集可能变化。
+- 新查询开始时立即推进结果版本，使旧菜单/旧结果动作失效；该查询成功后的结果发布使用此版本。这样队列中的旧动作即使在新搜索尚未返回时才执行，也不能操作旧结果。保留单调版本、结果 ID、页面 resultsInteractive、菜单 menuResultVersion 快照和“结果已不可用”反馈，不另建候选快照。
+- 静态确认所有动作不能省略 version，入口严格解析正整数，执行前再次比对当前代次；正常页面仍发送版本。菜单刷新、搜索失败时的交互以及真实文件动作反馈仍待运行确认。
+
+**实施状态：已完成（静态核查）**
+
+- 修改 [lib/features/everything/everything_panel.ahk](../lib/features/everything/everything_panel.ahk) 的 action 消息入口：复用 LLMMsgNumber(integerOnly=true)，仅将解析成功的正 Integer 版本绑定到延迟动作；缺失、格式非法、非正数或不能表示为 Integer 的版本不会入队。
+- 修改 [lib/features/everything/everything.ahk](../lib/features/everything/everything.ahk)：每次新查询开始时推进 EverythingResultsVersion，查询结果沿用该代次发布；EverythingFindResult() 改为必须传入版本，并在扫描结果前拒绝非正 Integer 及非当前版本。延迟动作因此会在新查询开始或结果更新后被拒绝，原有“结果已不可用”反馈保留。
+- 静态核查：动作入口唯一绑定到 EverythingHandleAction；FindResult 只有该调用点且无默认版本；页面菜单、双击和键盘动作都发送 resultsVersion；查询开始、空结果发布、普通结果发布使用一致的递增代次。未运行 AHK、程序、脚本或测试；WebView 消息时序、搜索期间页面反馈和实际文件动作仍未运行验证。
 
 ### 32 Everything pageReady 镜像——成立，P3 简化
 
@@ -494,11 +586,13 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/everything/everything.ahk:11](../lib/features/everything/everything.ahk#L11) 镜像全局、87/129–132 Show判断、136–152 PendingOpen、355–360 Focus；[lib/features/everything/everything_panel.ahk:43](../lib/features/everything/everything_panel.ahk#L43) navigation43–61、ready80–83及失败/关闭维护；[lib/features/everything/everything_actions.ahk:141](../lib/features/everything/everything_actions.ahk#L141) 反馈就绪门141–147。
+- 修改前的镜像位于 [lib/features/everything/everything.ahk:11](../lib/features/everything/everything.ahk#L11)，现已删除；当前 Show 的统一就绪门在 [everything.ahk:128](../lib/features/everything/everything.ahk#L128)，PendingOpen 与 Focus 的 Host 检查分别在 135–142、356–360。导航回调和 ready 握手在 [everything_panel.ahk:41](../lib/features/everything/everything_panel.ahk#L41)、76–80；反馈就绪门在 [everything_actions.ahk:141](../lib/features/everything/everything_actions.ahk#L141)。
 - 当前ready无额外异步依赖，最小方案统一Host来源：移除EverythingPageReady的全局、复制/复位；Show/反馈改查PanelHostPageReady(EverythingHost)，navigation用局部pageReady完成日志和分支。
 - ready分支保留EverythingBeginPendingOpen()触发，只去掉:=true；Host未就绪时该函数会返回，navigation完成后仍会触发，所以两个推进路径都需要保留。[pages/everything.html:639](../pages/everything.html#L639) applyLanguage后发送ready仍在。
 - 保留PendingOpen/PendingText/OpenSerial、焦点timer及IconSent重置，Execute仍经PanelHostExecute。与第27抽脚本结合时必须维持原classic script时机。
 - 静态确认全仓无镜像引用，pending仅消费一次，ready和navigation都可推进请求；隐藏销毁重建及连续打开顺序待运行确认。本条不意味着当前缺少最终执行就绪保护。
+
+**实施状态：已完成代码简化，静态核查通过。** 已移除 `EverythingPageReady` 全局及导航、ready、隐藏/关闭时的复制和清零；Show、反馈与焦点判断统一读取 `PanelHostPageReady(EverythingHost)`。导航回调仍依据 PanelHost 就绪结果处理图标和待打开请求；ready 消息仍触发 `EverythingBeginPendingOpen()`，Host 未就绪时请求会保留并由导航回调继续推进。静态搜索确认无 `EverythingPageReady` 引用，页面 ready 握手、PendingOpen 序号和 `PanelHostExecute` 门仍在。未运行程序、脚本或测试；事件次序、隐藏重建和连续打开待后续运行确认。
 
 ### 27 设置/剪贴板/聊天大页面——部分成立，P3 结构建议
 
@@ -536,10 +630,12 @@
 
 **具体位置与建议改法**
 
-- 位置：[pages/windowbar.js:107](../pages/windowbar.js#L107) setPinned()（107–115）已处理class/aria-pressed；[pages/chat.html:406](../pages/chat.html#L406) applyPinnedState()（406–414）和 [pages/translate.html:288](../pages/translate.html#L288)（288–297）重复处理。
+- 位置：[pages/windowbar.js:107](../pages/windowbar.js#L107) setPinned()（107–115）已处理class/aria-pressed；[pages/chat.html:406](../pages/chat.html#L406) applyPinnedState()（406–412）和 [pages/translate.html:293](../pages/translate.html#L293)（293–301）重复处理。
 - 最小修改移除chat第409–410与translate第295–296行的重复class/aria写入，保留WindowBar.setPinned()；页面继续更新本地化title、aria-label、data-label，translate pinned变量/dataset.i18n/语言切换也保留。
 - [pages/dictionary.html:379](../pages/dictionary.html#L379) 与 [pages/everything.html:363](../pages/everything.html#L363) 的标签处理符合页面职责，不为消除两行post新增通用bridge。第08共享光标脚本也不接管业务payload/session/路由。
-- 保留chat第1250–1252行宿主setPinned支持的参数格式、WindowBar.init幂等/拖动/窗口操作。静态确认class/aria所有者只有WindowBar而页面文字仍随语言更新，协议不变；屏幕阅读/置顶真实展示需运行确认。
+- 保留chat第1248–1250行宿主setPinned支持的参数格式、WindowBar.init幂等/拖动/窗口操作。静态确认class/aria所有者只有WindowBar而页面文字仍随语言更新，协议不变；屏幕阅读/置顶真实展示需运行确认。
+
+**实施状态：已完成，静态核查通过。** `pages/chat.html` 与 `pages/translate.html` 的 `applyPinnedState()` 现在只调用 `WindowBar.setPinned()` 写 class/aria-pressed；页面仍更新自己的置顶/取消置顶文案与 title，消息协议不变。静态搜索确认 pin class 和 aria-pressed 只由 [pages/windowbar.js:107](../pages/windowbar.js#L107) 的共享方法写入。未运行页面；视觉及屏幕阅读器表现仍待运行确认。
 
 ### 33 设置动态列表一并渲染——部分成立，P3
 
@@ -569,10 +665,12 @@
 - 保留loading/error/stale不可执行、排序/图标缓存、菜单打开时menuResultId/menuResultVersion快照、Enter/Ctrl+Enter/Ctrl+C/方向键。空白容器右键不被结果行委托接管。
 - 静态确认render不再创建四类监听、容器注册一次、索引对应排序后列表、所有动作仍带版本；单双击顺序/子节点/排序后的真实行为与性能收益待运行确认。
 
+**处理状态：按复核建议保留现实现，本轮不改事件绑定。** 该项为可选整理，当前闭包实现清楚且没有监听开销证据；依项目约束不能运行性能测量，暂不以文件行数或监听数量推导瓶颈。静态确认现有监听仍走 `resultsInteractive`、结果版本及菜单快照保护；后续页面整理若发现实际收益，再按本节方案改为委托。
+
 ## 后续修改顺序与实施边界
 
-1. 优先修复第 02、03、10、11、15、20、21、30 项的输入/保存/重放契约，以及第 12 项的提交发布一致性。
-2. 第 14 项按 ES 官方契约改方案；第 17 项同步后来的回退语义和用户说明。第 06、08、13 项统一历史保存、指针和数据目录说明。
+1. 继续优先修复第 02、03、10、11、15 项的输入/保存/重放契约，以及第 12 项的提交发布一致性；第 20、21、30 项已完成。
+2. 第 06、09、14、17 项已完成；第 08 项仍需统一指针约定，第 13 项正在迁移数据目录并同步说明。
 3. 第 16 项在实际新增动态工具前接通扩展边界；其余拆分、元数据集中和重复逻辑整理随相关功能变更实施。
 4. 第 04、18、25、26、31 项分别记录机制与待确认耗时。当前约束仍禁止运行程序/脚本及编写测试，性能测量只能在后续明确允许的工作中安排；本次没有新增诊断代码。
 
@@ -583,13 +681,13 @@
 
 | 批次 | 条目 | 应先完成的接口/边界 |
 | --- | --- | --- |
-| 独立的小范围正确性修复 | 02、20、21、30 | 配置读取结果、严格结果版本、窗口绑定解析/保存结果、词典参数绑定；彼此可独立实施。 |
+| 独立的小范围正确性修复 | 02、20、21、30 | 配置读取结果、严格结果版本、窗口绑定解析/保存结果、词典参数绑定；20、21、30 已完成，02 进行中。 |
 | Qbar 保存基础 | 12、15 | 先定义并统一插件规范化、关键读库成功结果、Build/Publish 与提交回执语义。 |
 | Qbar 执行与历史 | 10、11 | 复用上述真实 registry，补当前快照和直接稳定 ID 授权；先保留原动作层，避免记历史两次。 |
 | 设置部分提交反馈 | 03 | 依赖 02/12/15 的明确状态；宿主回执与页面基线更新必须同批，不能只改提示文案。 |
-| ES 参数与说明 | 14、06、17 | ES 边界可独立改；文案按当前真实分页/回退语义更新，不能恢复已主动改变的旧规则。 |
+| ES 参数与说明 | 14、06、17 | 已完成；文案按当前真实分页/回退语义同步，没有恢复已主动改变的旧规则。 |
 | 网络请求生命周期 | 04、18 | 非流式 HTTP、provider.test 和翻译 Cancel operation 同批接线；LLM SSE/AI 的既有 ID 接口只做局部 adapter。 |
-| 共享面板与资源 | 07、08、27、28、29、32、33、35 | 来源事件注册/解绑、八页脚本和显式安装清单成套；页面拆分/局部整理按需要逐步实施。 |
+| 共享面板与资源 | 07、08、27、28、32、33、35 | 来源事件注册/解绑、八页脚本和显式安装清单成套；页面拆分/局部整理按需要逐步实施；29 已完成，35 保留既有闭包。 |
 | 扩展及待度量整理 | 16、01、19、22–26、31、34、36 | 动态 adapter 依赖 10/11/12/15；性能项先有允许环境的耗时证据，结构项保留所有权和现有行为。 |
 
 每一批以文档中的“静态确认”作为代码审阅清单；它们是源码关系核对，不是新增测试。涉及网络、事件重入、窗口/指针或视觉的运行边界保持待确认，当前任务不实施这些验证。

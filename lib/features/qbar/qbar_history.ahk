@@ -41,12 +41,17 @@ QbarHistoryEnsureLoaded() {
     }
     if !QbarHistoryItems.Length && QbarStoreError = ""
         QbarHistorySeedInitialSettings()
-    for row in QbarStoreLoadUsageRows() {
-        if row.Has("usage_key")
-            QbarUsageItems[row["usage_key"]] := Map(
-                "score", QbarStoreFloat(row["score"], 0),
-                "lastUsedUtc", QbarHistoryStoreTime(row["last_used_at"]),
-                "useCount", QbarStoreInteger(row["use_count"], 0))
+    usageRows := []
+    if QbarStoreLoadUsageRows(&usageRows) {
+        for row in usageRows {
+            if row.Has("usage_key")
+                QbarUsageItems[row["usage_key"]] := Map(
+                    "score", QbarStoreFloat(row["score"], 0),
+                    "lastUsedUtc", QbarHistoryStoreTime(row["last_used_at"]),
+                    "useCount", QbarStoreInteger(row["use_count"], 0))
+        }
+    } else {
+        DebugLog("Qbar usage rows could not be loaded: " . QbarStoreError)
     }
 }
 
@@ -68,6 +73,7 @@ QbarHistorySeedInitialSettings() {
         "input", input,
         "args", Map(),
         "payload", Map("page", "general"),
+        "replayable", true,
         "createdAt", now,
         "lastUsedUtc", QbarHistoryStoreTime(now))
     if !QbarStoreSaveHistoryEntry(entry, command)
@@ -92,7 +98,7 @@ QbarHistoryEntryFromStore(row) {
         "input", row.Has("input_text") ? row["input_text"] : "",
         "args", args,
         "payload", payload,
-        "replayable", !row.Has("replayable") || row["replayable"] != "0",
+        "replayable", row.Has("replayable") && row["replayable"] = "1",
         "createdAt", row.Has("created_at") ? row["created_at"] : "",
         "lastUsedUtc", QbarHistoryStoreTime(row.Has("last_used_at") ? row["last_used_at"] : ""))
 }
@@ -145,6 +151,7 @@ QbarHistoryNew(kind, label, input, payload, commandId := "") {
         "commandId", String(commandId),
         "pluginId", "",
         "candidateKey", "",
+        "replayable", true,
         "createdAt", QbarStoreNow(),
         "lastUsedUtc", "")
 }
@@ -161,11 +168,13 @@ QbarHistoryRemember(entry) {
         return false
 
     oldId := ""
+    oldTitle := ""
     foundIndex := 0
     for index, existing in QbarHistoryItems {
         if QbarHistoryIdentity(existing) = identity {
             foundIndex := index
             oldId := existing["id"]
+            oldTitle := existing.Has("label") ? String(existing["label"]) : ""
             break
         }
     }
@@ -182,6 +191,9 @@ QbarHistoryRemember(entry) {
     if IsObject(command) {
         normalized["commandId"] := command["commandId"]
         normalized["pluginId"] := command["pluginId"]
+        normalized["label"] := oldTitle != "" ? oldTitle : command["displayName"]
+        if command["pluginRetired"] || command["commandRetired"]
+            normalized["replayable"] := false
         QbarStoreSaveHistoryEntry(normalized, command)
     }
     return true
@@ -206,22 +218,44 @@ QbarUsageRemember(entry) {
 }
 
 QbarHistoryResolveCommand(entry) {
-    if !IsObject(entry)
+    if Type(entry) != "Map"
         return 0
-    if entry.Has("commandId") && entry["commandId"] != "" {
-        command := QbarRegistryCommand(entry["commandId"])
-        if IsObject(command)
-            return command
+    commandId := entry.Has("commandId") && Type(entry["commandId"]) = "String"
+        ? entry["commandId"] : ""
+    if commandId = ""
+        commandId := QbarHistoryDefaultCommandId(entry.Has("kind") ? entry["kind"] : "")
+    if commandId = ""
+        return 0
+    command := QbarRegistryCommand(commandId)
+    if !IsObject(command)
+        return 0
+    if entry.Has("pluginId") && entry["pluginId"] != ""
+        && entry["pluginId"] != command["pluginId"]
+        return 0
+    return command
+}
+
+QbarHistoryDefaultCommandId(kind) {
+    switch kind {
+        case "ai":
+            return "builtin.ai.ask"
+        case "everything":
+            return "builtin.everything.search"
+        case "notes":
+            return "builtin.notes.search"
+        case "clipboard":
+            return "builtin.clipboard.open"
+        case "settings":
+            return "builtin.settings.open"
+        case "url":
+            return "builtin.url.open"
+        case "path", "reveal":
+            return "builtin.path.open"
+        case "shortcut":
+            return "builtin.start-menu.open"
+        default:
+            return ""
     }
-    input := entry.Has("input") ? String(entry["input"]) : ""
-    resolution := QbarRegistryResolve(input)
-    if resolution["candidates"].Length
-        return QbarRegistryCommand(resolution["candidates"][1]["commandId"])
-    kind := entry.Has("kind") ? entry["kind"] : ""
-    fallbackId := kind = "path" || kind = "reveal" ? "builtin.path.open"
-        : kind = "url" ? "builtin.open-url"
-        : kind = "shortcut" ? "builtin.start-menu.open" : ""
-    return fallbackId = "" ? 0 : QbarRegistryCommand(fallbackId)
 }
 
 ; Return the score after applying the seven-day half-life, plus the raw last
@@ -269,8 +303,11 @@ QbarUsageReadScore(value, &valid := false) {
 
 QbarHistoryUsageKey(entry) {
     command := QbarHistoryResolveCommand(entry)
-    if IsObject(command)
-        return command["usageKey"]
+    if IsObject(command) {
+        usageKey := command["usageKey"]
+        candidateKey := entry.Has("candidateKey") ? String(entry["candidateKey"]) : ""
+        return candidateKey = "" ? usageKey : usageKey . ":" . candidateKey
+    }
     return ""
 }
 
@@ -297,7 +334,8 @@ QbarHistoryRows(limit := 10) {
             "historyId", entry["id"],
             "short", entry["input"],
             "label", QbarHistoryDisplayLabel(entry),
-            "type", QbarHistoryRowType(kind))
+            "type", QbarHistoryRowType(kind),
+            "replayable", QbarHistoryCanReplayEntry(entry) ? JSON.true : JSON.false)
         if icon != ""
             row["icon"] := icon
         rows.Push(row)
@@ -310,10 +348,9 @@ QbarHistoryRows(limit := 10) {
 QbarHistoryDisplayLabel(entry) {
     kind := entry["kind"]
     command := QbarHistoryResolveCommand(entry)
-    toolName := ""
-    if IsObject(command) {
+    toolName := entry.Has("label") ? Trim(String(entry["label"])) : ""
+    if toolName = "" && IsObject(command)
         toolName := command["displayName"]
-    }
     if toolName = "" {
         toolName := kind = "ai" ? "AI 问答"
             : kind = "everything" ? "文件搜索"
@@ -343,7 +380,7 @@ QbarHistoryDisplayContent(entry, command := 0) {
     if kind = "path" || kind = "reveal"
         return payload.Has("path") ? Trim(String(payload["path"])) : ""
     if kind = "shortcut"
-        return entry.Has("label") ? Trim(String(entry["label"])) : ""
+        return entry.Has("input") ? Trim(String(entry["input"])) : ""
     content := QbarHistoryInputArguments(entry, command)
     if content = "" && kind = "url" && IsObject(payload) && payload.Has("url")
         if !IsObject(command) || command["handlerId"] = "builtin.open-url"
@@ -407,6 +444,16 @@ QbarHistoryClearDisplayed() {
     QbarHistoryDisplayedIds := Map()
 }
 
+QbarHistoryMarkPluginRetired(pluginId) {
+    global QbarHistoryItems
+    if Type(QbarHistoryItems) != "Array"
+        return
+    for entry in QbarHistoryItems
+        if Type(entry) = "Map" && entry.Has("pluginId")
+            && entry["pluginId"] = pluginId
+            entry["replayable"] := false
+}
+
 QbarHistoryCanReplay(historyId, querySeq, pageQueryId) {
     global QbarVisible, QbarHistoryDisplayedSeq, QbarHistoryDisplayedPageId
     global QbarHistoryDisplayedIds, QbarQuerySeq, QbarPageQueryId
@@ -419,6 +466,100 @@ QbarHistoryCanReplay(historyId, querySeq, pageQueryId) {
     return QbarHistoryDisplayedIds.Has(historyId)
 }
 
+QbarHistoryCanReplayEntry(entry) {
+    command := 0
+    runArgs := ""
+    return QbarHistoryAuthorizeReplay(entry, &command, &runArgs)
+}
+
+QbarHistoryAuthorizeReplay(entry, &command := 0, &runArgs := "") {
+    command := 0
+    runArgs := ""
+    value := ""
+    exe := ""
+    commandLine := ""
+    runQuery := false
+    replayable := false
+    if Type(entry) != "Map" || !entry.Has("replayable")
+        return false
+    if !QbarHistoryReadBoolean(entry["replayable"], &replayable) || !replayable
+        return false
+    if !entry.Has("commandId") || Type(entry["commandId"]) != "String"
+        || entry["commandId"] = ""
+        || !entry.Has("pluginId") || Type(entry["pluginId"]) != "String"
+        || entry["pluginId"] = ""
+        || !entry.Has("kind") || Type(entry["kind"]) != "String"
+        || !entry.Has("payload") || Type(entry["payload"]) != "Map"
+        return false
+
+    command := QbarRegistryCommand(entry["commandId"])
+    if !IsObject(command) || command["pluginId"] != entry["pluginId"]
+        || !command["enabled"] || !command["pluginEnabled"] || !command["commandEnabled"]
+        || command["pluginRetired"] || command["commandRetired"]
+        || !QbarPluginHostHandlerAllowed(command["handlerId"])
+        return false
+
+    kind := entry["kind"]
+    handlerId := command["handlerId"]
+    if kind = "reveal" {
+        if handlerId != "builtin.open-path"
+            return false
+    } else if QbarHistoryKindForHandler(handlerId) != kind
+        return false
+
+    payload := entry["payload"]
+    switch kind {
+        case "run":
+            if handlerId != "builtin.run"
+                return false
+            if !QbarHistoryPayloadString(payload, "command", &commandLine) || commandLine = ""
+                return false
+            if !entry.Has("args") || Type(entry["args"]) != "Map"
+                || !entry["args"].Has("args")
+                || Type(entry["args"]["args"]) != "String"
+                return false
+            runArgs := entry["args"]["args"]
+        case "shortcut":
+            if !QbarHistoryPayloadString(payload, "shortcutPath", &value) || value = ""
+                || !QbarHistoryPayloadString(payload, "exe", &exe)
+                return false
+        case "url":
+            if !QbarHistoryPayloadString(payload, "url", &value)
+                || !RegExMatch(value, "i)^(https?|ftp)://")
+                return false
+        case "path", "reveal":
+            if !QbarHistoryPayloadString(payload, "path", &value) || value = ""
+                return false
+        case "ai":
+            if !QbarHistoryPayloadString(payload, "question", &value)
+                return false
+        case "everything":
+            if !QbarHistoryPayloadString(payload, "query", &value)
+                return false
+            if !payload.Has("runQuery")
+                return false
+            if !QbarHistoryReadBoolean(payload["runQuery"], &runQuery)
+                return false
+        case "notes", "clipboard":
+            if !QbarHistoryPayloadString(payload, "search", &value)
+                return false
+        case "settings":
+            if !QbarHistoryPayloadString(payload, "page", &value)
+                || !QbarHistorySettingsPageAllowed(value)
+                return false
+        default:
+            return false
+    }
+    return true
+}
+
+QbarHistorySettingsPageAllowed(page) {
+    static pages := Map("general", true, "mouse", true, "llm", true,
+        "translate", true, "ai", true, "shortcuts", true, "tab", true,
+        "qbar", true, "windows", true)
+    return Type(page) = "String" && pages.Has(page)
+}
+
 QbarHistoryReplay(historyId, querySeq := 0, pageQueryId := 0) {
     global QbarHistoryItems
     QbarHistoryEnsureLoaded()
@@ -428,9 +569,11 @@ QbarHistoryReplay(historyId, querySeq := 0, pageQueryId := 0) {
     for entry in QbarHistoryItems {
         if entry["id"] != historyId
             continue
-        if entry.Has("replayable") && !entry["replayable"]
+        command := 0
+        runArgs := ""
+        if !QbarHistoryAuthorizeReplay(entry, &command, &runArgs)
             return false
-        outcome := QbarHistoryExecuteEntry(entry)
+        outcome := QbarHistoryExecuteEntry(entry, command, runArgs)
         if outcome = "deferred"
             return true
         if outcome
@@ -447,6 +590,11 @@ QbarHistoryNormalizeEntry(entry) {
     if Type(kind) != "String" || !QbarHistoryKnownKind(kind)
         return 0
     if Type(entry["payload"]) != "Map"
+        return 0
+    if !entry.Has("replayable")
+        return 0
+    replayable := false
+    if !QbarHistoryReadBoolean(entry["replayable"], &replayable)
         return 0
     label := entry.Has("label") && Type(entry["label"]) = "String" ? entry["label"] : ""
     input := entry.Has("input") && Type(entry["input"]) = "String" ? entry["input"] : ""
@@ -484,7 +632,11 @@ QbarHistoryNormalizeEntry(entry) {
         case "everything":
             if !QbarHistoryPayloadString(payload, "query", &value)
                 value := ""
-            runQuery := payload.Has("runQuery") ? QbarHistoryBoolValue(payload["runQuery"]) : false
+            if !payload.Has("runQuery")
+                return 0
+            runQuery := false
+            if !QbarHistoryReadBoolean(payload["runQuery"], &runQuery)
+                return 0
             normalizedPayload["query"] := value
             normalizedPayload["runQuery"] := runQuery
         case "notes":
@@ -513,6 +665,7 @@ QbarHistoryNormalizeEntry(entry) {
         "input", input,
         "args", entry.Has("args") && IsObject(entry["args"]) ? entry["args"] : Map(),
         "payload", normalizedPayload,
+        "replayable", replayable,
         "createdAt", entry.Has("createdAt") ? String(entry["createdAt"]) : QbarStoreNow(),
         "lastUsedUtc", lastUsedUtc)
 }
@@ -534,7 +687,8 @@ QbarHistoryKnownKind(kind) {
     }
 }
 
-QbarHistoryBoolValue(value) {
+QbarHistoryReadBoolean(value, &parsed := false) {
+    parsed := false
     if Type(value) = "ComValue" {
         isTrue := false
         isFalse := false
@@ -545,14 +699,36 @@ QbarHistoryBoolValue(value) {
         catch
             isFalse := false
         if isTrue
+            parsed := true
+        if isTrue || isFalse
             return true
-        if isFalse
-            return false
+        return false
     }
-    if Type(value) = "Integer"
-        return value != 0
+    if Type(value) = "Integer" {
+        if value != 0 && value != 1
+            return false
+        parsed := value = 1
+        return true
+    }
+    if Type(value) != "String"
+        return false
     raw := StrLower(Trim(String(value)))
-    return raw = "true" || raw = "1"
+    if raw = "true" || raw = "1" {
+        parsed := true
+        return true
+    }
+    if raw = "false" || raw = "0" {
+        parsed := false
+        return true
+    }
+    return false
+}
+
+QbarHistoryBoolValue(value) {
+    parsed := false
+    if !QbarHistoryReadBoolean(value, &parsed)
+        return false
+    return parsed
 }
 
 QbarHistoryIdentity(entry) {

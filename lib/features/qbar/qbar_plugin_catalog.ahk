@@ -188,7 +188,7 @@ QbarPluginCatalogDefinitions() {
             "settingsSchema", Map(
                 "command", Map("type", "command-line", "required", true),
                 "runAs", Map("type", "boolean", "default", false),
-                "argumentMode", Map("type", "enum", "values", ["append", "replace"], "default", "append")),
+                "argumentMode", Map("type", "enum", "values", ["append"], "default", "append")),
             "commands", [Map(
                 "id", "execute",
                 "title", "快捷命令",

@@ -38,12 +38,20 @@ QbarEnsureWebView() {
 }
 
 QbarNavigationCompleted(host, sender, args) {
-    global QbarVisible
+    global QbarVisible, QbarQuerySeq, QbarPageQueryId, QbarCurrentQueryText
     DebugLog("Qbar navigation completed success=" . PanelHostPageReady(host))
     if !PanelHostPageReady(host) {
+        QbarQuerySeq += 1
+        QbarPageQueryId := 0
+        QbarCurrentQueryText := ""
+        QbarInvalidateResultSnapshot()
         try ShowMsg("Qbar page failed to load (" . args.WebErrorStatus . ").", 4000)
         return
     }
+    QbarQuerySeq += 1
+    QbarPageQueryId := 0
+    QbarCurrentQueryText := ""
+    QbarInvalidateResultSnapshot()
     if QbarVisible {
         QbarPushLanguage()
         QbarStartIndexLoad()
@@ -55,6 +63,7 @@ QbarShutdown(*) {
     global QbarIndexReady, QbarIndexLoading
     QbarVisible := false
     QbarOpen := false
+    QbarInvalidateResultSnapshot()
     QbarIndexReady := false
     QbarSearchCancel()
     QbarCancelIconQueue()
@@ -79,45 +88,49 @@ QbarShutdown(*) {
 ; parse once and read the fields through LLMMsgField.
 
 QbarWebMessageReceived(sender, args) {
-    global QbarQuerySeq, QbarPageQueryId
+    global QbarHost, QbarVisible, QbarQuerySeq, QbarPageQueryId, QbarCurrentQueryText
     try message := args.TryGetWebMessageAsString()
     catch
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
     if messageType = "query" {
-        text := LLMMsgField(msg, "text")
-        QbarQuerySeq += 1
-        querySeq := QbarQuerySeq
+        if !QbarVisible || !PanelHostPageReady(QbarHost)
+            return
+        if !msg.Has("text") || Type(msg["text"]) != "String"
+            return
+        text := msg["text"]
         pageQueryIdValid := false
         pageQueryId := LLMMsgNumber(msg, "queryId", &pageQueryIdValid, 0, true)
-        if !pageQueryIdValid
+        if !pageQueryIdValid || pageQueryId < 1 || pageQueryId <= QbarPageQueryId
             return
+        QbarQuerySeq += 1
+        querySeq := QbarQuerySeq
         QbarPageQueryId := pageQueryId
+        QbarCurrentQueryText := Trim(text, " `t")
+        QbarInvalidateResultSnapshot()
         DebugLog("Qbar query received")
         DebugLogPrivate("Qbar query", text)
         SetTimer(QbarQuery.Bind(text, querySeq, pageQueryId), -1)
     } else if messageType = "execute" {
-        text := LLMMsgField(msg, "text")
-        selected := LLMMsgField(msg, "selected")
-        selectedType := LLMMsgField(msg, "selectedType")
-        sessionId := LLMMsgField(msg, "sessionId")
-        candidateId := LLMMsgField(msg, "candidateId")
-        commandId := LLMMsgField(msg, "commandId")
         queryIdValid := false
         queryId := LLMMsgNumber(msg, "queryId", &queryIdValid, 0, true)
-        if !queryIdValid
-            queryId := 0
+        if !queryIdValid || queryId < 1
+            return
         generationValid := false
         registryGeneration := LLMMsgNumber(msg, "registryGeneration", &generationValid, 0, true)
-        if !generationValid
-            registryGeneration := 0
+        if !generationValid || registryGeneration < 0
+            return
+        if !msg.Has("sessionId") || Type(msg["sessionId"]) != "String"
+            || Trim(msg["sessionId"]) = ""
+            || !msg.Has("candidateId") || Type(msg["candidateId"]) != "String"
+            return
         ctrlValid := false
         ctrl := LLMMsgBoolean(msg, "ctrl", &ctrlValid, false)
         if !ctrlValid
-            ctrl := false
-        SetTimer(QbarExecute.Bind(text, selected, ctrl, selectedType, commandId,
-            registryGeneration, queryId, sessionId, candidateId), -1)
+            return
+        SetTimer(QbarExecute.Bind(ctrl, registryGeneration, queryId,
+            msg["sessionId"], msg["candidateId"]), -1)
     } else if messageType = "executeHistory" {
         historyId := LLMMsgField(msg, "historyId")
         pageQueryIdValid := false

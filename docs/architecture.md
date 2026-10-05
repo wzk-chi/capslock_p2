@@ -66,7 +66,7 @@ lib\
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
-  theme.css / icons.js / windowbar.js / dialog.js / toast.js 共享主题、图标、标题栏、对话框和 Toast
+  theme.css / icons.js / windowbar.js / panel.js / dialog.js / toast.js 共享主题、图标、窗口栏、指针恢复、对话框和 Toast
   notes-preview.js                   把 Vditor 渲染出的笔记正文拍平成可复制行并算行数预算
   vendor\                            Vditor（笔记页编辑器与预览渲染）、marked + DOMPurify（AI 回答）、图标、拼音
   usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
@@ -99,8 +99,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - `[TTranslate]` 的 `mode=fixed` 使用 `targetLanguage`；`mode=bidirectional` 使用 `languageA` 和
   `languageB`。`TranslateResolveDirection()` 在 provider 调用前生成一次请求快照，固定模式直接解析目标，
   互译模式根据 `languageDetect.ahk` 或面板的原／目标语言选择生成方向。三个 provider 只消费快照中的目标语言。
-- `languageDetect.ahk` 对中日韩、阿拉伯文、俄文等脚本做本地识别，对拉丁文字使用常见词评分；证据不足时返回
-  `ambiguous`，面板要求用户选择原语言和目标语言，不发起 API 请求。
+- `languageDetect.ahk` 对中日韩、阿拉伯文、俄文等脚本做本地识别，对拉丁文字使用常见词评分；识别不确定或来源不属于配置语言对时，方向解析以语言 A 为目标回退，并在面板标明来源未确定。用户也可手动选择或交换方向。
 
 provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` 头部注释，核心是：
 
@@ -200,7 +199,15 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 设置写入经过 `config.ahk` 的 schema 与字段 codec；提示词和 Tab 替换在 INI 边界使用单行编码，运行时只暴露逻辑文本。页面只发送相对基线的变更，只有有效变化才触发对应运行时应用；外部修改与未保存草稿冲突时保留草稿并提示用户。
 
-Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量；Qbar 工具命令由 qbar.db 的插件注册表管理，配置变化通过 registry generation 失效旧候选。Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
+Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量。
+
+Qbar 工具命令由 `{app}\data\qbar\qbar.db` 的插件注册表管理，配置变化通过 registry generation 失效旧候选。
+目标库不存在且旧 AppData 库存在时，store 通过 SQLite backup API 创建并校验同目录暂存库后无覆盖发布；
+目标库与旧库并存时先校验目标库，有效则使用目标库并保留旧库，无效则停止初始化并提示两处路径。
+迁移或目录写入失败会阻止 store 初始化并提示用户检查权限，不回退到 AppData。
+Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。
+
+Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
 
 ## 屏幕自适应与 DPI
 

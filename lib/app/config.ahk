@@ -6,21 +6,83 @@ global SettingsFile := A_ScriptDir . "\capslock_p2.ini"
 global Config := Map()
 global ConfigDefaults := Map()
 global SettingsModifyTime := ""
+global ConfigLoadLastFailure := ""
 
-ConfigLoad() {
-    global Config, ConfigDefaults, SettingsFile, SettingsModifyTime
-
+ConfigLoad(&errorCode := "", &userDocument := 0) {
+    global Config, ConfigDefaults, SettingsFile, SettingsModifyTime, ConfigLoadLastFailure
+    errorCode := ""
+    userDocument := 0
     defaultsPath := ConfigDefaultPath()
-    defaultsRaw := ConfigParseIni(defaultsPath)
-    userRaw := ConfigParseIni(SettingsFile)
-    ConfigOverlay(defaultsRaw, userRaw)
-    ConfigDefaults := ConfigDecodeDocument(ConfigParseIni(defaultsPath))
-    Config := ConfigDecodeDocument(defaultsRaw)
-    for section in ConfigSchemaSections() {
-        if !Config.Has(section)
-            Config[section] := Map()
+    defaultsRaw := ConfigParseIni(defaultsPath, &defaultsLoaded, &defaultsExist)
+    if !defaultsExist
+        return ConfigLoadFail("defaults_missing", &errorCode)
+    if !defaultsLoaded
+        return ConfigLoadFail("defaults_read", &errorCode)
+
+    userTimeBefore := ConfigFileModifyTime()
+    userRaw := ConfigParseIni(SettingsFile, &userLoaded, &userExists)
+    if !userLoaded
+        return ConfigLoadFail("user_read", &errorCode)
+
+    candidateModifyTime := ""
+    if userExists {
+        if userTimeBefore = ""
+            return ConfigLoadFail("user_metadata", &errorCode)
+        candidateModifyTime := ConfigFileModifyTime()
+        if candidateModifyTime = ""
+            return ConfigLoadFail("user_metadata", &errorCode)
+        if candidateModifyTime != userTimeBefore
+            return ConfigLoadFail("user_changed", &errorCode)
+    } else if FileExist(SettingsFile) {
+        return ConfigLoadFail("user_changed", &errorCode)
     }
-    SettingsModifyTime := ConfigFileModifyTime()
+
+    try {
+        defaultsCandidate := ConfigDecodeDocument(defaultsRaw)
+        mergedRaw := ConfigCloneDocument(defaultsRaw)
+        ConfigOverlay(mergedRaw, userRaw)
+        configCandidate := ConfigDecodeDocument(mergedRaw)
+        for section in ConfigSchemaSections() {
+            if !configCandidate.Has(section)
+                configCandidate[section] := Map()
+        }
+    } catch {
+        return ConfigLoadFail("candidate_decode", &errorCode)
+    }
+
+    ; Publish only after both sources and the complete decoded candidate have
+    ; succeeded. The file timestamp is part of the accepted snapshot so the
+    ; watcher can retry any version that fails above.
+    ConfigDefaults := defaultsCandidate
+    Config := configCandidate
+    SettingsModifyTime := candidateModifyTime
+    userDocument := userRaw
+    ConfigLoadLastFailure := ""
+    return true
+}
+
+ConfigLoadFail(stage, &errorCode) {
+    global ConfigLoadLastFailure
+    errorCode := stage
+    if ConfigLoadLastFailure != stage {
+        DebugLog("Config load failed stage=" . stage)
+        ConfigLoadLastFailure := stage
+    }
+    return false
+}
+
+ConfigCloneDocument(source) {
+    result := Map()
+    if !IsObject(source)
+        return result
+    for section, values in source {
+        result[section] := Map()
+        if IsObject(values) {
+            for key, value in values
+                result[section][key] := value
+        }
+    }
+    return result
 }
 
 ; One metadata boundary for values accepted by the live settings surface. The
@@ -425,10 +487,11 @@ ConfigDefaultRead(section, key, defaultValue := "") {
     return defaultValue
 }
 
-ConfigParseIni(filePath, &loaded := false) {
+ConfigParseIni(filePath, &loaded := false, &exists := false) {
     loaded := true
+    exists := FileExist(filePath) != ""
     sections := Map()
-    if !FileExist(filePath)
+    if !exists
         return sections
 
     ; Force UTF-8: an ANSI (GBK) decode of a UTF-8 file can swallow the LF
@@ -543,8 +606,9 @@ ConfigPrepareUserOverrides(changes, originalContent, &content := "", &invalidCha
     return effectiveChanges
 }
 
-ConfigWriteUserOverrides(changes, &invalidChange := "") {
-    global SettingsFile, SettingsModifyTime
+ConfigWriteUserOverrides(changes, &invalidChange := "", &written := false) {
+    global SettingsFile
+    written := false
     original := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
     original := StrReplace(original, "`r`n", "`n")
     content := ""
@@ -553,7 +617,7 @@ ConfigWriteUserOverrides(changes, &invalidChange := "") {
         return Map()
     if content != original {
         ConfigAtomicWrite(SettingsFile, content)
-        SettingsModifyTime := ConfigFileModifyTime()
+        written := true
     }
     return effectiveChanges
 }

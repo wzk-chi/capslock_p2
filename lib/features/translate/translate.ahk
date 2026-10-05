@@ -10,13 +10,17 @@
 ;   streaming      1 when the engine reports fragments via onDelta before
 ;                  completion (the panel shows the streaming UI for these)
 ;   configured     function () -> true when the engine is ready to translate
-;   translate      function (text, onDelta, onFinished, overrides) -> stream id
-;                  Runs one translation. Must finish by calling
-;                  onFinished(answer, success, errorText); `answer` is the
-;                  complete text shown in the panel. One-shot engines call it
-;                  once and return 0; streaming engines return the id the
-;                  panel can abort on hide/shutdown.
-;   test           optional function (msg, &ok, &text) -> fixed "Hello" API test
+;   translate      function (text, onDelta, onFinished, overrides) -> operation
+;                  Starts one translation without blocking. Must call
+;                  onFinished(answer, success, errorText) exactly once unless
+;                  cancelled, and return an idempotent operation.Cancel().
+;                  `answer` is the complete text shown in the panel. One-shot
+;                  engines call onFinished once; streaming engines may first
+;                  report fragments through onDelta.
+;   test           optional function (msg, onFinished) -> operation
+;                  Starts a fixed "Hello" API check and calls
+;                  onFinished(success, text) once unless cancelled. It also
+;                  returns an idempotent operation.Cancel().
 ;   notConfigured  [english, chinese] panel error when pinned but unconfigured
 
 global TranslateRegistry := 0
@@ -150,7 +154,8 @@ TranslateMatchLanguage(detected, languageA, languageB) {
 ; returned map is a request snapshot: providers must consume its target rather
 ; than re-reading the global mode or trying to detect the source themselves.
 TranslateResolveDirection(text, options, sourceOverride := "", targetOverride := "", manual := false) {
-    result := Map("status", "error", "sourceLanguage", "", "targetLanguage", "", "manual", manual ? true : false, "message", "")
+    result := Map("status", "error", "sourceLanguage", "", "targetLanguage", "",
+        "manual", manual ? true : false, "fallback", false, "message", "")
     if !TranslateValidateOptions(options, &validationError) {
         result["message"] := validationError
         return result
@@ -193,6 +198,7 @@ TranslateResolveDirection(text, options, sourceOverride := "", targetOverride :=
         result["sourceLanguage"] := languageB
         result["targetLanguage"] := languageA
         result["manual"] := false
+        result["fallback"] := true
         return result
     }
     source := TranslateMatchLanguage(detected["language"], languageA, languageB)
@@ -203,6 +209,7 @@ TranslateResolveDirection(text, options, sourceOverride := "", targetOverride :=
         result["sourceLanguage"] := languageB
         result["targetLanguage"] := languageA
         result["manual"] := false
+        result["fallback"] := true
         return result
     }
     target := source = languageA ? languageB : languageA

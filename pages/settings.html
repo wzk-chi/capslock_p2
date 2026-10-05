@@ -243,6 +243,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="dialog.js"></script>
+<script src="panel.js"></script>
 </head>
 <body>
 <div class="app">
@@ -414,7 +415,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 </div>
 <script>
 const state = {
-  draft: null, baseSections: null, page: 'general', dirty: false, pluginsDirty: false,
+  draft: null, baseSections: null, baseProfiles: [], basePlugins: [],
+  page: 'general', dirty: false, pluginsDirty: false,
   dirtyFields: new Set(), windowPickerDialog: null,
   qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
   qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
@@ -1523,13 +1525,16 @@ function saveQbarCreateDialog(dialog = state.qbarCreateDialog) {
   draft.displayName = String(draft.displayName || '').trim();
   draft.aliases = [...new Set((draft.aliases || [])
     .map(alias => String(alias || '').trim()).filter(Boolean))];
-  draft.settings.template = draft.settings.template == null ? '' : String(draft.settings.template).trim();
-  draft.settings.command = draft.settings.command == null ? '' : String(draft.settings.command).trim();
   if (!draft.displayName) return qbarCreateSetError('请输入工具名称。');
-  if (state.qbarCreateKind === 'search' && !draft.settings.template.includes('{q}'))
-    return qbarCreateSetError('搜索网址模板必须包含 {q}。');
-  if (state.qbarCreateKind === 'run' && !draft.settings.command)
-    return qbarCreateSetError('请输入执行命令或程序路径。');
+  if (state.qbarCreateKind === 'search') {
+    draft.settings.template = draft.settings.template == null ? '' : String(draft.settings.template).trim();
+    if (!draft.settings.template.includes('{q}'))
+      return qbarCreateSetError('搜索网址模板必须包含 {q}。');
+  } else {
+    draft.settings.command = draft.settings.command == null ? '' : String(draft.settings.command).trim();
+    if (!draft.settings.command)
+      return qbarCreateSetError('请输入执行命令或程序路径。');
+  }
 
   state.qbarCreateSaving = true;
   dialog.setBusy(true, '添加中…', 'create');
@@ -1549,11 +1554,13 @@ function applySavedQbarPluginToDraft() {
   const index = plugins.findIndex(item => item && item.pluginId === saved.pluginId);
   if (index >= 0) plugins[index] = saved;
   else plugins.push(saved);
+  const basePlugins = Array.isArray(state.basePlugins) ? state.basePlugins : (state.basePlugins = []);
+  const baseIndex = basePlugins.findIndex(item => item && item.pluginId === saved.pluginId);
+  if (baseIndex >= 0) basePlugins[baseIndex] = clone(saved);
+  else basePlugins.push(clone(saved));
   renderPlugins();
-  if (!state.dirtyFields.size && !state.pluginsDirty) {
-    state.dirty = false;
-    setStatus('');
-  }
+  recomputeDirtyState();
+  if (!state.dirty) setStatus('');
 }
 function renderQbarSchemaSettings(plugin, editor, title, hintText = '') {
   const schema = plugin.settingsSchema || {};
@@ -1612,6 +1619,13 @@ function renderQbarToolDialog(editor) {
   enabled.addEventListener('change', () => { plugin.enabled = enabled.checked; });
   enabledField.append(enabled, document.createTextNode('启用工具')); general.append(enabledField);
   editor.append(general);
+  if (plugin.definitionValid === false || plugin.settingsValid === false) {
+    const warning = document.createElement('div'); warning.className = 'hint';
+    warning.textContent = plugin.definitionValid === false
+      ? '此工具当前无法使用，请重新启动应用后重试。'
+      : '此工具的设置无效，已暂停使用。请检查设置后重新启用。';
+    editor.append(warning);
+  }
 
   const settings = plugin.settings || (plugin.settings = {});
   if (plugin.definitionId === 'builtin.clipboard') {
@@ -2085,6 +2099,8 @@ function receiveSnapshot(snapshot) {
   sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
     sections.TTranslate.targetLanguage);
   state.baseSections = sections;
+  state.baseProfiles = clone(snapshot.profiles || []);
+  state.basePlugins = clone(snapshot.plugins || []);
   state.baseProfileStamp = String(snapshot.profileStamp || '');
   state.bindingModes = clone(snapshot.bindingModes || []);
   const profiles = clone(snapshot.profiles || []);
@@ -2104,6 +2120,81 @@ function receiveSnapshot(snapshot) {
   state.dirty = false; setStatus('');
   if (snapshot.toast) showToast(snapshot.toast);
 }
+
+function applySettingsSaveReceipt(receipt) {
+  if (!receipt || typeof receipt !== 'object' || !state.draft) return;
+  let baselineChanged = false;
+  if (Array.isArray(receipt.bindings)) {
+    state.draft.bindings = clone(receipt.bindings);
+    state.bindingModes = clone(receipt.bindingModes || []);
+    renderBindings();
+  }
+  if (receipt.uiLanguage) {
+    document.documentElement.lang = receipt.uiLanguage === 'en' ? 'en' : 'zh-CN';
+    updateLanguageSelectLabels();
+  }
+  if (receipt.sectionsCommitted && receipt.sections && typeof receipt.sections === 'object') {
+    const oldBase = state.baseSections || {};
+    const sections = clone(receipt.sections);
+    sections.Keys = clone(receipt.keys || sections.Keys || {});
+    if (sections.TTranslate) {
+      sections.TTranslate.mode = normalizeTranslationModeValue(sections.TTranslate.mode);
+      sections.TTranslate.languageA = normalizePairLanguageValue(sections.TTranslate.languageA, 'zh-CN');
+      sections.TTranslate.languageB = normalizePairLanguageValue(sections.TTranslate.languageB, 'en');
+      sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
+        sections.TTranslate.targetLanguage);
+    }
+    Object.keys(sections).forEach(sectionName => {
+      const previous = oldBase[sectionName] || {};
+      const current = state.draft.sections[sectionName]
+        || (state.draft.sections[sectionName] = {});
+      const committed = sections[sectionName] || {};
+      const keys = new Set([...Object.keys(previous), ...Object.keys(committed)]);
+      keys.forEach(key => {
+        if (String(current[key] ?? '') !== String(previous[key] ?? '')) return;
+        if (Object.hasOwn(committed, key)) current[key] = committed[key];
+        else delete current[key];
+      });
+    });
+    state.baseSections = sections;
+    baselineChanged = true;
+  }
+  if (receipt.profilesCommitted && Array.isArray(receipt.profiles)) {
+    state.baseProfiles = clone(receipt.profiles);
+    state.baseProfileStamp = String(receipt.profileStamp || '');
+    baselineChanged = true;
+  }
+  if (receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
+    state.basePlugins = clone(receipt.plugins);
+    baselineChanged = true;
+  }
+  if (receipt.toolSettingsCommitted && receipt.toolSettings) {
+    [state.draft.plugins, state.basePlugins].forEach(plugins => {
+      const plugin = (plugins || []).find(item => item && item.pluginId === 'builtin.everything');
+      if (plugin) plugin.toolSettings = clone(receipt.toolSettings);
+    });
+    baselineChanged = true;
+  }
+  if (baselineChanged) {
+    recomputeDirtyState();
+    renderAll();
+  }
+}
+
+function recomputeDirtyState() {
+  const changes = buildChangedSections();
+  state.dirtyFields.clear();
+  Object.entries(changes).forEach(([sectionName, values]) => {
+    Object.keys(values).forEach(key => state.dirtyFields.add(sectionName + '\u0000' + key));
+  });
+  state.profilesDirty = JSON.stringify((state.draft && state.draft.profiles) || [])
+    !== JSON.stringify(state.baseProfiles || []);
+  state.pluginsDirty = JSON.stringify((state.draft && state.draft.plugins) || [])
+    !== JSON.stringify(state.basePlugins || []);
+  state.dirty = state.dirtyFields.size > 0 || state.profilesDirty || state.pluginsDirty;
+  return state.dirty;
+}
+
 function buildChangedSections() {
   const changes = {};
   const baseSections = state.baseSections || {};
@@ -2153,17 +2244,20 @@ function saveDraft() {
   post(payload);
 }
 window.receiveSnapshot = receiveSnapshot;
-window.settingsSaved = function (ok, text) {
-  setStatus(text || (ok ? '已保存' : '保存失败'), !ok);
-  if (ok) {
-    state.dirty = false;
-    state.dirtyFields.clear();
-    state.pluginsDirty = false;
-    state.profilesDirty = false;
-  }
+window.settingsSaved = function (ok, text, receipt) {
+  if (receipt) applySettingsSaveReceipt(receipt);
+  const message = text || (ok ? '已保存' : '保存失败');
+  setStatus(ok && state.dirty ? message + '；保存期间的新修改仍未保存' : message, !ok);
 };
-window.qbarPluginSaved = function (ok, text) {
+window.qbarPluginSaved = function (ok, text, receipt) {
+  if (receipt) applySettingsSaveReceipt(receipt);
   if (ok) {
+    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)
+      && state.qbarPluginDraft) {
+      const saved = receipt.plugins.find(plugin =>
+        plugin && plugin.pluginId === state.qbarPluginDraft.pluginId);
+      if (saved) state.qbarPluginDraft = clone(saved);
+    }
     applySavedQbarPluginToDraft();
     closeQbarToolDialog();
     showToast(text || '工具设置已保存。', 'success');
@@ -2173,8 +2267,15 @@ window.qbarPluginSaved = function (ok, text) {
   if (state.qbarPluginDialog) state.qbarPluginDialog.setBusy(false);
   showToast(text || '工具设置保存失败。', 'error');
 };
-window.qbarPluginCreated = function (ok, text) {
+window.qbarPluginCreated = function (ok, text, receipt) {
+  if (receipt) applySettingsSaveReceipt(receipt);
   if (ok) {
+    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
+      state.draft.plugins = clone(receipt.plugins);
+      state.basePlugins = clone(receipt.plugins);
+      recomputeDirtyState();
+      renderPlugins();
+    }
     closeQbarCreateDialog();
     showToast(text || '工具已添加。', 'success');
     return;
@@ -2183,10 +2284,19 @@ window.qbarPluginCreated = function (ok, text) {
   if (state.qbarCreateDialog) state.qbarCreateDialog.setBusy(false);
   qbarCreateSetError(text || '工具添加失败。');
 };
-window.qbarPluginDeleted = function (ok, text, pluginId) {
+window.qbarPluginDeleted = function (ok, text, pluginId, receipt) {
+  if (receipt) applySettingsSaveReceipt(receipt);
   if (ok) {
-    if (state.draft && Array.isArray(state.draft.plugins))
-      state.draft.plugins = state.draft.plugins.filter(plugin => plugin.pluginId !== pluginId);
+    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
+      state.draft.plugins = clone(receipt.plugins);
+      state.basePlugins = clone(receipt.plugins);
+    } else {
+      if (state.draft && Array.isArray(state.draft.plugins))
+        state.draft.plugins = state.draft.plugins.filter(plugin => plugin.pluginId !== pluginId);
+      if (Array.isArray(state.basePlugins))
+        state.basePlugins = state.basePlugins.filter(plugin => plugin.pluginId !== pluginId);
+    }
+    recomputeDirtyState();
     renderPlugins();
     if (state.qbarDeleteDialog) state.qbarDeleteDialog.close();
     showToast(text || '工具已删除。', 'success');

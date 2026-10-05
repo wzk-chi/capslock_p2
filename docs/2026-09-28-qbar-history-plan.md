@@ -4,6 +4,8 @@
 
 状态：已实施，未运行验证。本文档记录已落地的行为和静态验收范围。
 
+说明：本文记录早期独立 JSON 历史方案；后续 Qbar 插件化重构已将历史和使用频率并入 `qbar.db`。当前数据库位置及 AppData 旧库迁移规则以 [`2026-10-02-qbar-plugin-refactor-design.md`](2026-10-02-qbar-plugin-refactor-design.md) 为准。
+
 ## 1. 目标与已经确定的行为
 
 用户希望在 QBar 输入为空时快速再次执行近期操作，包括命令和启动的应用，也包括 AI 问题、搜索词、Everything 查询、临时网址和路径。

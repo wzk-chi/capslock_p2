@@ -2,14 +2,13 @@
 
 EverythingEnsureWebView() {
     global EverythingHost, EverythingPanelWidth, EverythingPanelHeight
-    global EverythingPanelMinWidth, EverythingPanelMinHeight, EverythingPageReady
+    global EverythingPanelMinWidth, EverythingPanelMinHeight
     if IsObject(EverythingHost) {
         try {
             PanelHostEnsure(EverythingHost)
             return true
         } catch as existingError {
             PanelHostHide(EverythingHost)
-            EverythingPageReady := false
             DebugLog("Everything webview failed")
             ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
             return false
@@ -33,7 +32,6 @@ EverythingEnsureWebView() {
         PanelHostEnsure(EverythingHost)
         return true
     } catch as webViewError {
-        EverythingPageReady := false
         PanelHostHide(EverythingHost)
         ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
         return false
@@ -41,13 +39,13 @@ EverythingEnsureWebView() {
 }
 
 EverythingNavigationCompleted(host, sender, args) {
-    global EverythingVisible, EverythingPageReady, EverythingIconSent
-    EverythingPageReady := PanelHostPageReady(host)
+    global EverythingVisible, EverythingIconSent
+    pageReady := PanelHostPageReady(host)
     EverythingCancelIconQueue()
-    if EverythingPageReady
+    if pageReady
         EverythingIconSent := Map()
-    DebugLog("Everything navigation completed success=" . EverythingPageReady)
-    if !EverythingPageReady {
+    DebugLog("Everything navigation completed success=" . pageReady)
+    if !pageReady {
         try EverythingSetError(EverythingText(
             "WebView2 could not load the Everything panel.",
             "WebView2 未能加载 Everything 面板。"))
@@ -66,7 +64,7 @@ EverythingResize(targetGui, minMax, width, height) {
 }
 
 EverythingWebMessageReceived(sender, args) {
-    global EverythingHost, EverythingQuerySeq, EverythingCategory, EverythingPageReady
+    global EverythingHost, EverythingQuerySeq, EverythingCategory
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -78,7 +76,6 @@ EverythingWebMessageReceived(sender, args) {
         Map("requireActive", true))
         return
     if messageType = "ready" {
-        EverythingPageReady := true
         EverythingBeginPendingOpen()
         return
     }
@@ -95,8 +92,10 @@ EverythingWebMessageReceived(sender, args) {
     if messageType = "action" {
         action := LLMMsgField(msg, "action")
         resultId := LLMMsgField(msg, "resultId")
-        version := LLMMsgField(msg, "resultsVersion")
-        if action = "" || resultId = ""
+        versionValid := false
+        version := LLMMsgNumber(msg, "resultsVersion", &versionValid, 0, true)
+        if action = "" || resultId = "" || !versionValid
+            || Type(version) != "Integer" || version <= 0
             return
         SetTimer(EverythingHandleAction.Bind(action, resultId, version), -1)
         return
@@ -104,7 +103,7 @@ EverythingWebMessageReceived(sender, args) {
 }
 
 EverythingHide(*) {
-    global EverythingVisible, EverythingPendingOpen, EverythingPageReady
+    global EverythingVisible, EverythingPendingOpen
     EverythingVisible := false
     EverythingPendingOpen := false
     EverythingCancelSearch("panel hidden")
@@ -124,9 +123,8 @@ EverythingCancelSearch(reason := "") {
 
 EverythingShutdown(*) {
     global EverythingHost, EverythingVisible, EverythingWindowInitialized
-    global EverythingPageReady, EverythingEsMode, QbarEsBundledStarted
+    global EverythingEsMode, QbarEsBundledStarted
     EverythingVisible := false
-    EverythingPageReady := false
     EverythingEsMode := false
     EverythingCancelSearch("shutdown")
     if QbarEsBundledStarted {

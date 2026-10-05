@@ -131,6 +131,7 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="windowbar.js"></script>
+<script src="panel.js"></script>
 </head>
 <body>
 <main id="mainView">
@@ -234,7 +235,6 @@ let olderMessagesLoading = false;
 let selectionMode = false;
 let selectedSessionIds = new Set();
 let contextSession = null;
-let lastCursorMove = 0;
 
 const STRINGS = {
   en: {
@@ -406,8 +406,6 @@ function postType(type, text) {
 function applyPinnedState(value) {
   const pinned = !!value;
   WindowBar.setPinned(pinned);
-  pinBtn.classList.toggle('pinned', pinned);
-  pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
   setButtonLabel(pinBtn, pinned ? t('unpinPanel') : t('pinPanel'));
   pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
   pinBtn.setAttribute('aria-label', pinBtn.title);
@@ -1233,13 +1231,6 @@ historyList.addEventListener('scroll', () => {
   sessionPageLoading = true;
   postView('listSessions', { offset: sessionOffset });
 });
-
-document.addEventListener('mousemove', () => {
-  const now = performance.now();
-  if (!hostReady || now - lastCursorMove < 80) return;
-  lastCursorMove = now;
-  postType('cursorMove');
-}, { passive: true });
 
 // Pushed settings carry the ui language the page should use.
 window.onHostSettings = function (s) {

@@ -22,8 +22,18 @@ InitializeWindowBindings() {
 
 LoadWindowBindings() {
     global WinBindings, WindowBindingFile
-    WinBindings := Map()
-    sections := ConfigParseIni(WindowBindingFile)
+    loaded := true
+    try sections := ConfigParseIni(WindowBindingFile, &loaded)
+    catch as loadError {
+        DebugLog("Window binding load failed errorType=" . Type(loadError))
+        return false
+    }
+    if !loaded {
+        DebugLog("Window binding load failed: unable to read file")
+        return false
+    }
+
+    candidateBindings := Map()
     for sectionName, values in sections {
         if !RegExMatch(sectionName, "^\d+$")
             continue
@@ -32,34 +42,32 @@ LoadWindowBindings() {
             continue
 
         bindType := values.Has("bindType") ? WindowBindingType(values["bindType"], 0) : 0
+        if values.Has("bindType") && !bindType
+            DebugLog("Window binding data rejected binding=" . bindingNumber . " field=bindType")
         applicationPath := values.Has("applicationPath") ? Trim(String(values["applicationPath"])) : ""
         if bindType = 2 && applicationPath != ""
             bindType := 3
         items := []
         hasCount := values.Has("count")
-        count := hasCount ? values["count"] + 0 : 0
-        if hasCount {
-            Loop count {
-                index := A_Index
-                item := ReadWindowBindingItem(values, index)
+        count := 0
+        countValid := !hasCount || WindowBindingParseUnsigned(values["count"], &count)
+        if hasCount && !countValid
+            DebugLog("Window binding data rejected binding=" . bindingNumber . " field=count")
+        if countValid {
+            itemKeys := WindowBindingItemKeys(values, hasCount, count, bindingNumber)
+            for itemKey in itemKeys {
+                item := ReadWindowBindingItem(values, itemKey.suffix, bindingNumber, itemKey.idKey)
                 if item
                     items.Push(item)
-            }
-        } else {
-            ; Read the v1 recorder format as well (it used index 0).
-            index := 0
-            while values.Has("id_" . index) {
-                item := ReadWindowBindingItem(values, index)
-                if item
-                    items.Push(item)
-                index += 1
             }
         }
         if bindType = 3 && applicationPath = "" && items.Length
             applicationPath := items[1].path
         if bindType && (items.Length || applicationPath != "")
-            WinBindings[bindingNumber] := {bindType: bindType, applicationPath: applicationPath, items: items}
+            candidateBindings[bindingNumber] := {bindType: bindType, applicationPath: applicationPath, items: items}
     }
+    WinBindings := candidateBindings
+    return true
 }
 
 WindowBindingType(value, fallback := 1) {
@@ -94,14 +102,88 @@ WindowBindingDisplay(bindType) {
     return Map("id", 0, "label", "未绑定", "description", "尚未选择窗口")
 }
 
-ReadWindowBindingItem(values, index) {
-    idKey := "id_" . index
+WindowBindingParseUnsigned(value, &number, maximum := 9223372036854775807) {
+    number := 0
+    text := Trim(String(value))
+    if !RegExMatch(text, "^\d+$")
+        return false
+    text := RegExReplace(text, "^0+(?=\d)")
+    if StrLen(text) > 19
+        return false
+    try parsed := Integer(text)
+    catch
+        return false
+    if parsed < 0 || parsed > maximum
+        return false
+    number := parsed
+    return true
+}
+
+WindowBindingParsePointer(value, &pointer) {
+    maximum := A_PtrSize = 8 ? 9223372036854775807 : 4294967295
+    return WindowBindingParseUnsigned(value, &pointer, maximum)
+}
+
+WindowBindingIndexSortKey(index) {
+    return SubStr("0000000000000000000" . String(index), -19)
+}
+
+WindowBindingItemKeys(values, hasCount, count, bindingNumber) {
+    itemKeys := Map()
+    duplicateKeys := Map()
+    sortText := ""
+    for key, value in values {
+        if !RegExMatch(String(key), "i)^id_(\d+)$", &match)
+            continue
+        suffix := match[1]
+        if !WindowBindingParseUnsigned(suffix, &index) {
+            DebugLog("Window binding item skipped binding=" . bindingNumber . " reason=invalid-index")
+            continue
+        }
+        if hasCount && (index < 1 || index > count) {
+            DebugLog("Window binding item skipped binding=" . bindingNumber . " reason=outside-count")
+            continue
+        }
+
+        sortKey := WindowBindingIndexSortKey(index)
+        if duplicateKeys.Has(sortKey)
+            continue
+        if itemKeys.Has(sortKey) {
+            itemKeys.Delete(sortKey)
+            duplicateKeys[sortKey] := true
+            DebugLog("Window binding item skipped binding=" . bindingNumber . " reason=duplicate-index")
+            continue
+        }
+        itemKeys[sortKey] := {index: index, suffix: suffix, idKey: String(key)}
+        sortText .= sortKey . Chr(10)
+    }
+
+    ordered := []
+    if sortText = ""
+        return ordered
+    for sortKey in StrSplit(Sort(RTrim(sortText, Chr(10)), "C", Chr(10)), Chr(10)) {
+        if itemKeys.Has(sortKey)
+            ordered.Push(itemKeys[sortKey])
+    }
+    return ordered
+}
+
+ReadWindowBindingItem(values, indexSuffix, bindingNumber := 0, idKey := "") {
+    if idKey = ""
+        idKey := "id_" . indexSuffix
     if !values.Has(idKey)
         return 0
-    className := values.Has("class_" . index) ? values["class_" . index] : ""
-    exeName := values.Has("exe_" . index) ? values["exe_" . index] : ""
-    path := values.Has("path_" . index) ? values["path_" . index] : exeName
-    return {id: values[idKey] + 0, windowClass: className, exe: exeName, path: path}
+    if !WindowBindingParsePointer(values[idKey], &id) {
+        DebugLog("Window binding item skipped binding=" . bindingNumber . " reason=invalid-hwnd")
+        return 0
+    }
+    classKey := "class_" . indexSuffix
+    exeKey := "exe_" . indexSuffix
+    pathKey := "path_" . indexSuffix
+    className := values.Has(classKey) ? String(values[classKey]) : ""
+    exeName := values.Has(exeKey) ? String(values[exeKey]) : ""
+    path := values.Has(pathKey) ? String(values[pathKey]) : exeName
+    return {id: id, windowClass: className, exe: exeName, path: path}
 }
 
 WindowBindingApplicationPath(binding) {
@@ -198,19 +280,51 @@ SaveWindowBinding(bindingNumber, binding) {
     global WindowBindingFile
     bindingNumber := WindowBindingNumber(bindingNumber)
     if !binding || !bindingNumber
-        return
+        return false
     try {
-        IniWrite(binding.bindType, WindowBindingFile, bindingNumber, "bindType")
-        IniWrite(WindowBindingApplicationPath(binding), WindowBindingFile, bindingNumber, "applicationPath")
-        IniWrite(binding.items.Length, WindowBindingFile, bindingNumber, "count")
+        bindType := IsObject(binding) && ObjHasOwnProp(binding, "bindType")
+            ? WindowBindingType(binding.bindType, 0) : 0
+        if !bindType || !ObjHasOwnProp(binding, "items") || !(binding.items is Array)
+            throw ValueError("Invalid window binding")
+        applicationPath := WindowBindingApplicationPath(binding)
+        if InStr(applicationPath, Chr(10)) || InStr(applicationPath, Chr(13))
+            throw ValueError("Invalid application path")
+
+        lines := ["[" . bindingNumber . "]",
+            "bindType=" . bindType,
+            "applicationPath=" . applicationPath,
+            "count=" . binding.items.Length]
         for index, item in binding.items {
-            IniWrite(item.id, WindowBindingFile, bindingNumber, "id_" . index)
-            IniWrite(item.windowClass, WindowBindingFile, bindingNumber, "class_" . index)
-            IniWrite(item.exe, WindowBindingFile, bindingNumber, "exe_" . index)
-            IniWrite(item.path, WindowBindingFile, bindingNumber, "path_" . index)
+            if !IsObject(item) || !ObjHasOwnProp(item, "id")
+                throw ValueError("Invalid window binding item")
+            if !WindowBindingParsePointer(item.id, &id)
+                throw ValueError("Invalid window handle")
+            className := ObjHasOwnProp(item, "windowClass") ? String(item.windowClass) : ""
+            exeName := ObjHasOwnProp(item, "exe") ? String(item.exe) : ""
+            path := ObjHasOwnProp(item, "path") ? String(item.path) : exeName
+            metadata := className . exeName . path
+            if InStr(metadata, Chr(10)) || InStr(metadata, Chr(13))
+                throw ValueError("Invalid window metadata")
+            lines.Push("id_" . index . "=" . id)
+            lines.Push("class_" . index . "=" . className)
+            lines.Push("exe_" . index . "=" . exeName)
+            lines.Push("path_" . index . "=" . path)
         }
+        content := FileExist(WindowBindingFile) ? FileRead(WindowBindingFile, "UTF-8") : ""
+        content := ConfigDeleteIniSection(content, String(bindingNumber))
+        content := RTrim(StrReplace(content, Chr(13), ""), Chr(10))
+        if content != ""
+            content .= Chr(10) . Chr(10)
+        content .= ConfigJoinIniLines(lines)
+        ConfigAtomicWrite(WindowBindingFile, content)
+        return true
     } catch as bindingError {
-        ShowMsg("Unable to save window binding: " . bindingError.Message, 2500)
+        DebugLog("Window binding save failed number=" . bindingNumber
+            . " errorType=" . Type(bindingError))
+        ShowMsg(LLMText(
+            "Unable to save this window binding. Check that the application folder is writable and try again.",
+            "无法保存此窗口绑定。请确认安装目录可写后重试。"), 2500)
+        return false
     }
 }
 
@@ -264,8 +378,9 @@ BindWindowToItem(bindingNumber, item) {
     if !bindingNumber || !IsObject(item)
         return false
     binding := {bindType: 1, applicationPath: "", items: [item]}
+    if !SaveWindowBinding(bindingNumber, binding)
+        return false
     WinBindings[bindingNumber] := binding
-    SaveWindowBinding(bindingNumber, binding)
     ShowMsg("Window binding " . bindingNumber . " saved (window)", 1200)
     return true
 }
@@ -317,8 +432,9 @@ AddWindowToGroup(bindingNumber, item) {
         items.Push(item)
 
     binding := {bindType: 2, applicationPath: applicationPath, items: items}
+    if !SaveWindowBinding(bindingNumber, binding)
+        return false
     WinBindings[bindingNumber] := binding
-    SaveWindowBinding(bindingNumber, binding)
     ShowMsg("Window binding " . bindingNumber . " saved (group)", 1200)
     return true
 }
@@ -331,8 +447,9 @@ BindWindowToApplication(bindingNumber, applicationPath) {
         return false
     items := WindowBindingApplicationItems(applicationPath)
     binding := {bindType: 3, applicationPath: applicationPath, items: items}
+    if !SaveWindowBinding(bindingNumber, binding)
+        return false
     WinBindings[bindingNumber] := binding
-    SaveWindowBinding(bindingNumber, binding)
     ShowMsg("Window binding " . bindingNumber . " saved (application)", 1200)
     return true
 }
@@ -418,8 +535,8 @@ activateWinAction(bindingNumber) {
         }
         bindingChanged := item.id != replacement
         item.id := replacement
-        if bindingChanged
-            SaveWindowBinding(bindingNumber, binding)
+        if bindingChanged && !SaveWindowBinding(bindingNumber, binding)
+            DebugLog("Window binding refresh persistence failed number=" . bindingNumber)
         if WinActive("ahk_id " . replacement) {
             WinMinimize("ahk_id " . replacement)
             if LastActiveWinId
@@ -432,8 +549,8 @@ activateWinAction(bindingNumber) {
     }
 
     bindingChanged := binding.bindType = 3 ? RefreshWindowGroup(binding) : PruneBindingItems(binding)
-    if bindingChanged
-        SaveWindowBinding(bindingNumber, binding)
+    if bindingChanged && !SaveWindowBinding(bindingNumber, binding)
+        DebugLog("Window binding refresh persistence failed number=" . bindingNumber)
     if !binding.items.Length {
         applicationPath := WindowBindingApplicationPath(binding)
         if binding.bindType = 3 && applicationPath != "" && FileExist(applicationPath) {

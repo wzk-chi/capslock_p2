@@ -53,7 +53,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`theme.css`、`icons.js`、`windowbar.js`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件。
+- `pages\`：`theme.css`、`icons.js`、`windowbar.js`、`panel.js`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件；交互面板通过 `panel.js` 节流上报鼠标移动，以恢复系统指针。
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`，共享 UI 图标库
   `lucide\lucide.min.js` 及其许可证，还有随安装包分发的 `pinyin-pro\pinyin-pro.js`、MIT
   许可和来源说明。
@@ -90,6 +90,14 @@ QBar 笔记使用安装目录下的运行时数据目录：
 该目录不出现在安装器 `[Files]` 或 `UninstallDelete` 中，因此安装包不携带用户笔记，覆盖更新和同目录重装不会覆盖数据库或图片。卸载也不会主动删除笔记；更换安装目录时由用户手动复制整个 `data\qbar-notes` 目录。
 
 大型持久化数据遵循 `AGENTS.md`：优先保存在 `{app}\data\<功能名>\`，作为安装目录下的运行时用户数据，不列入安装包，也不由覆盖更新或卸载清理。剪贴板历史使用 `{app}\data\clipboard-history\clipboard-history.db`，运行后按需创建。更换安装目录时一并迁移相应功能的数据子目录。
+
+Qbar 插件、历史和使用频率数据库使用 `{app}\data\qbar\qbar.db`。安装器的 `[Files]` 是显式资源清单，不包含 `data\`；
+脚本也没有 `UninstallDelete` 项，因此不会打包、覆盖更新或卸载清理该数据库。更换安装目录时复制整个 `data\qbar` 子目录。
+
+升级时若目标库不存在而旧 `%AppData%\capslock_p2\qbar.db` 存在，程序使用 SQLite 一致性备份迁移到同目录暂存库，
+核对完整性、关键表和记录数后才无覆盖发布，原库保留。若两处数据库同时存在，则校验 `{app}\data\qbar\qbar.db`：
+有效时记录冲突并使用目标库，旧库仍保留且不会合并；无效时停止初始化并提示两处路径，保留两库。
+迁移失败不会创建并启用空库；安装目录或目标库写入失败会提示检查写入权限后重试，不会静默回退 AppData。
 
 AI 问答多会话使用 `{app}\data\ai-chat\ai-chat.db`。数据库只在运行时创建；安装器通过显式资源清单打包，不包含 `data\`，也没有删除该目录的卸载项，因此覆盖更新、同目录重装和卸载不会覆盖或删除会话。更换安装目录时用户复制整个 `data\ai-chat` 子目录。详细设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。
 

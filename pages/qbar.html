@@ -10,6 +10,7 @@
 <script src="icons.js"></script>
 <script src="../vendor/pinyin-pro/pinyin-pro.js"></script>
 <script src="qbar-search.js"></script>
+<script src="panel.js"></script>
 <style>
 /* Keep these values in sync with lib/features/qbar/qbar.ahk. The card radius
    also matches the host window's rounded region. */
@@ -149,6 +150,7 @@ body {
 .row:hover .glyph { opacity: 1; }
 .row.selected:hover { background: var(--accent-soft); color: var(--accent); }
 .row.pinned .text { font-weight: 650; }
+.row.unavailable { opacity: .48; }
 
 .empty {
   height: var(--row-height);
@@ -191,8 +193,14 @@ const TYPE_ICON = {
 };
 
 const STRINGS = {
-  en: { placeholder: 'Type to search…', loading: 'Loading…' },
-  zh: { placeholder: '输入以搜索…', loading: '加载中…' }
+  en: {
+    placeholder: 'Type to search…', loading: 'Loading…',
+    historyUnavailable: 'This tool is unavailable. Press Tab to restore its text.'
+  },
+  zh: {
+    placeholder: '输入以搜索…', loading: '加载中…',
+    historyUnavailable: '此工具当前不可用。按 Tab 可将输入恢复到输入框。'
+  }
 };
 
 /* Page state ------------------------------------------------------------- */
@@ -212,6 +220,8 @@ let composing = false;
 let querySerial = 0;
 let currentQueryId = 0;
 let queryPending = false;
+let resultSessionId = '';
+let resultRegistryGeneration = 0;
 
 /* Messaging and sizing -------------------------------------------------- */
 function t(key) {
@@ -237,6 +247,8 @@ function requestQuery(reason = 'input') {
   if (composing) return;
   currentQueryId = ++querySerial;
   queryPending = true;
+  resultSessionId = '';
+  resultRegistryGeneration = 0;
   selectedIndex = -1;
   if (resultsMode === 'history') {
     results = [];
@@ -309,10 +321,13 @@ function render() {
     }
   } else {
     rows.forEach((item, index) => {
+      const unavailable = resultsMode === 'history' && item.replayable === false;
       const row = document.createElement('div');
       row.className = 'row'
         + (item.pinned ? ' pinned' : '')
-        + (index === selectedIndex ? ' selected' : '');
+        + (index === selectedIndex ? ' selected' : '')
+        + (unavailable ? ' unavailable' : '');
+      if (unavailable) row.title = t('historyUnavailable');
       const glyph = document.createElement('span');
       glyph.className = 'glyph';
       const iconSrc = item.icon ? ICONS[item.icon] : '';
@@ -333,6 +348,10 @@ function render() {
       row.addEventListener('mousedown', event => event.preventDefault());
       row.addEventListener('click', () => {
         selectedIndex = index;
+        if (unavailable) {
+          render();
+          return;
+        }
         execute(false);
       });
       list.appendChild(row);
@@ -390,6 +409,8 @@ function execute(ctrlHeld) {
   if (queryPending)
     return;
   if (row && row.historyId) {
+    if (row.replayable === false)
+      return;
     post({
       type: 'executeHistory',
       historyId: row.historyId,
@@ -399,16 +420,11 @@ function execute(ctrlHeld) {
   }
   post({
     type: 'execute',
-    text: input.value,
-    selected: row ? row.short : '',
-    selectedType: row ? row.type : '',
-    sessionId: row && row.sessionId ? row.sessionId : '',
+    sessionId: resultSessionId,
     candidateId: row && row.candidateId ? row.candidateId : '',
-    commandId: row && row.commandId ? row.commandId : '',
-    registryGeneration: row && Number.isInteger(row.registryGeneration)
-      ? row.registryGeneration : 0,
+    registryGeneration: resultRegistryGeneration,
     queryId: currentQueryId,
-    ctrl: ctrlHeld ? 'true' : 'false'
+    ctrl: !!ctrlHeld
   });
 }
 
@@ -473,10 +489,15 @@ window.startSearch = function (shortKey) {
   requestQuery();
 };
 
-window.setResults = function (items, isFolder, placeholderText, mode, queryId) {
+window.setResults = function (items, isFolder, placeholderText, mode, queryId, sessionId, registryGeneration) {
   if (!Number.isInteger(queryId) || queryId !== currentQueryId)
     return;
+  if (typeof sessionId !== 'string' || !sessionId
+    || !Number.isInteger(registryGeneration) || registryGeneration < 0)
+    return;
   results = Array.isArray(items) ? items : [];
+  resultSessionId = sessionId;
+  resultRegistryGeneration = registryGeneration;
   folderMode = !!isFolder;
   resultsMode = mode === 'history' ? 'history' : 'normal';
   placeholder = placeholderText || '';
@@ -512,6 +533,9 @@ window.buildQbarSearchKeys = function (payload) {
 input.addEventListener('compositionstart', () => {
   composing = true;
   currentQueryId = ++querySerial;
+  queryPending = true;
+  resultSessionId = '';
+  resultRegistryGeneration = 0;
   results = [];
   selectedIndex = -1;
   resultsMode = 'normal';

@@ -16,6 +16,7 @@ main > .windowbar { margin: 0 -14px; }
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
 .toolbar-actions button, .pane-head button, #swapLanguages { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .language-bar { display: flex; align-items: end; justify-content: center; gap: 10px; align-self: center; width: min(620px, 100%); flex: none; padding: 2px 8px; }
+.direction-fallback { align-self: center; color: var(--ui-muted); font-size: 11px; text-align: center; }
 .language-field { display: grid; gap: 4px; min-width: 0; flex: 1 1 220px; max-width: 260px; }
 .language-field span { color: var(--ui-muted); font-size: 11px; }
 .language-field select { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); }
@@ -55,6 +56,7 @@ button.copied:hover { background: var(--ui-success-soft); }
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="windowbar.js"></script>
+<script src="panel.js"></script>
 </head>
 <body>
 <main id="mainView">
@@ -76,6 +78,7 @@ button.copied:hover { background: var(--ui-success-soft); }
       <select id="targetLanguage" aria-label="Target language"></select>
     </label>
   </div>
+  <small id="directionFallback" class="direction-fallback" aria-live="polite" hidden></small>
   <div class="columns">
     <section class="pane">
       <div class="pane-head">
@@ -117,6 +120,7 @@ const sourceLanguageField = document.getElementById('sourceLanguageField');
 const sourceLanguageSelect = document.getElementById('sourceLanguage');
 const targetLanguageSelect = document.getElementById('targetLanguage');
 const swapLanguagesBtn = document.getElementById('swapLanguages');
+const directionFallback = document.getElementById('directionFallback');
 
 // The panel is bilingual: the UI follows the configured target language
 // (Chinese target → Chinese UI, anything else → English). AHK decides and
@@ -129,7 +133,7 @@ const STRINGS = {
     sourceLanguage: 'Source language',
     targetLanguage: 'Target language',
     swap: 'Swap',
-    chooseDirection: 'Choose the source and target languages',
+    directionFallback: 'Source language was uncertain; defaulting to language A as the target.',
     pin: 'Pin',
     unpin: 'Unpin',
     close: 'Close',
@@ -155,7 +159,7 @@ const STRINGS = {
     sourceLanguage: '原语言',
     targetLanguage: '目标语言',
     swap: '交换',
-    chooseDirection: '请选择原语言和目标语言',
+    directionFallback: '未能确定原语言；默认将语言 A 作为目标语言。',
     pin: '固定',
     unpin: '取消固定',
     close: '关闭',
@@ -218,6 +222,7 @@ function applyLanguage() {
       setLocalizedText(btn, t(btn.dataset.flash));
   sourceLanguageSelect.setAttribute('aria-label', t('sourceLanguage'));
   targetLanguageSelect.setAttribute('aria-label', t('targetLanguage'));
+  directionFallback.textContent = t('directionFallback');
   swapLanguagesBtn.title = t('swap');
   swapLanguagesBtn.setAttribute('aria-label', t('swap'));
   identifierConvertBtn.title = t('identifierConvert');
@@ -261,6 +266,7 @@ function applyTranslationSettings(settings) {
     targetLanguage: ['system', ...LANGUAGE_CODES].includes(next.targetLanguage) ? next.targetLanguage : 'system'
   };
   languageBar.hidden = false;
+  directionFallback.hidden = true;
   if (translationSettings.mode === 'bidirectional') {
     fillLanguageSelect(sourceLanguageSelect, LANGUAGE_CODES);
     fillLanguageSelect(targetLanguageSelect, LANGUAGE_CODES);
@@ -292,8 +298,6 @@ function applyPinnedState(value) {
   pinBtn.dataset.i18n = key;
   setLocalizedText(pinBtn, t(key));
   pinBtn.title = t(key);
-  pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-  pinBtn.classList.toggle('pinned', pinned);
 }
 
 window.setNativeWindowMode = function (value) {
@@ -399,6 +403,7 @@ window.setSource = function (text) {
   source.value = text || '';
   result.value = '';
   directionManual = false;
+  directionFallback.hidden = true;
   if (translationSettings.mode === 'bidirectional') {
     sourceLanguageSelect.value = translationSettings.languageA;
     targetLanguageSelect.value = translationSettings.languageB;
@@ -500,21 +505,7 @@ window.setError = function (text) {
   translateBtn.disabled = false;
 };
 
-window.setNeedsDirection = function (text) {
-  cancelPendingStream();
-  directionReady = false;
-  directionManual = false;
-  source.disabled = false;
-  sourceLanguageSelect.disabled = false;
-  targetLanguageSelect.disabled = translationSettings.mode === 'fixed';
-  swapLanguagesBtn.disabled = translationSettings.mode !== 'bidirectional';
-  translateBtn.disabled = false;
-  status.textContent = text || t('chooseDirection');
-  status.dataset.state = 'needs-direction';
-  status.classList.add('error');
-};
-
-window.setDirection = function (sourceLanguage, targetLanguage, manual) {
+window.setDirection = function (sourceLanguage, targetLanguage, manual, fallback) {
   if (translationSettings.mode !== 'bidirectional') return;
   if (!LANGUAGE_CODES.includes(sourceLanguage) || !LANGUAGE_CODES.includes(targetLanguage)
       || sourceLanguage === targetLanguage)
@@ -522,9 +513,8 @@ window.setDirection = function (sourceLanguage, targetLanguage, manual) {
   sourceLanguageSelect.value = sourceLanguage;
   targetLanguageSelect.value = targetLanguage;
   directionManual = !!manual;
+  directionFallback.hidden = !fallback;
   directionReady = true;
-  if (status.dataset.state === 'needs-direction')
-    setStatus('ready');
 };
 
 // The standalone settings center pushes the interface language through the
@@ -549,6 +539,7 @@ source.addEventListener('keydown', event => {
   window.startTranslate();
 });
 source.addEventListener('input', () => {
+  directionFallback.hidden = true;
   if (translationSettings.mode === 'bidirectional') {
     directionManual = false;
     directionReady = false;
@@ -557,12 +548,14 @@ source.addEventListener('input', () => {
 sourceLanguageSelect.addEventListener('change', () => {
   if (translationSettings.mode !== 'bidirectional') return;
   directionManual = true;
+  directionFallback.hidden = true;
   directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
   if (directionReady) setStatus('ready');
 });
 targetLanguageSelect.addEventListener('change', () => {
   if (translationSettings.mode !== 'bidirectional') return;
   directionManual = true;
+  directionFallback.hidden = true;
   directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
   if (directionReady) setStatus('ready');
 });
@@ -572,6 +565,7 @@ swapLanguagesBtn.addEventListener('click', () => {
   sourceLanguageSelect.value = targetLanguageSelect.value;
   targetLanguageSelect.value = sourceValue;
   directionManual = true;
+  directionFallback.hidden = true;
   directionReady = sourceLanguageSelect.value !== targetLanguageSelect.value;
   if (directionReady) setStatus('ready');
 });

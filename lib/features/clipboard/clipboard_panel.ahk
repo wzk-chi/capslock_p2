@@ -59,6 +59,7 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         panelGui := PanelHostGui(ClipboardHistoryHost)
         if IsObject(panelGui)
             WinActivate("ahk_id " . panelGui.Hwnd)
+        ShowSystemCursor()
         if refreshSession {
             ClipboardHistoryResetSession(initialSearch, targetContext, false)
             SetTimer(ClipboardHistorySendState, -1)

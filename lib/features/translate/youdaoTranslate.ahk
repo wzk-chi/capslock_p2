@@ -18,15 +18,12 @@ YoudaoConfigured() {
         && Trim(GetYoudaoSetting("appPaidKey", "")) != ""
 }
 
-; One-shot signed request. The call blocks the message loop for the duration
-; of the request (same tradeoff as the reference implementation), so callers
-; run it from a SetTimer(fn, -1) callback, never from a WebView2 event.
-YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
-    success := false
-    errorText := ""
+; Start one signed form request without blocking the message loop. Validation
+; failures are scheduled through the same asynchronous callback contract.
+YoudaoTranslateAsync(text, onFinished, overrides := 0) {
     text := Trim(text)
     if text = ""
-        return ""
+        return LLMScheduleAsyncCallback(LLMAsyncOperation(), onFinished, "", false, "")
 
     appID := Trim(YoudaoSettingWith("appPaidID", "", overrides))
     appKey := Trim(YoudaoSettingWith("appPaidKey", "", overrides))
@@ -35,7 +32,7 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
             "Youdao translation is not configured. Open Settings in the translate panel.",
             "尚未配置有道翻译，请点翻译面板里的「设置」填写。"
         )
-        return ""
+        return LLMScheduleAsyncCallback(LLMAsyncOperation(), onFinished, "", false, errorText)
     }
     ; Keep line breaks: the POST form body is percent-encoded, so they
     ; survive the request, and youdao translates multi-line text line by
@@ -51,7 +48,7 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
             "The text is too long for the Youdao API (max 6000 bytes).",
             "要翻译的文本过长（有道 API 上限 6000 字节）。"
         )
-        return ""
+        return LLMScheduleAsyncCallback(LLMAsyncOperation(), onFinished, "", false, errorText)
     }
 
     ; Source language stays auto; the dispatcher has already resolved the
@@ -59,7 +56,7 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
     toLang := YoudaoTargetCode(TranslateSettingWith("targetLanguage", "", overrides))
     if toLang = "" {
         errorText := LLMText("The selected target language is not supported by Youdao.", "有道翻译不支持当前目标语言。")
-        return ""
+        return LLMScheduleAsyncCallback(LLMAsyncOperation(), onFinished, "", false, errorText)
     }
 
     salt := YoudaoSalt()
@@ -84,54 +81,55 @@ YoudaoTranslate(text, &success := false, &errorText := "", overrides := 0) {
         . "&signType=v3"
         . "&sign=" . UrlEncodeUtf8(sign)
 
-    try {
-        request := ComObject("WinHttp.WinHttpRequest.5.1")
-        request.Open("POST", "https://openapi.youdao.com/api", false)
-        request.SetTimeouts(20000, 20000, 20000, 20000)
-        request.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded")
-        request.Send(body)
-    } catch {
+    headers := Map("Content-Type", "application/x-www-form-urlencoded")
+    return LLMHttpRequestAsync("POST", "https://openapi.youdao.com/api", body,
+        headers, 20000, YoudaoTranslateResponse.Bind(onFinished))
+}
+
+YoudaoTranslateResponse(onFinished, status, response, transportError) {
+    translated := ""
+    success := false
+    errorText := ""
+    if transportError != "" {
         DebugLog("youdao request failed (network)")
         errorText := LLMText(
             "Request failed; the network may be disconnected.",
             "发送异常，可能是网络已断开。"
         )
-        return ""
-    }
-    DebugLog("youdao response status=" . request.Status)
-    if request.Status != 200 {
+    } else if status != 200 {
+        DebugLog("youdao response status=" . status)
         errorText := LLMText(
-            "Youdao API returned HTTP " . request.Status . ".",
-            "有道 API 返回 HTTP " . request.Status . "。"
+            "Youdao API returned HTTP " . status . ".",
+            "有道 API 返回 HTTP " . status . "。"
         )
-        return ""
+    } else {
+        DebugLog("youdao response status=" . status . " len=" . StrLen(response))
+        try {
+            parsed := JSON.Parse(response)
+            if Type(parsed) != "Map"
+                throw Error("Invalid response shape")
+            errorCode := parsed.Has("errorCode") ? Trim(parsed["errorCode"] "") : ""
+            if errorCode != "" && errorCode != "0" {
+                errorText := YoudaoErrorText(errorCode)
+            } else {
+                translated := YoudaoFormatResult(parsed)
+                if translated = "" {
+                    errorText := LLMText(
+                        "The Youdao response did not contain a translation.",
+                        "有道接口返回内容里没有找到译文。"
+                    )
+                } else {
+                    success := true
+                }
+            }
+        } catch {
+            errorText := LLMText(
+                "The Youdao response could not be parsed.",
+                "有道接口返回内容解析失败。"
+            )
+        }
     }
-
-    response := LLMResponseText(request)
-    DebugLog("youdao response len=" . StrLen(response))
-    try parsed := JSON.Parse(response)
-    catch {
-        errorText := LLMText(
-            "The Youdao response could not be parsed.",
-            "有道接口返回内容解析失败。"
-        )
-        return ""
-    }
-    errorCode := parsed.Has("errorCode") ? Trim(parsed["errorCode"] "") : ""
-    if errorCode != "" && errorCode != "0" {
-        errorText := YoudaoErrorText(errorCode)
-        return ""
-    }
-    result := YoudaoFormatResult(parsed)
-    if result = "" {
-        errorText := LLMText(
-            "The Youdao response did not contain a translation.",
-            "有道接口返回内容里没有找到译文。"
-        )
-        return ""
-    }
-    success := true
-    return result
+    try onFinished.Call(translated, success, errorText)
 }
 
 ; Map a canonical target language to the Youdao `to` code. Unknown values are
@@ -262,27 +260,24 @@ YoudaoSalt() {
 }
 
 ; ---- "youdao" provider glue ----
-; One-shot engine: no streaming UI, the formatted result arrives through a
-; single onFinished call (see lib\features\translate\translate.ahk for the provider contract).
+; One-shot engine: no streaming UI, the formatted result arrives through one
+; asynchronous callback. Every provider returns an idempotent cancel operation.
 
 TranslateProviderYoudaoTranslate(text, onDelta, onFinished, overrides := 0) {
-    translated := YoudaoTranslate(text, &ok, &errorText, overrides)
-    onFinished.Call(translated, ok, errorText)
-    return 0
+    return YoudaoTranslateAsync(text, onFinished, overrides)
 }
 
-TranslateProviderYoudaoTest(msg, &ok, &text) {
-    ok := false
-    text := ""
+TranslateProviderYoudaoTest(msg, onFinished) {
     overrides := Map(
         "appPaidID", Trim(LLMMsgField(msg, "appId")),
         "appPaidKey", LLMMsgField(msg, "appKey"),
         "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
-    YoudaoTranslate("Hello", &ok, &errorText, overrides)
-    if ok
-        text := LLMText("Connection OK", "连接正常")
-    else
-        text := errorText
+    return YoudaoTranslateAsync("Hello", TranslateProviderYoudaoTestFinished.Bind(onFinished), overrides)
+}
+
+TranslateProviderYoudaoTestFinished(onFinished, translated, success, errorText) {
+    text := success ? LLMText("Connection OK", "连接正常") : errorText
+    try onFinished.Call(success, text)
 }
 
 TranslateRegisterProvider("youdao", Map(

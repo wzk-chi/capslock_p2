@@ -53,8 +53,10 @@ WindowBarApplyNativeMode(host, nativeWindow, pageSetter := "setNativeWindowMode"
         "uint", 0x37)
     if wasVisible
         DllCall("ShowWindow", "ptr", hwnd, "int", wasMinimized ? 7 : 8) ; SW_SHOWMINNOACTIVE/SW_SHOWNA
-    if wasActive && !wasMinimized
+    if wasActive && !wasMinimized {
         WinActivate(windowTitle)
+        ShowSystemCursor()
+    }
 
     PanelHostFill(host)
     if pageSetter != ""

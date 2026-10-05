@@ -7,17 +7,10 @@ QbarEsAlias(token) {
     return aliases.Has(StrLower(token))
 }
 
-; Return only the text after the first built-in alias. A second alias is data,
-; so "e find" searches for "find" in the independent page.
-QbarEverythingArgument(text) {
-    QbarSplitCommand(text, &firstToken, &rest)
-    if QbarEsAlias(firstToken) && !QbarConfigShortKeyExists(firstToken)
-        return rest
-    return ""
-}
-
 QbarEsResolveBackend(arg, seq) {
     global QbarEsUseBundled
+    if !QbarEsCaptureResultContext(seq)
+        return false
     exe := QbarEsExe()
     if exe = "" {
         QbarEsHint(QbarText("es.exe is missing from the resources directory.", "资源目录中缺少 es.exe。"))
@@ -87,6 +80,8 @@ QbarEsLaunchBundled(seq, arg) {
 
 QbarEsStartProbe(kind, seq, arg := "") {
     global QbarEsUseBundled
+    if !QbarEsCaptureResultContext(seq)
+        return false
     useBundled := kind = "bundled" ? 1 : -1
     if QbarEsStartProcess("probe-" . kind, arg, useBundled, seq, 3000)
         return true
@@ -101,6 +96,8 @@ QbarEsStartProbe(kind, seq, arg := "") {
 
 QbarEsStartSearch(arg, useBundled, seq) {
     global QbarEsUseBundled, QbarEsBundledState, QbarEsWarmupDeadline
+    if !QbarEsCaptureResultContext(seq)
+        return false
     if QbarEsStartProcess("search", arg, useBundled, seq, 5000)
         return true
     if !QbarEsRequestIsCurrent(seq)
@@ -129,12 +126,9 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
         ? 1
         : (EverythingEsMode ? Min(501, QbarEsMaxResults() + 1) : QbarEsMaxResults())
     query := SubStr(kind, 1, 6) = "probe-" ? "1" : arg
-    queryArg := SubStr(kind, 1, 6) = "probe-"
-        ? " " . QbarEsQuoteArg(query)
-        : (query = "" ? " " . QbarEsQuoteArg("") : " " . query)
     command := QbarEsQuoteArg(exe) . instance . " -csv -no-header -n " . limit
         . " -full-path-and-name -export-csv " . QbarEsQuoteArg(tmp)
-        . queryArg
+        . " -search* " . query
     pid := 0
     try Run(command, "", "Hide", &pid)
     catch as launchError {
@@ -286,18 +280,52 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
 }
 
 QbarEsPublishResults(results, seq) {
-    global EverythingEsMode
+    global EverythingEsMode, QbarEsResultContext
     if !QbarEsRequestIsCurrent(seq)
+        return
+    context := QbarEsResultContext
+    if Type(context) != "Map" || context["seq"] != seq
+        return
+    if !QbarQueryContextCurrent(context["registryGeneration"],
+        context["queryId"], context["querySeq"], context["sessionId"])
         return
     if EverythingEsMode
         EverythingPublishResults(results, seq)
-    else
-        QbarSendResults(results, false)
+    else {
+        provider := QbarRegistryDynamicProviderByHandler("builtin.open-path")
+        if QbarRegistryDynamicProviderUnavailable("builtin.open-path")
+            return
+        rows := []
+        for item in results
+            rows.Push(QbarIndexAttachDynamicProvider(item, provider, "builtin.open-path"))
+        QbarSendResults(rows, false, "", "normal", context["queryId"],
+            context["querySeq"], context["query"])
+    }
+}
+
+QbarEsCaptureResultContext(seq) {
+    global QbarEsResultContext, QbarSessionId, QbarPageQueryId, QbarQuerySeq
+    global QbarCurrentQueryText
+    if Type(QbarEsResultContext) = "Map" && QbarEsResultContext["seq"] = seq
+        return true
+    registryGeneration := QbarRegistryGeneration()
+    if !QbarQueryContextCurrent(registryGeneration, QbarPageQueryId,
+        QbarQuerySeq, QbarSessionId)
+        return false
+    QbarEsResultContext := Map(
+        "seq", seq,
+        "sessionId", QbarSessionId,
+        "queryId", QbarPageQueryId,
+        "querySeq", QbarQuerySeq,
+        "query", QbarCurrentQueryText,
+        "registryGeneration", registryGeneration)
+    return true
 }
 
 QbarEsCancelJob(reason := "") {
-    global QbarEsSeq
+    global QbarEsSeq, QbarEsResultContext
     QbarEsSeq += 1
+    QbarEsResultContext := 0
     QbarEsClearJob(true)
     if reason != ""
         DebugLog("Es job cancelled")

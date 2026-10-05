@@ -457,20 +457,190 @@ LLMBuildRequest(messages, &endpoint, &headerName, &headerValue, &timeout, &error
     return body
 }
 
-; Execute a non-streaming chat completion. The raw response is returned so the
-; caller can extract the field appropriate to its feature.
-LLMChatComplete(messages, &success := false, &errorText := "", overrides := 0, structuredOn := false) {
-    success := false
-    errorText := ""
+; Async non-streaming completion. This uses the same WinHTTP event sink as
+; streaming requests, but accumulates and parses the complete JSON body rather
+; than advertising or decoding server-sent events.
+LLMChatCompleteAsync(messages, onFinished, overrides := 0, structuredOn := false) {
     body := LLMBuildRequest(messages, &endpoint, &headerName, &headerValue, &timeout,
         &errorText, overrides, false, structuredOn)
     if body = ""
-        return ""
-    responseText := LLMSendChatBody(body, endpoint, headerName, headerValue, timeout,
-        &success, &errorText)
+        return LLMScheduleAsyncCallback(LLMAsyncOperation(), onFinished, "", false,
+            LLMContextLimitHint(errorText))
+    headers := Map("Content-Type", "application/json; charset=utf-8")
+    if headerValue != ""
+        headers[headerName] := headerValue
+    return LLMHttpRequestAsync("POST", endpoint, body, headers, timeout,
+        LLMChatCompleteHttpFinished.Bind(onFinished))
+}
+
+LLMChatCompleteHttpFinished(onFinished, status, responseText, transportError) {
+    success := false
+    errorText := ""
+    if transportError != "" {
+        errorText := LLMText("LLM request failed.", "请求失败。")
+    } else if status < 200 || status >= 300 {
+        apiError := LLMErrorMessageFrom(responseText)
+        errorText := LLMText("LLM API HTTP ", "接口返回 HTTP ") . status
+            . (apiError = "" ? "" : ": " . apiError)
+    } else {
+        success := true
+    }
     if !success
         errorText := LLMContextLimitHint(errorText)
-    return responseText
+    try onFinished.Call(success ? responseText : "", success, errorText)
+}
+
+; Streaming variant that returns a cancellable operation and guarantees that
+; request-building failures are delivered after this function returns.
+LLMChatStreamOperation(messages, onDelta, onFinished, overrides := 0, structuredOn := false) {
+    operation := LLMAsyncOperation()
+    body := LLMBuildRequest(messages, &endpoint, &headerName, &headerValue, &timeout,
+        &errorText, overrides, true, structuredOn)
+    if body = ""
+        return LLMScheduleAsyncCallback(operation, onFinished, "", false, errorText)
+    streamId := LLMStartChatStream(body, endpoint, headerName, headerValue, timeout,
+        onDelta, LLMChatStreamOperationFinished.Bind(operation, onFinished), true)
+    operation.SetCancel(LLMAbortChatStream.Bind(streamId))
+    return operation
+}
+
+LLMChatStreamOperationFinished(operation, onFinished, text, success, errorText) {
+    if !operation.Complete()
+        return
+    try onFinished.Call(text, success, errorText)
+}
+
+; Generic asynchronous HTTP transport used by non-SSE API clients. The shared
+; connection point, callback queue, UTF-8 decoding, timeout and release path
+; are the same as LLMChatStream; consumers own only request-specific parsing.
+LLMHttpRequestAsync(method, url, body, headers, timeoutMs, onFinished) {
+    global LLMStreamNextId, LLMStreamStates
+    LLMStreamNextId += 1
+    id := LLMStreamNextId
+    operation := LLMAsyncOperation(LLMAbortChatStream.Bind(id))
+    state := Map(
+        "id", id,
+        "mode", "http",
+        "operation", operation,
+        "onHttpFinished", onFinished,
+        "eventQueue", [],
+        "draining", false,
+        "drainScheduled", false,
+        "finalizeScheduled", false,
+        "dispatchEvents", 0,
+        "transportFinished", false,
+        "transportError", "",
+        "responseBodyBytes", [],
+        "status", 0,
+        "finished", false,
+        "cancelled", false,
+        "request", 0,
+        "sink", 0,
+        "connectionContainer", 0,
+        "connectionPoint", 0,
+        "connectionCookie", 0
+    )
+    LLMStreamStates[id] := state
+    LLMStartWinHttpTransport(state, method, url, body, headers, timeoutMs, "HTTP")
+    return operation
+}
+
+LLMStartWinHttpTransport(state, method, url, body, headers, timeoutMs, label) {
+    stage := "creating WinHTTP request"
+    try {
+        request := ComObject("WinHttp.WinHttpRequest.5.1")
+        state["request"] := request
+        stage := "opening asynchronous request"
+        request.Open(method, url, true)
+        stage := "creating WinHTTP event sink"
+        state["sink"] := LLMWinHttpEventSink(state)
+        stage := "connecting WinHTTP events"
+        LLMStreamAttachEvents(request, state)
+        stage := "setting request timeouts"
+        request.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
+        stage := "setting request headers"
+        for name, value in headers
+            request.SetRequestHeader(name, value)
+        stage := "sending request"
+        request.Send(LLMUtf8Bytes(body))
+        DebugLog("LLM " . label . " request started id=" . state["id"])
+    } catch as requestError {
+        DebugLog("LLM " . label . " request setup failed id=" . state["id"] . " stage=" . stage)
+        if IsObject(state["request"])
+            try state["request"].Abort()
+        errorPrefix := label = "stream" ? "LLM stream " : "HTTP "
+        LLMStreamQueueEvent(state, Map("kind", "error", "text", errorPrefix . stage . " failed."))
+        return false
+    }
+    return true
+}
+
+class LLMAsyncOperation {
+    __New(cancelCallback := 0) {
+        this.CancelCallback := cancelCallback
+        this.Cancelled := false
+        this.Completed := false
+    }
+
+    IsActive() => !this.Cancelled && !this.Completed
+
+    SetCancel(callback) {
+        criticalState := A_IsCritical
+        Critical "On"
+        cancelNow := false
+        if this.Cancelled
+            cancelNow := true
+        else if !this.Completed
+            this.CancelCallback := callback
+        if !criticalState
+            Critical "Off"
+        if cancelNow
+            try callback.Call()
+    }
+
+    Cancel() {
+        criticalState := A_IsCritical
+        Critical "On"
+        if this.Completed || this.Cancelled {
+            if !criticalState
+                Critical "Off"
+            return false
+        }
+        this.Cancelled := true
+        callback := this.CancelCallback
+        this.CancelCallback := 0
+        if !criticalState
+            Critical "Off"
+        if IsObject(callback)
+            try callback.Call()
+        return true
+    }
+
+    Complete() {
+        criticalState := A_IsCritical
+        Critical "On"
+        if this.Completed || this.Cancelled {
+            if !criticalState
+                Critical "Off"
+            return false
+        }
+        this.Completed := true
+        this.CancelCallback := 0
+        if !criticalState
+            Critical "Off"
+        return true
+    }
+}
+
+LLMScheduleAsyncCallback(operation, callback, args*) {
+    SetTimer(LLMInvokeAsyncCallback.Bind(operation, callback, args*), -1)
+    return operation
+}
+
+LLMInvokeAsyncCallback(operation, callback, args*) {
+    if !operation.Complete()
+        return
+    try callback.Call(args*)
 }
 
 ; Start an asynchronous streaming chat completion using the same request
@@ -486,41 +656,14 @@ LLMChatStream(messages, onDelta, onFinished, overrides := 0, structuredOn := fal
         onDelta, onFinished)
 }
 
-LLMSendChatBody(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, &success, &errorText) {
-    success := false
-    errorText := ""
-    try {
-        request := ComObject("WinHttp.WinHttpRequest.5.1")
-        request.Open("POST", endpoint, false)
-        request.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
-        request.SetRequestHeader("Content-Type", "application/json; charset=utf-8")
-        if authHeaderValue != ""
-            request.SetRequestHeader(authHeaderName, authHeaderValue)
-        ; Send explicit UTF-8 bytes: WinHttpRequest encodes a string body with the
-        ; ANSI code page on some systems, which mangles non-ASCII text.
-        request.Send(LLMUtf8Bytes(body))
-        status := request.Status + 0
-        responseText := LLMResponseText(request)
-        if status < 200 || status >= 300 {
-            apiError := LLMErrorMessageFrom(responseText)
-            errorText := LLMText("LLM API HTTP ", "接口返回 HTTP ") . status
-                . (apiError = "" ? "" : ": " . apiError)
-            return ""
-        }
-        success := true
-        return responseText
-    } catch as apiRequestError {
-        errorText := LLMText("LLM request failed.", "请求失败。")
-        return ""
-    }
-}
-
-LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, onDelta, onFinished) {
+LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, onDelta, onFinished,
+    returnIdOnFailure := false) {
     global LLMStreamNextId, LLMStreamStates
     LLMStreamNextId += 1
     id := LLMStreamNextId
     state := Map(
         "id", id,
+        "mode", "stream",
         "onDelta", onDelta,
         "onFinished", onFinished,
         "eventQueue", [],
@@ -556,41 +699,15 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
         "connectionPoint", 0,
         "connectionCookie", 0
     )
-    stage := "creating WinHTTP request"
-    try {
-        request := ComObject("WinHttp.WinHttpRequest.5.1")
-        state["request"] := request
-        LLMStreamStates[id] := state
-
-        stage := "opening asynchronous request"
-        request.Open("POST", endpoint, true)
-
-        stage := "creating WinHTTP event sink"
-        sink := LLMWinHttpEventSink(state)
-        state["sink"] := sink
-
-        stage := "connecting WinHTTP events"
-        LLMStreamAttachEvents(request, state)
-
-        stage := "setting request timeouts"
-        request.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
-
-        stage := "setting request headers"
-        request.SetRequestHeader("Content-Type", "application/json; charset=utf-8")
-        request.SetRequestHeader("Accept", "text/event-stream")
-        if authHeaderValue != ""
-            request.SetRequestHeader(authHeaderName, authHeaderValue)
-
-        stage := "sending request"
-        request.Send(LLMUtf8Bytes(body))
-        DebugLog("LLM stream started id=" . id)
-        return id
-    } catch as streamError {
-        errorText := "LLM stream " . stage . " failed."
-        DebugLog("LLM stream failed")
-        LLMStreamQueueEvent(state, Map("kind", "error", "text", errorText))
-        return 0
-    }
+    LLMStreamStates[id] := state
+    headers := Map(
+        "Content-Type", "application/json; charset=utf-8",
+        "Accept", "text/event-stream")
+    if authHeaderValue != ""
+        headers[authHeaderName] := authHeaderValue
+    started := LLMStartWinHttpTransport(state, "POST", endpoint, body,
+        headers, timeoutMs, "stream")
+    return started || returnIdOnFailure ? id : 0
 }
 
 LLMAbortChatStream(id) {
@@ -598,11 +715,29 @@ LLMAbortChatStream(id) {
     if !id || !LLMStreamStates.Has(id)
         return
     state := LLMStreamStates[id]
-    state["cancelled"] := true
-    state["finished"] := true
+    if !LLMClaimTerminal(state, true)
+        return
     state["eventQueue"] := []
+    if state.Has("operation") && IsObject(state["operation"])
+        state["operation"].Cancel()
     try state["request"].Abort()
     LLMStreamRelease(state)
+}
+
+LLMClaimTerminal(state, cancelled := false) {
+    criticalState := A_IsCritical
+    Critical "On"
+    if state["finished"] || state["cancelled"] {
+        if !criticalState
+            Critical "Off"
+        return false
+    }
+    state["finished"] := true
+    if cancelled
+        state["cancelled"] := true
+    if !criticalState
+        Critical "Off"
+    return true
 }
 
 class LLMWinHttpEventSink extends Buffer {
@@ -787,7 +922,10 @@ LLMStreamDrain(state, *) {
                     . " dispatch=" . state["dispatchEvents"])
             } else if kind = "error" {
                 state["transportError"] := event["text"]
-                LLMStreamComplete(state, false, event["text"])
+                if state["mode"] = "http"
+                    LLMHttpComplete(state, 0, "", event["text"])
+                else
+                    LLMStreamComplete(state, false, event["text"])
             }
         } catch as dispatchError {
             DebugLog("LLM stream dispatch failed id=" . state["id"]
@@ -818,7 +956,10 @@ LLMStreamFinalize(state, *) {
     }
     if !state["transportFinished"]
         return
-    LLMStreamFinalizeResponse(state)
+    if state["mode"] = "http"
+        LLMHttpFinalizeResponse(state)
+    else
+        LLMStreamFinalizeResponse(state)
 }
 
 LLMStreamOnResponseStart(state, status) {
@@ -831,6 +972,12 @@ LLMStreamOnResponseStart(state, status) {
 LLMStreamOnData(state, data) {
     if state["finished"] || state["cancelled"]
         return
+    if state["mode"] = "http" {
+        for byte in data
+            if Type(byte) = "Integer" && byte >= 0 && byte <= 255
+                state["responseBodyBytes"].Push(byte)
+        return
+    }
     state["responseBytes"] += data.Length
     state["dataCallbacks"] += 1
     ; data is the plain byte array produced by LLMStreamSafeArrayBytes; its
@@ -857,6 +1004,38 @@ LLMStreamOnData(state, data) {
             state["lineBytes"].Push(byte)
         }
     }
+}
+
+LLMHttpFinalizeResponse(state) {
+    if state["finished"] || state["cancelled"]
+        return
+    responseText := LLMStreamDecode(state["responseBodyBytes"])
+    LLMHttpComplete(state, state["status"], responseText, "")
+}
+
+LLMHttpComplete(state, status, responseText, transportError) {
+    if !LLMClaimTerminal(state)
+        return
+    ; Cancellation may win after the transport has claimed its terminal event
+    ; but before this callback is dispatched. Let the operation arbitrate that
+    ; last race so a cancelled request never calls its consumer.
+    if IsObject(state["operation"]) && !state["operation"].Complete() {
+        state["eventQueue"] := []
+        state["finalizeScheduled"] := false
+        LLMStreamRelease(state)
+        return
+    }
+    state["eventQueue"] := []
+    state["finalizeScheduled"] := false
+    callback := state["onHttpFinished"]
+    id := state["id"]
+    DebugLog("LLM HTTP request completed id=" . id . " status=" . status
+        . " bytes=" . state["responseBodyBytes"].Length
+        . " errorKind=" . LLMLogErrorKind(transportError, status))
+    LLMStreamRelease(state)
+    try callback.Call(status, responseText, transportError)
+    catch as callbackError
+        DebugLog("LLM HTTP completion callback failed id=" . id)
 }
 
 LLMStreamDecode(bytes) {
@@ -1011,9 +1190,8 @@ LLMStreamFinalizeResponse(state) {
 }
 
 LLMStreamComplete(state, success, errorText) {
-    if state["finished"]
+    if !LLMClaimTerminal(state)
         return
-    state["finished"] := true
     state["eventQueue"] := []
     state["finalizeScheduled"] := false
     text := state["text"]
@@ -1054,25 +1232,6 @@ LLMUtf8Bytes(text) {
     Loop byteCount
         bytes[A_Index - 1] := NumGet(byteBuffer, A_Index - 1, "UChar")
     return bytes
-}
-
-LLMResponseText(request) {
-    try {
-        body := request.ResponseBody
-        if !IsObject(body)
-            return request.ResponseText
-        ; ResponseBody is a VT_UI1 SAFEARRAY. Convert it through the same
-        ; SafeArray accessor used by SSE events so NumPut receives plain
-        ; integers rather than ComValue wrappers.
-        bytes := LLMStreamSafeArrayBytes(body)
-        if !bytes.Length
-            return ""
-        rawBuffer := Buffer(bytes.Length + 1, 0)
-        for index, byte in bytes
-            NumPut("UChar", byte, rawBuffer, index - 1)
-        return StrGet(rawBuffer, "UTF-8")
-    } catch
-        return request.ResponseText
 }
 
 LLMExtractChatText(responseText, structuredKey := "") {

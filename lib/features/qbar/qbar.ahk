@@ -16,6 +16,8 @@ global QbarQuerySeq := 0
 global QbarPageQueryId := 0
 global QbarSessionSerial := 0
 global QbarSessionId := ""
+global QbarCurrentQueryText := ""
+global QbarResultSnapshot := 0
 global QbarCurrentRows := 0
 global QbarStartMenuCache := 0      ; 0 = not scanned yet, otherwise an array
 global QbarConfigIndexCache := 0    ; lazily built registry-backed index
@@ -43,6 +45,7 @@ global QbarEsBundledStarted := false ; true only when this session launched the 
 global QbarEsBundledState := "unknown" ; unknown|starting|reachable|failed
 global QbarEsWarmupDeadline := 0
 global QbarEsBundledFailed := false ; start declined; do not prompt again this session
+global QbarEsResultContext := 0
 
 ; Panel geometry in logical pixels, mirrored by qbar.html's CSS variables.
 ; Screen-relative: 420 logical px at 1920x1080, wider on bigger screens and
@@ -81,6 +84,8 @@ QbarShow() {
 
     QbarSessionSerial += 1
     QbarSessionId := "qbar-" . QbarSessionSerial . "-" . A_TickCount
+    QbarCurrentQueryText := ""
+    QbarInvalidateResultSnapshot()
 
     activeHwnd := WinGetID("A")
     QbarTargetHwnd := 0
@@ -118,6 +123,7 @@ QbarShow() {
     panelGui := PanelHostGui(QbarHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
+    ShowSystemCursor()
     PanelHostStartAutoHide(QbarHost, QbarHide)
     SetTimer(QbarTrackExternalTarget, 100)
 
@@ -141,6 +147,8 @@ QbarHide(*) {
     QbarFutureStack := []
     QbarQuerySeq += 1
     QbarPageQueryId := 0
+    QbarCurrentQueryText := ""
+    QbarInvalidateResultSnapshot()
     QbarHistoryClearDisplayed()
     QbarCancelIconQueue()
     ; Keep a completed search-key cache across ordinary hide/show cycles. A
@@ -213,13 +221,4 @@ QbarSplitCommand(text, &firstToken, &rest) {
         return false
     rest := Trim(SubStr(text, StrLen(firstToken) + 1), " `t")
     return true
-}
-
-; What was typed after a trigger: "bd 键盘" gives "键盘". Empty when the line is
-; only the trigger, or does not start with it at all.
-
-QbarSearchArgument(text, trigger) {
-    if !QbarSplitCommand(text, &firstToken, &rest) || firstToken != trigger
-        return ""
-    return rest
 }

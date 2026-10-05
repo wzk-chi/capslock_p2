@@ -8,7 +8,6 @@ global EverythingWindowInitialized := false
 global EverythingPendingText := ""
 global EverythingPendingOpen := false
 global EverythingOpenSerial := 0
-global EverythingPageReady := false
 global EverythingQuerySeq := 0
 global EverythingQueryText := ""
 global EverythingCategory := "all"
@@ -84,7 +83,7 @@ EverythingBuildQuery(text, category := "all") {
 EverythingShow(query := "", explicitQuery := false) {
     global EverythingVisible, EverythingPendingText, EverythingPendingOpen
     global EverythingOpenSerial, EverythingWindowInitialized, EverythingCategory, EverythingQueryText
-    global EverythingPageReady, EverythingEsHintShown
+    global EverythingEsHintShown
 
     if explicitQuery && EverythingVisible
         EverythingCancelSearch("new open query")
@@ -126,7 +125,7 @@ EverythingShow(query := "", explicitQuery := false) {
     WindowBarSetPinnedPage(EverythingHost, WindowBarIsPinned(EverythingHost))
     PanelHostStartAutoHide(EverythingHost, EverythingHide,
         Map("requireActive", true))
-    if EverythingPageReady {
+    if PanelHostPageReady(EverythingHost) {
         EverythingBeginPendingOpen()
         SetTimer(EverythingFocusInput, -1)
     }
@@ -173,13 +172,15 @@ EverythingBeginQuery(text, category := "all", immediate := false) {
     EverythingEsMode := false
     QbarEsCancelJob("everything query changed")
     EverythingCancelIconQueue()
+    ; Invalidate actions against the previous result set as soon as a new
+    ; query starts, including while its replacement results are still pending.
+    EverythingResultsVersion += 1
     EverythingQueryText := String(text)
     EverythingCategory := StrLower(Trim(category))
     EverythingQuerySeq += 1
     requestId := EverythingQuerySeq
     if Trim(EverythingQueryText, " `t") = "" && EverythingCategory = "all" {
         EverythingResults := []
-        EverythingResultsVersion += 1
         EverythingExec("window.setResults(" . JSON.stringify(Map(
             "requestId", requestId,
             "resultsVersion", EverythingResultsVersion,
@@ -246,7 +247,6 @@ EverythingPublishResults(results, seq) {
             "icon", item.Has("icon") ? item["icon"] : ""))
     }
     EverythingResults := normalized
-    EverythingResultsVersion += 1
     version := EverythingResultsVersion
     iconKeys := Map()
     rows := EverythingPageRows(normalized, &iconKeys)
@@ -364,14 +364,10 @@ EverythingIsActive() {
     return EverythingVisible && PanelHostWindowActive(EverythingHost)
 }
 
-EverythingFindResult(resultId, version := "") {
+EverythingFindResult(resultId, version) {
     global EverythingResults, EverythingResultsVersion
-    if version != "" {
-        try if Integer(version) != EverythingResultsVersion
-            return 0
-        catch
-            return 0
-    }
+    if Type(version) != "Integer" || version <= 0 || version != EverythingResultsVersion
+        return 0
     for item in EverythingResults
         if String(item["id"]) = String(resultId)
             return item

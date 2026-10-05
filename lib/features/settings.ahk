@@ -7,6 +7,8 @@ global SettingsPendingPage := "general"
 global SettingsPendingToast := ""
 global SettingsShortcutHook := 0
 global SettingsShortcutTarget := ""
+global SettingsTestGeneration := 0
+global SettingsTestOperation := 0
 global WindowPickerVisible := false
 global WindowPickerKind := ""
 global WindowPickerRows := []
@@ -20,6 +22,7 @@ SettingsShow(initialPage := "general", toastMessage := "", *) {
     SettingsPendingToast := Trim(String(toastMessage))
     SettingsVisible := true
     if !SettingsEnsureWebView() {
+        SettingsTestInvalidate()
         SettingsVisible := false
         return
     }
@@ -42,8 +45,11 @@ SettingsEnsureWebView() {
             return true
         } catch as existingError {
             PanelHostHide(SettingsHost)
-            DebugLog("settings webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            DebugLog("settings webview initialization failed stage=existing errorType="
+                . Type(existingError))
+            ShowMsg(LLMText(
+                "Unable to open Settings. Try again or restart the app.",
+                "无法打开设置。请重试或重新启动应用。"), 5000)
             return false
         }
     }
@@ -63,18 +69,24 @@ SettingsEnsureWebView() {
         PanelHostEnsure(SettingsHost)
         return true
     } catch as webViewError {
-        DebugLog("settings webview failed")
+        DebugLog("settings webview initialization failed stage=create errorType="
+            . Type(webViewError))
         PanelHostHide(SettingsHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        ShowMsg(LLMText(
+            "Unable to open Settings. Try again or restart the app.",
+            "无法打开设置。请重试或重新启动应用。"), 5000)
         return false
     }
 }
 
 SettingsNavigationCompleted(host, sender, args) {
     global SettingsVisible
-    if !PanelHostPageReady(host)
-        ShowMsg("The settings page could not be loaded.", 3500)
-    else if SettingsVisible
+    SettingsTestInvalidate()
+    if !PanelHostPageReady(host) {
+        ShowMsg(LLMText(
+            "The Settings page could not be loaded. Try reopening it.",
+            "设置页面无法加载，请重新打开设置。"), 3500)
+    } else if SettingsVisible
         SetTimer(SettingsPushSnapshot, -1)
 }
 
@@ -120,7 +132,7 @@ SettingsWebMessageReceived(sender, args) {
             . (indexValid ? " index=" . index : ""))
     }
     else if messageType = "testSettings"
-        SetTimer(SettingsRunTest.Bind(message), -1)
+        SettingsStartTest(message)
     else if messageType = "startShortcutRecording"
         SetTimer(SettingsStartShortcutCapture.Bind(message), -1)
     else if messageType = "stopShortcutRecording"
@@ -142,14 +154,22 @@ SettingsWebMessageReceived(sender, args) {
 
 SettingsCreatePlugin(message) {
     msg := LLMMessageParse(message)
-    kind := LLMMsgField(msg, "kind")
-    displayName := LLMMsgField(msg, "displayName")
-    aliases := msg.Has("aliases") && Type(msg["aliases"]) = "Array" ? msg["aliases"] : []
-    settings := msg.Has("settings") && Type(msg["settings"]) = "Map" ? msg["settings"] : Map()
+    if !msg.Has("kind") || Type(msg["kind"]) != "String"
+        || !msg.Has("displayName") || Type(msg["displayName"]) != "String"
+        || (msg.Has("aliases") && Type(msg["aliases"]) != "Array")
+        || (msg.Has("settings") && Type(msg["settings"]) != "Map") {
+        SettingsSendQbarPluginCreated(false, LLMText("Tool data is invalid.", "工具数据无效。"))
+        return
+    }
+    kind := msg["kind"]
+    displayName := msg["displayName"]
+    aliases := msg.Has("aliases") ? msg["aliases"] : []
+    settings := msg.Has("settings") ? msg["settings"] : Map()
     DebugLog("Settings create Qbar plugin kind=" . kind)
     ok := QbarPluginHostCreateUserPlugin(kind, displayName, aliases, settings)
     if ok {
-        SettingsSendQbarPluginCreated(true, LLMText("Plugin created.", "插件已创建。"))
+        receipt := SettingsBuildSaveReceipt(false, false, true)
+        SettingsSendQbarPluginCreated(true, LLMText("Plugin created.", "插件已创建。"), receipt)
         SettingsPushSnapshot()
     } else {
         DebugLog("Settings create Qbar plugin failed kind=" . kind)
@@ -158,43 +178,59 @@ SettingsCreatePlugin(message) {
 }
 
 SettingsApplyQbarPlugin(message) {
-    global QbarStoreError, QbarPluginHostError, QbarRegistryError
+    global SettingsFile, QbarStoreError, QbarPluginHostError, QbarRegistryError
+    iniCommitted := false
+    runtimeApplied := true
+    settingsSubmitted := false
+    pluginCommitted := false
+    effectiveChanges := Map()
+    plugin := 0
+    pluginId := ""
     msg := LLMMessageParse(message)
     if !msg.Has("plugin") || Type(msg["plugin"]) != "Map" || !msg["plugin"].Has("pluginId") {
         DebugLog("Settings Qbar save rejected: invalid plugin payload")
         SettingsSendQbarPluginSaved(false, LLMText("Tool data is invalid.", "工具数据无效。"))
         return
     }
-    plugin := msg["plugin"]
-    toolSettings := msg.Has("toolSettings") && Type(msg["toolSettings"]) = "Map"
-        ? msg["toolSettings"] : Map()
+    if !QbarPluginHostPreparePluginChanges([msg["plugin"]], &preparedPlugins, &validationError) {
+        DebugLog("Settings Qbar save rejected: plugin validation")
+        SettingsSendQbarPluginSaved(false, validationError)
+        return
+    }
+    plugin := preparedPlugins[1]
     pluginId := String(plugin["pluginId"])
     commandCount := plugin.Has("commands") && Type(plugin["commands"]) = "Array"
         ? plugin["commands"].Length : 0
     DebugLog("Settings Qbar save start plugin=" . pluginId . " commands=" . commandCount)
-    if pluginId = "builtin.clipboard" {
-        clipboardSettingsError := ""
-        if !SettingsValidateClipboardPluginSettings(plugin, &clipboardSettingsError) {
-            DebugLog("Settings Qbar save rejected plugin=" . pluginId
-                . " invalid settings=" . clipboardSettingsError)
-            SettingsSendQbarPluginSaved(false, clipboardSettingsError)
+    if msg.Has("toolSettings") && Type(msg["toolSettings"]) != "Map" {
+        SettingsSendQbarPluginSaved(false, "文件搜索设置格式无效。")
+        return
+    }
+    toolSettings := msg.Has("toolSettings") ? msg["toolSettings"] : Map()
+    maxResults := ""
+    for key, value in toolSettings {
+        if key != "esMaxResults" || pluginId != "builtin.everything" {
+            SettingsSendQbarPluginSaved(false, "文件搜索设置项无效。")
             return
         }
-    }
-    maxResults := ""
-    if pluginId = "builtin.everything" && toolSettings.Has("esMaxResults") {
-        maxResults := Trim(String(toolSettings["esMaxResults"]))
-        if !RegExMatch(maxResults, "^\d+$") || Integer(maxResults) < 1 || Integer(maxResults) > 500 {
+        if !QbarPluginHostInteger(value, &parsedMaxResults)
+            || parsedMaxResults < 1 || parsedMaxResults > 500 {
             DebugLog("Settings Qbar save rejected plugin=" . pluginId . " invalid esMaxResults")
             SettingsSendQbarPluginSaved(false, "文件搜索数量必须是 1 到 500 之间的整数。")
             return
         }
+        maxResults := String(parsedMaxResults)
     }
     try {
         if maxResults != "" {
+            settingsSubmitted := true
             changes := Map("Qbar", Map("esMaxResults", maxResults))
+            originalContent := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
+            originalContent := StrReplace(originalContent, "`r`n", "`n")
+            candidateContent := ""
             invalidChange := ""
-            effectiveChanges := ConfigWriteUserOverrides(changes, &invalidChange)
+            effectiveChanges := ConfigPrepareUserOverrides(
+                changes, originalContent, &candidateContent, &invalidChange)
             if invalidChange != "" {
                 DebugLog("Settings Qbar save rejected plugin=" . pluginId
                     . " invalid config=" . invalidChange)
@@ -202,20 +238,55 @@ SettingsApplyQbarPlugin(message) {
                 return
             }
             if effectiveChanges.Count
-                ReloadSettings(false)
+                runtimeApplied := false
+            if candidateContent != originalContent {
+                ConfigAtomicWrite(SettingsFile, candidateContent)
+                iniCommitted := true
+            }
+            if effectiveChanges.Count {
+                loadSucceeded := false
+                ReloadSettings(false, false, &loadSucceeded)
+                if !loadSucceeded {
+                    errorText := iniCommitted
+                        ? "文件搜索数量已写入，但尚未应用。请检查配置文件并重新载入设置。"
+                        : "文件搜索设置无法应用。请检查应用配置文件后重试。"
+                    receipt := SettingsBuildSaveReceipt(false, false, false,
+                        iniCommitted, false)
+                    SettingsSendQbarPluginSaved(false, errorText, receipt)
+                    return
+                }
+                runtimeApplied := true
+            }
         }
         if !QbarPluginHostApplyPluginChanges([plugin]) {
             DebugLog("Settings Qbar save failed plugin=" . pluginId
                 . " host=" . QbarPluginHostError . " store=" . QbarStoreError
                 . " registry=" . QbarRegistryError)
-            SettingsSendQbarPluginSaved(false, LLMText(
-                "Tool settings could not be saved.", "工具设置保存失败。"))
+            text := settingsSubmitted && runtimeApplied
+                ? "文件搜索数量已保存，但工具设置未保存。请重试保存工具设置。"
+                : LLMText("Tool settings could not be saved.", "工具设置保存失败。")
+            receipt := SettingsBuildSaveReceipt(settingsSubmitted && runtimeApplied,
+                false, false, iniCommitted, runtimeApplied)
+            SettingsSendQbarPluginSaved(false, text, receipt)
             return
         }
-        if pluginId = "builtin.clipboard"
-            ClipboardHistoryOnPluginSettingsChanged()
+        pluginCommitted := true
+        notificationFailed := false
+        if pluginId = "builtin.clipboard" {
+            try ClipboardHistoryOnPluginSettingsChanged()
+            catch as notificationError {
+                notificationFailed := true
+                DebugLog("Settings Qbar plugin saved but clipboard notification failed: "
+                    . notificationError.Message)
+            }
+        }
         DebugLog("Settings Qbar save success plugin=" . pluginId)
-        SettingsSendQbarPluginSaved(true, LLMText("Tool settings saved.", "工具设置已保存。"))
+        text := notificationFailed
+            ? "工具设置已保存，但部分状态未能立即刷新。请重新打开相关面板。"
+            : LLMText("Tool settings saved.", "工具设置已保存。")
+        receipt := SettingsBuildSaveReceipt(settingsSubmitted && runtimeApplied,
+            false, true, iniCommitted, runtimeApplied)
+        SettingsSendQbarPluginSaved(true, text, receipt)
         try SettingsPushSnapshot()
         catch as snapshotError
             DebugLog("Settings Qbar snapshot push failed plugin=" . pluginId
@@ -224,91 +295,23 @@ SettingsApplyQbarPlugin(message) {
         DebugLog("Settings Qbar save exception plugin=" . pluginId
             . " error=" . saveError.Message . " host=" . QbarPluginHostError
             . " store=" . QbarStoreError . " registry=" . QbarRegistryError)
-        SettingsSendQbarPluginSaved(false, LLMText("Tool settings could not be saved.", "工具设置保存失败。"))
-    }
-}
-
-SettingsValidateClipboardPluginSettings(plugin, &errorText := "") {
-    errorText := ""
-    if !plugin.Has("settings") || Type(plugin["settings"]) != "Map" {
-        errorText := "剪贴板历史设置无效。"
-        return false
-    }
-    definition := QbarPluginCatalogDefinitionById("builtin.clipboard")
-    if !IsObject(definition) || !definition.Has("settingsSchema") {
-        errorText := "剪贴板历史设置定义不可用。"
-        return false
-    }
-    settings := plugin["settings"]
-    normalized := Map()
-    for key, field in definition["settingsSchema"] {
-        label := field.Has("label") ? field["label"] : key
-        if !settings.Has(key) {
-            errorText := "缺少设置项：" . label
-            return false
-        }
-        if field["type"] = "boolean" {
-            if !SettingsQbarBoolean(settings[key], &value) {
-                errorText := "设置项“" . label . "”必须是开关。"
-                return false
-            }
-            normalized[key] := value ? JSON.true : JSON.false
-        } else if field["type"] = "integer" {
-            rawValue := Trim(String(settings[key]))
-            if !RegExMatch(rawValue, "^\d+$") {
-                errorText := "设置项“" . label . "”必须是整数。"
-                return false
-            }
-            value := Integer(rawValue)
-            minimum := field.Has("min") ? Integer(field["min"]) : value
-            maximum := field.Has("max") ? Integer(field["max"]) : value
-            if value < minimum || value > maximum {
-                displayScale := field.Has("displayScale") ? Integer(field["displayScale"]) : 1
-                errorText := "设置项“" . label . "”必须在 "
-                    . (minimum / displayScale) . " 到 " . (maximum / displayScale) . " 之间。"
-                return false
-            }
-            normalized[key] := value
+        if pluginCommitted {
+            receipt := SettingsBuildSaveReceipt(settingsSubmitted && runtimeApplied,
+                false, true, iniCommitted, runtimeApplied)
+            SettingsSendQbarPluginSaved(true,
+                "工具设置已保存，但部分状态未能立即刷新。请重新打开相关面板。", receipt)
         } else {
-            errorText := "剪贴板历史设置类型不受支持：" . key
-            return false
+            if settingsSubmitted && iniCommitted && !runtimeApplied
+                text := "文件搜索数量已写入但未应用，工具设置也未保存。请检查配置文件并重新载入设置。"
+            else if settingsSubmitted && runtimeApplied
+                text := "文件搜索数量已保存，但工具设置未保存。请重试保存工具设置。"
+            else
+                text := LLMText("Tool settings could not be saved.", "工具设置保存失败。")
+            receipt := SettingsBuildSaveReceipt(settingsSubmitted && runtimeApplied,
+                false, false, iniCommitted, runtimeApplied)
+            SettingsSendQbarPluginSaved(false, text, receipt)
         }
     }
-    plugin["settings"] := normalized
-    return true
-}
-
-SettingsQbarBoolean(value, &result := false) {
-    if Type(value) = "ComValue" {
-        try {
-            if value == JSON.true {
-                result := true
-                return true
-            }
-            if value == JSON.false {
-                result := false
-                return true
-            }
-        }
-        return false
-    }
-    if Type(value) = "Integer" {
-        if value = 1 || value = 0 {
-            result := value = 1
-            return true
-        }
-        return false
-    }
-    normalized := StrLower(Trim(String(value)))
-    if normalized = "true" || normalized = "1" {
-        result := true
-        return true
-    }
-    if normalized = "false" || normalized = "0" {
-        result := false
-        return true
-    }
-    return false
 }
 
 SettingsDeleteQbarPlugin(message) {
@@ -320,7 +323,8 @@ SettingsDeleteQbarPlugin(message) {
         return
     }
     if QbarPluginHostDeletePlugin(pluginId) {
-        SettingsSendQbarPluginDeleted(true, "工具已删除。", pluginId)
+        receipt := SettingsBuildSaveReceipt(false, false, true)
+        SettingsSendQbarPluginDeleted(true, "工具已删除。", pluginId, receipt)
         SetTimer(SettingsPushSnapshot, -1)
         return
     }
@@ -523,7 +527,10 @@ SettingsSelectHotkeyApplication(*) {
     try applicationPath := FileSelect(1, "", "选择应用程序", "应用程序 (*.exe)")
     catch as pickerError {
         SettingsSendHotkeyApplicationSelected(0)
-        ShowMsg("无法打开应用选择器：" . pickerError.Message, 3000)
+        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
+        ShowMsg(LLMText(
+            "Unable to open the application picker. Reopen Settings and try again.",
+            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
         return
     }
     if applicationPath = ""
@@ -570,10 +577,17 @@ SettingsPushSnapshot(*) {
     global SettingsHost, SettingsPendingToast
     if !IsObject(SettingsHost)
         return
+    payload := SettingsBuildSnapshot()
+    PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
+    SettingsPendingToast := ""
+}
+
+SettingsBuildSnapshot() {
+    global SettingsPendingPage, SettingsPendingToast
     sections := Map()
     for section in SettingsConfigSections()
         sections[section] := SettingsSectionSnapshot(section)
-    payload := Map(
+    return Map(
         "uiLanguage", LLMUiLanguage(),
         "page", SettingsPendingPage,
         "toast", SettingsPendingToast,
@@ -584,8 +598,40 @@ SettingsPushSnapshot(*) {
         "bindings", SettingsBindingSnapshot(),
         "bindingModes", WindowBindingModes(),
         "plugins", QbarRegistryPluginSnapshot())
-    PanelHostExecute(SettingsHost, "window.receiveSnapshot(" . JSON.stringify(payload, 0) . ");")
-    SettingsPendingToast := ""
+}
+
+SettingsBuildSaveReceipt(sectionsCommitted := false, profilesCommitted := false,
+    pluginsCommitted := false, settingsFileCommitted := false,
+    runtimeApplied := true) {
+    receipt := Map(
+        "sectionsCommitted", sectionsCommitted,
+        "profilesCommitted", profilesCommitted,
+        "pluginsCommitted", pluginsCommitted,
+        "settingsFileCommitted", settingsFileCommitted,
+        "runtimeApplied", runtimeApplied)
+    if sectionsCommitted || profilesCommitted || pluginsCommitted {
+        snapshot := SettingsBuildSnapshot()
+        receipt["uiLanguage"] := snapshot["uiLanguage"]
+        receipt["bindings"] := snapshot["bindings"]
+        receipt["bindingModes"] := snapshot["bindingModes"]
+        if sectionsCommitted {
+            receipt["sections"] := snapshot["sections"]
+            receipt["keys"] := snapshot["keys"]
+            for plugin in snapshot["plugins"]
+                if plugin["pluginId"] = "builtin.everything" {
+                    receipt["toolSettingsCommitted"] := true
+                    receipt["toolSettings"] := plugin["toolSettings"]
+                    break
+            }
+        }
+        if profilesCommitted {
+            receipt["profiles"] := snapshot["profiles"]
+            receipt["profileStamp"] := snapshot["profileStamp"]
+        }
+        if pluginsCommitted
+            receipt["plugins"] := snapshot["plugins"]
+    }
+    return receipt
 }
 
 SettingsAllowedKey(section, key) {
@@ -605,7 +651,7 @@ SettingsCollectSectionChanges(changes, section, values) {
 }
 
 SettingsApplyDraft(message) {
-    global SettingsFile, SettingsModifyTime
+    global SettingsFile
     msg := LLMMessageParse(message)
     sections := 0
     if msg.Has("sections") && IsObject(msg["sections"])
@@ -618,12 +664,19 @@ SettingsApplyDraft(message) {
     if msg.Has("page")
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     savePhase := "collect settings"
+    sectionsSubmitted := false
+    profilesDirty := false
+    pluginsSubmitted := false
+    pluginsCommitted := false
+    settingsFileWritten := false
+    runtimeApplied := true
     try {
         changes := Map()
         for section in SettingsConfigSections() {
             if sections.Has(section)
                 SettingsCollectSectionChanges(changes, section, sections[section])
         }
+        sectionsSubmitted := SettingsHasChanges(changes)
         savePhase := "check external settings changes"
         if msg.Has("base") && IsObject(msg["base"]) {
             conflict := SettingsFindDraftConflict(changes, msg["base"])
@@ -647,17 +700,25 @@ SettingsApplyDraft(message) {
             . " profilesDirty=" . profilesDirty . " profileCount=" . profiles.Length)
         if profilesDirty {
             savePhase := "load application profiles"
-            ; Refresh from disk before comparing the page's profile snapshot.
-            ; This catches profile edits whose file timestamp shares the same
-            ; second as the previous timestamp.
-            if !AppProfilesLoad() {
+            ; Compare a candidate without publishing it. This catches profile
+            ; edits within the same timestamp second and keeps the live state
+            ; intact if the following complete reload cannot read the file.
+            profilesChanged := false
+            if !AppProfilesLoad(&profilesChanged, false) {
                 SettingsSendSaved(false, "无法读取应用配置文件，请检查后重试。")
                 return
             }
             baseProfileStamp := msg.Has("baseProfileStamp") ? String(msg["baseProfileStamp"]) : ""
-            if baseProfileStamp != AppProfilesStampValue() {
-                ; The profile map is already refreshed; rebuild hotkeys with it.
-                ReloadSettings(false, true)
+            if profilesChanged || baseProfileStamp != AppProfilesStampValue() {
+                ; Reload the changed external state before asking the user to
+                ; discard this stale profile draft.
+                loadSucceeded := false
+                ReloadSettings(false, true, &loadSucceeded)
+                if !loadSucceeded {
+                    SettingsSendSaved(false,
+                        "外部配置已变化，但当前配置文件无法完整读取。请检查文件后重试。")
+                    return
+                }
                 SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。")
                 return
             }
@@ -667,19 +728,24 @@ SettingsApplyDraft(message) {
                 return
             }
         }
+        if msg.Has("plugins") {
+            pluginsSubmitted := true
+            savePhase := "validate plugin changes"
+            if !QbarPluginHostPreparePluginChanges(msg["plugins"],
+                &preparedPlugins, &pluginValidationError) {
+                SettingsSendSaved(false, LLMText(
+                    "Plugin settings are invalid.", pluginValidationError))
+                return
+            }
+            msg["plugins"] := preparedPlugins
+        }
         invalidChange := ""
         candidateContent := ""
-        originalContent := ""
+        originalContent := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
+        originalContent := StrReplace(originalContent, "`r`n", "`n")
         savePhase := "prepare global settings"
-        if profilesDirty {
-            originalContent := FileExist(SettingsFile) ? FileRead(SettingsFile, "UTF-8") : ""
-            originalContent := StrReplace(originalContent, "`r`n", "`n")
-            effectiveChanges := ConfigPrepareUserOverrides(
-                changes, originalContent, &candidateContent, &invalidChange)
-        } else {
-            savePhase := "write global settings"
-            effectiveChanges := ConfigWriteUserOverrides(changes, &invalidChange)
-        }
+        effectiveChanges := ConfigPrepareUserOverrides(
+            changes, originalContent, &candidateContent, &invalidChange)
         if invalidChange != "" {
             SettingsSendSaved(false, LLMText(
                 "Invalid setting value: " . invalidChange,
@@ -693,39 +759,91 @@ SettingsApplyDraft(message) {
                 SettingsSendSaved(false, profileError)
                 return
             }
-            if candidateContent != originalContent {
-                savePhase := "write settings file"
-                ConfigAtomicWrite(SettingsFile, candidateContent)
-                SettingsModifyTime := ConfigFileModifyTime()
-            }
+        }
+        if effectiveChanges.Count || profilesDirty
+            runtimeApplied := false
+        if candidateContent != originalContent {
+            savePhase := "write settings file"
+            ConfigAtomicWrite(SettingsFile, candidateContent)
+            settingsFileWritten := true
         }
         registrationErrors := []
+        loadSucceeded := true
         if effectiveChanges.Count || profilesDirty {
             savePhase := "reload settings"
-            registrationErrors := ReloadSettings(false)
+            loadSucceeded := false
+            registrationErrors := ReloadSettings(false, false, &loadSucceeded)
+            runtimeApplied := loadSucceeded
+            if !loadSucceeded {
+                errorText := settingsFileWritten
+                    ? "设置已写入，但未能应用。请检查应用配置文件后重试。"
+                    : "设置无法应用。请检查应用配置文件后重试。"
+                receipt := SettingsBuildSaveReceipt(false, false, false,
+                    settingsFileWritten, false)
+                SettingsSendSaved(false, errorText, receipt)
+                return
+            }
+            runtimeApplied := true
         }
         if msg.Has("plugins") && Type(msg["plugins"]) = "Array" {
             savePhase := "save plugin settings"
             if !QbarPluginHostApplyPluginChanges(msg["plugins"]) {
-                SettingsSendSaved(false, LLMText("Plugin settings could not be saved.", "插件设置保存失败。"))
+                receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
+                    profilesDirty, false, settingsFileWritten, loadSucceeded)
+                SettingsSendSaved(false,
+                    "应用配置已保存，但工具设置未保存。请重试保存工具设置。", receipt)
                 return
             }
+            pluginsCommitted := true
         }
         if registrationErrors.Length {
             failedTriggers := ""
             for trigger in registrationErrors
                 failedTriggers .= (failedTriggers = "" ? "" : "、") . trigger
-            SettingsSendSaved(true, "设置已保存，但以下触发键无法启用：" . failedTriggers)
+            text := "设置已保存，但以下触发键无法启用：" . failedTriggers
         } else {
-            SettingsSendSaved(true, LLMText("Settings saved.", "设置已保存。"))
+            text := LLMText("Settings saved.", "设置已保存。")
         }
-        savePhase := "push settings snapshot"
-        SettingsPushSnapshot()
+        receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
+            profilesDirty, pluginsCommitted, settingsFileWritten, loadSucceeded)
+        SettingsSendSaved(true, text, receipt)
+        ; The save receipt updates committed baselines without replacing edits
+        ; the user may have made while this request was in flight.
     } catch as saveError {
-        errorText := StrReplace(StrReplace(String(saveError.Message), "`r", " "), "`n", " ")
-        DebugLog("Settings save exception phase=" . savePhase . " message=" . errorText)
-        SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
+        DebugLog("Settings save exception phase=" . savePhase
+            . " errorType=" . Type(saveError))
+        configCommitted := runtimeApplied && (sectionsSubmitted || profilesDirty)
+        if settingsFileWritten && !runtimeApplied {
+            receipt := SettingsBuildSaveReceipt(false, false, pluginsCommitted,
+                settingsFileWritten, false)
+            text := pluginsSubmitted && !pluginsCommitted
+                ? "设置已写入但未应用，工具设置也未保存。请检查配置文件并重新载入设置。"
+                : "设置已写入，但尚未应用。请检查配置文件并重新载入设置。"
+            SettingsSendSaved(false, text, receipt)
+        } else if configCommitted && pluginsSubmitted && !pluginsCommitted {
+            receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
+                profilesDirty, false, settingsFileWritten, runtimeApplied)
+            SettingsSendSaved(false,
+                "应用配置已保存，但工具设置未保存。请重试保存工具设置。", receipt)
+        } else if (configCommitted || pluginsCommitted) {
+            receipt := SettingsBuildSaveReceipt(sectionsSubmitted && runtimeApplied,
+                profilesDirty && runtimeApplied, pluginsCommitted,
+                settingsFileWritten, runtimeApplied)
+            SettingsSendSaved(true,
+                "设置已保存，但页面状态未能立即刷新。请重新打开设置页。", receipt)
+        } else {
+            SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
+        }
     }
+}
+
+SettingsHasChanges(changes) {
+    if Type(changes) != "Map"
+        return false
+    for section, values in changes
+        if Type(values) = "Map" && values.Count
+            return true
+    return false
 }
 
 ; ConfigSchema validates each scalar field. Translation mode additionally has
@@ -767,78 +885,161 @@ SettingsFindDraftConflict(changes, base) {
     return ""
 }
 
-SettingsSendSaved(ok, text) {
+SettingsSendSaved(ok, text, receipt := 0) {
     global SettingsHost
-    script := "window.settingsSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
+    receiptJson := IsObject(receipt) ? JSON.stringify(receipt, 0) : "null"
+    script := "window.settingsSaved(" . (ok ? "true" : "false") . ","
+        . LLMJsonQuote(text) . "," . receiptJson . ");"
     PanelHostExecute(SettingsHost, script)
 }
 
-SettingsSendQbarPluginSaved(ok, text) {
+SettingsSendQbarPluginSaved(ok, text, receipt := 0) {
     global SettingsHost
     DebugLog("Settings Qbar save response ok=" . (ok ? "1" : "0"))
-    script := "window.qbarPluginSaved(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
+    receiptJson := IsObject(receipt) ? JSON.stringify(receipt, 0) : "null"
+    script := "window.qbarPluginSaved(" . (ok ? "true" : "false") . ","
+        . LLMJsonQuote(text) . "," . receiptJson . ");"
     try PanelHostExecute(SettingsHost, script)
     catch as responseError
         DebugLog("Settings Qbar save response delivery failed: " . responseError.Message)
 }
 
-SettingsSendQbarPluginCreated(ok, text) {
+SettingsSendQbarPluginCreated(ok, text, receipt := 0) {
     global SettingsHost
     DebugLog("Settings Qbar create response ok=" . (ok ? "1" : "0"))
-    script := "window.qbarPluginCreated(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
+    receiptJson := IsObject(receipt) ? JSON.stringify(receipt, 0) : "null"
+    script := "window.qbarPluginCreated(" . (ok ? "true" : "false") . ","
+        . LLMJsonQuote(text) . "," . receiptJson . ");"
     try PanelHostExecute(SettingsHost, script)
     catch as responseError
         DebugLog("Settings Qbar create response delivery failed: " . responseError.Message)
 }
 
-SettingsSendQbarPluginDeleted(ok, text, pluginId) {
+SettingsSendQbarPluginDeleted(ok, text, pluginId, receipt := 0) {
     global SettingsHost
+    receiptJson := IsObject(receipt) ? JSON.stringify(receipt, 0) : "null"
     script := "window.qbarPluginDeleted(" . (ok ? "true" : "false") . ","
-        . LLMJsonQuote(text) . "," . LLMJsonQuote(pluginId) . ");"
+        . LLMJsonQuote(text) . "," . LLMJsonQuote(pluginId) . "," . receiptJson . ");"
     try PanelHostExecute(SettingsHost, script)
     catch as responseError
         DebugLog("Settings Qbar delete response delivery failed: " . responseError.Message)
 }
 
-SettingsRunTest(message) {
+SettingsStartTest(message) {
+    global SettingsTestGeneration, SettingsTestOperation
+    SettingsTestGeneration += 1
+    generation := SettingsTestGeneration
+    previousOperation := SettingsTestOperation
+    SettingsTestOperation := 0
+    if IsObject(previousOperation)
+        previousOperation.Cancel()
+    SetTimer(SettingsRunTest.Bind(message, generation), -1)
+}
+
+SettingsRunTest(message, generation) {
+    global SettingsTestOperation
+    if !SettingsTestIsCurrent(generation)
+        return
     msg := LLMMessageParse(message)
     target := StrLower(LLMMsgField(msg, "target"))
     if target != "llm" && target != "youdao" && target != "volcengine"
         return
-    ok := false
-    resultText := ""
+    operation := LLMAsyncOperation()
+    SettingsTestOperation := operation
     try {
         if target = "llm" {
             overrides := LLMMessageOverrides(msg, [
                 "endpoint", "apiKey", "apiKeyHeader", "apiKeyPrefix", "model",
                 "temperature", "timeout", "thinking", "maxInputTokens"])
-            responseText := LLMChatComplete(
+            childOperation := LLMChatCompleteAsync(
                 [Map("role", "user", "content", "Hello! This is a capslock_p2 connection test.")],
-                &ok, &resultText, overrides)
-            if ok {
-                resultText := LLMText("Connection OK", "连接正常")
-            }
+                SettingsTestLlmFinished.Bind(generation, operation), overrides)
+            SettingsTestAttachChild(operation, childOperation)
         } else {
             provider := TranslateGetProvider(target)
             if !IsObject(provider) || !provider.Has("test") {
-                resultText := LLMText("Translation test is unavailable.", "翻译测试不可用。")
+                childOperation := LLMScheduleAsyncCallback(LLMAsyncOperation(),
+                    SettingsTestComplete.Bind(generation, operation), false,
+                    LLMText("Translation test is unavailable.", "翻译测试不可用。"))
+                SettingsTestAttachChild(operation, childOperation)
             } else {
-                provider["test"].Call(msg, &ok, &resultText)
+                childOperation := provider["test"].Call(msg,
+                    SettingsTestProviderFinished.Bind(generation, operation))
+                if IsObject(childOperation)
+                    SettingsTestAttachChild(operation, childOperation)
+                else {
+                    childOperation := LLMScheduleAsyncCallback(LLMAsyncOperation(),
+                        SettingsTestComplete.Bind(generation, operation), false,
+                        LLMText("The connection test could not be started.", "无法启动连接测试。"))
+                    SettingsTestAttachChild(operation, childOperation)
+                }
             }
         }
-        if ok
-            resultText := LLMText("Connection OK", "连接正常")
-    } catch as testError {
-        ok := false
-        resultText := testError.Message
+    } catch {
+        DebugLog("Settings connection test setup failed generation=" . generation)
+        childOperation := LLMScheduleAsyncCallback(LLMAsyncOperation(),
+            SettingsTestComplete.Bind(generation, operation), false,
+            LLMText("The connection test could not be started.", "无法启动连接测试。"))
+        SettingsTestAttachChild(operation, childOperation)
     }
-    SettingsSendTestResult(ok, resultText)
 }
 
-SettingsSendTestResult(ok, text) {
+SettingsTestLlmFinished(generation, operation, responseText, success, errorText) {
+    resultText := success ? LLMText("Connection OK", "连接正常") : errorText
+    SettingsTestComplete(generation, operation, success, resultText)
+}
+
+SettingsTestProviderFinished(generation, operation, success, text) {
+    SettingsTestComplete(generation, operation, success, text)
+}
+
+SettingsTestComplete(generation, operation, ok, text) {
+    global SettingsTestOperation
+    criticalState := A_IsCritical
+    Critical "On"
+    try {
+        if !SettingsTestIsCurrent(generation) || !operation.Complete()
+            return
+        SettingsTestOperation := 0
+        SettingsSendTestResult(generation, ok, text)
+    } finally {
+        if !criticalState
+            Critical "Off"
+    }
+}
+
+SettingsTestAttachChild(operation, childOperation) {
+    if IsObject(childOperation)
+        operation.SetCancel(SettingsCancelTestChild.Bind(childOperation))
+}
+
+SettingsCancelTestChild(childOperation) {
+    childOperation.Cancel()
+}
+
+SettingsTestIsCurrent(generation) {
+    global SettingsTestGeneration, SettingsVisible, SettingsHost
+    return generation = SettingsTestGeneration && SettingsVisible
+        && IsObject(SettingsHost) && PanelHostPageReady(SettingsHost)
+}
+
+SettingsTestInvalidate() {
+    global SettingsTestGeneration, SettingsTestOperation
+    SettingsTestGeneration += 1
+    operation := SettingsTestOperation
+    SettingsTestOperation := 0
+    if IsObject(operation)
+        operation.Cancel()
+}
+
+SettingsSendTestResult(generation, ok, text) {
     global SettingsHost
+    if !SettingsTestIsCurrent(generation)
+        return
     script := "window.settingsTestResult(" . (ok ? "true" : "false") . "," . LLMJsonQuote(text) . ");"
-    PanelHostExecute(SettingsHost, script)
+    try PanelHostExecute(SettingsHost, script)
+    catch as testResultError
+        DebugLog("Settings test result delivery failed")
 }
 
 SettingsOpenWindowPicker(message) {
@@ -854,7 +1055,10 @@ SettingsOpenWindowPicker(message) {
     try SettingsShowWindowPicker(bindingNumber, bindType)
     catch as pickerError {
         SettingsShow("windows")
-        ShowMsg("Unable to open window picker: " . pickerError.Message, 3000)
+        DebugLog("Settings window picker failed errorType=" . Type(pickerError))
+        ShowMsg(LLMText(
+            "Unable to open the window picker. Reopen Settings and try again.",
+            "无法打开窗口选择器。请重新打开设置后重试。"), 3000)
     }
 }
 
@@ -871,7 +1075,10 @@ SettingsOpenOpenApplicationPicker(message) {
     try SettingsShowApplicationPicker(bindingNumber)
     catch as pickerError {
         SettingsShow("windows")
-        ShowMsg("Unable to open application picker: " . pickerError.Message, 3000)
+        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
+        ShowMsg(LLMText(
+            "Unable to open the application picker. Reopen Settings and try again.",
+            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
     }
 }
 
@@ -889,7 +1096,10 @@ SettingsOpenOtherApplicationPicker(message) {
     try applicationPath := FileSelect(1, "", "选择其他应用", "应用程序 (*.exe)")
     catch as pickerError {
         SettingsShow("windows")
-        ShowMsg("Unable to open application picker: " . pickerError.Message, 3000)
+        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
+        ShowMsg(LLMText(
+            "Unable to open the application picker. Reopen Settings and try again.",
+            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
         return
     }
     if applicationPath = "" {
@@ -1052,6 +1262,7 @@ SettingsHide(*) {
     if WindowPickerVisible
         SettingsCloseWindowPicker(false)
     SettingsStopShortcutCapture()
+    SettingsTestInvalidate()
     SettingsVisible := false
     PanelHostHide(SettingsHost)
 }
@@ -1061,6 +1272,7 @@ SettingsShutdown(*) {
     if WindowPickerVisible
         SettingsCloseWindowPicker(false)
     SettingsStopShortcutCapture()
+    SettingsTestInvalidate()
     SettingsVisible := false
     SettingsPendingPage := "general"
     PanelHostDestroy(SettingsHost)

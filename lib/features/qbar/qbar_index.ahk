@@ -4,9 +4,44 @@ QbarAllItems() {
     items := []
     for item in QbarConfigItems()
         items.Push(item)
-    for item in QbarStartMenuItems()
-        items.Push(item)
+    startMenuProvider := QbarRegistryDynamicProviderByHandler("builtin.start-menu.open")
+    for item in QbarStartMenuItems() {
+        indexed := QbarIndexAttachDynamicProvider(item, startMenuProvider,
+            "builtin.start-menu.open")
+        if !indexed.Has("dynamicBlocked")
+            items.Push(indexed)
+    }
     return items
+}
+
+QbarIndexCopyItem(item) {
+    copy := Map()
+    if Type(item) != "Map"
+        return copy
+    for key, value in item
+        copy[key] := value
+    return copy
+}
+
+QbarIndexAttachDynamicProvider(item, provider, handlerId := "") {
+    copy := QbarIndexCopyItem(item)
+    if copy.Has("value") && Type(copy["value"]) = "String" {
+        candidateKey := StrLower(StrReplace(Trim(copy["value"]), "/", Chr(92)))
+        if candidateKey != ""
+            copy["candidateKey"] := candidateKey
+    }
+    if Type(provider) != "Map" || !provider["enabled"] {
+        if handlerId != "" && QbarRegistryDynamicProviderUnavailable(handlerId)
+            copy["dynamicBlocked"] := true
+        return copy
+    }
+    candidateKey := copy.Has("candidateKey") ? String(copy["candidateKey"]) : ""
+    copy["commandId"] := provider["commandId"]
+    copy["pluginId"] := provider["pluginId"]
+    copy["usageKey"] := provider["usageKey"]
+    if candidateKey != ""
+        copy["usageKey"] .= ":" . candidateKey
+    return copy
 }
 
 QbarInvalidateConfigIndex() {
@@ -14,6 +49,34 @@ QbarInvalidateConfigIndex() {
     QbarConfigIndexGeneration += 1
     QbarConfigIndexCache := 0
     QbarSearchOnConfigInvalidated()
+}
+
+QbarInvalidateResultSnapshot() {
+    global QbarResultSnapshot
+    QbarResultSnapshot := 0
+}
+
+QbarQueryContextCurrent(registryGeneration, queryId, querySeq, sessionId) {
+    global QbarVisible, QbarSessionId, QbarPageQueryId, QbarQuerySeq
+    return QbarVisible && sessionId != "" && sessionId = QbarSessionId
+        && queryId > 0 && queryId = QbarPageQueryId
+        && querySeq = QbarQuerySeq && registryGeneration = QbarRegistryGeneration()
+}
+
+QbarResultSnapshotCurrent(registryGeneration, queryId, sessionId, &snapshot := 0) {
+    global QbarResultSnapshot
+    snapshot := 0
+    if Type(QbarResultSnapshot) != "Map"
+        return false
+    if !QbarQueryContextCurrent(registryGeneration, queryId,
+        QbarResultSnapshot["querySeq"], sessionId)
+        return false
+    if QbarResultSnapshot["sessionId"] != sessionId
+        || QbarResultSnapshot["queryId"] != queryId
+        || QbarResultSnapshot["registryGeneration"] != registryGeneration
+        return false
+    snapshot := QbarResultSnapshot
+    return true
 }
 
 QbarConfigIndex() {
@@ -121,7 +184,7 @@ QbarStartMenuItems() {
 ; ---------------------------------------------------------------------------
 
 QbarQuery(text, querySeq := 0, pageQueryId := 0) {
-    global QbarVisible, QbarIndexReady, QbarQuerySeq
+    global QbarVisible, QbarIndexReady, QbarQuerySeq, QbarCurrentQueryText
     if !QbarVisible || !QbarIndexReady
         return
     if querySeq && querySeq != QbarQuerySeq {
@@ -130,15 +193,17 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
         return
     }
     text := Trim(text, " `t")
+    QbarCurrentQueryText := text
     DebugLog("Qbar query apply")
     DebugLogPrivate("Qbar applied query", text)
     if text = "" {
-        QbarSendResults(QbarHistoryRows(), false, "", "history", pageQueryId, querySeq)
+        QbarSendResults(QbarHistoryRows(), false, "", "history", pageQueryId, querySeq, text)
         return
     }
     resolution := QbarRegistryResolve(text)
     if resolution["candidates"].Length {
-        QbarSendResults(QbarRegistryResolutionRows(resolution), false, "", "normal", pageQueryId, querySeq)
+        QbarSendResults(QbarRegistryResolutionRows(resolution), false, "", "normal",
+            pageQueryId, querySeq, text)
         return
     }
     if QbarIsFolderQuery(text) {
@@ -147,11 +212,11 @@ QbarQuery(text, querySeq := 0, pageQueryId := 0) {
         placeholder := (items.Length = 0 && QbarLeafOf(text) = "")
             ? QbarText("(empty folder)", "（空文件夹）")
             : ""
-        QbarSendResults(items, true, placeholder, "normal", pageQueryId, querySeq)
+        QbarSendResults(items, true, placeholder, "normal", pageQueryId, querySeq, text)
         return
     }
     results := QbarFilterItems(text)
-    QbarSendResults(results, false, "", "normal", pageQueryId, querySeq)
+    QbarSendResults(results, false, "", "normal", pageQueryId, querySeq, text)
 }
 
 QbarRegistryResolutionRows(resolution) {
@@ -174,6 +239,7 @@ QbarRegistryResolutionRows(resolution) {
             "usageLastUsedUtc", candidate["usageLastUsedAt"],
             "commandId", candidate["commandId"],
             "pluginId", candidate["pluginId"],
+            "args", resolution["args"],
             "aliases", [candidate["matchedAlias"]])
         if rowType = "file" {
             command := QbarRegistryCommand(candidate["commandId"])
@@ -202,6 +268,8 @@ QbarFilterItems(text) {
     results := []
     for entry in QbarSearchCurrentEntries() {
         item := entry["item"]
+        if item.Has("dynamicBlocked") && item["dynamicBlocked"]
+            continue
         short := item["short"]
         matchRank := 60
         if !QbarSearchMatchItem(item, text, matchStrLeft, glob, &matchRank)
@@ -226,7 +294,11 @@ QbarFilterItems(text) {
             "usageLastUsedUtc", usageLastUsedUtc,
             "searchOrder", entry["order"],
             "commandId", item.Has("commandId") ? item["commandId"] : "",
-            "pluginId", item.Has("pluginId") ? item["pluginId"] : ""
+            "pluginId", item.Has("pluginId") ? item["pluginId"] : "",
+            "value", item.Has("value") ? item["value"] : "",
+            "exe", item.Has("exe") ? item["exe"] : "",
+            "candidateKey", item.Has("candidateKey") ? item["candidateKey"] : "",
+            "dynamicBlocked", item.Has("dynamicBlocked") && item["dynamicBlocked"]
         ))
     }
     return results
@@ -261,19 +333,26 @@ QbarRegistryBuiltinItem(commandId, fallback) {
 }
 
 QbarFilterFolder(text) {
+    provider := QbarRegistryDynamicProviderByHandler("builtin.open-path")
+    if QbarRegistryDynamicProviderUnavailable("builtin.open-path")
+        return []
     dir := QbarFolderOf(text)
     leaf := QbarLeafOf(text)
     items := QbarFolderItemsFor(dir)
-    if leaf = ""
-        return items
-
-    glob := QbarGlobToRegEx(leaf)
-    results := []
-    for item in items {
-        if RegExMatch(item["label"], glob)
-            results.Push(item)
+    if leaf = "" {
+        results := items
+    } else {
+        glob := QbarGlobToRegEx(leaf)
+        results := []
+        for item in items {
+            if RegExMatch(item["label"], glob)
+                results.Push(item)
+        }
     }
-    return results
+    attached := []
+    for item in results
+        attached.Push(QbarIndexAttachDynamicProvider(item, provider, "builtin.open-path"))
+    return attached
 }
 
 QbarFolderItemsFor(dir) {
@@ -304,12 +383,21 @@ QbarFolderItemsFor(dir) {
     return items
 }
 
-QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQueryId := 0, querySeq := 0) {
-    global IconSent, QbarPageQueryId, QbarQuerySeq, QbarSessionId
+QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQueryId := 0,
+    querySeq := 0, queryText := "") {
+    global IconSent, QbarHost, QbarVisible, QbarPageQueryId, QbarQuerySeq
+    global QbarSessionId, QbarCurrentQueryText, QbarResultSnapshot
     if pageQueryId = 0
         pageQueryId := QbarPageQueryId
     if querySeq = 0
         querySeq := QbarQuerySeq
+    if !QbarVisible || !PanelHostPageReady(QbarHost)
+        return
+    if pageQueryId != QbarPageQueryId || querySeq != QbarQuerySeq || QbarSessionId = ""
+        return
+    if queryText = ""
+        queryText := QbarCurrentQueryText
+    registryGeneration := QbarRegistryGeneration()
     DebugLog("Qbar results mode=" . mode . " count=" . results.Length)
     QbarCancelIconQueue()
     if mode = "history"
@@ -317,13 +405,16 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
     else
         QbarHistoryClearDisplayed()
     rows := []
+    candidates := Map()
     iconKeys := Map()
     for item in results {
+        candidateId := QbarSessionId . ":" . pageQueryId . ":" . (rows.Length + 1)
         row := Map("short", item["short"], "label", item["label"], "type", item["type"],
             "pinned", item.Has("pinned") && item["pinned"] ? JSON.true : JSON.false,
             "sessionId", QbarSessionId,
-            "candidateId", QbarSessionId . ":" . pageQueryId . ":" . (rows.Length + 1),
-            "registryGeneration", QbarRegistryGeneration())
+            "candidateId", candidateId,
+            "registryGeneration", registryGeneration)
+        candidates[candidateId] := QbarSnapshotCandidate(item, queryText)
         if item.Has("commandId") && IsObject(QbarRegistryCommand(item["commandId"]))
             row["commandId"] := item["commandId"]
         if item.Has("pluginId")
@@ -342,6 +433,8 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
             row["historyId"] := item["historyId"]
         if item.Has("history")
             row["history"] := item["history"]
+        if item.Has("replayable")
+            row["replayable"] := item["replayable"] ? JSON.true : JSON.false
         iconKey := item.Has("icon") ? item["icon"] : ""
         if iconKey != "" {
             row["icon"] := iconKey
@@ -350,12 +443,87 @@ QbarSendResults(results, folderMode, placeholder := "", mode := "normal", pageQu
         }
         rows.Push(row)
     }
+    QbarResultSnapshot := Map(
+        "sessionId", QbarSessionId,
+        "queryId", pageQueryId,
+        "querySeq", querySeq,
+        "query", queryText,
+        "registryGeneration", registryGeneration,
+        "candidates", candidates)
     ; Publish rows before doing any shell icon extraction. Missing icons use
     ; the page glyph temporarily and arrive in small timer-driven batches.
     QbarExec("window.setResults(" . JSON.stringify(rows, 0) . "," . (folderMode ? "true" : "false")
-        . "," . LLMJsonQuote(placeholder) . "," . LLMJsonQuote(mode) . "," . pageQueryId . ");")
+        . "," . LLMJsonQuote(placeholder) . "," . LLMJsonQuote(mode) . "," . pageQueryId
+        . "," . LLMJsonQuote(QbarSessionId) . "," . registryGeneration . ");")
     if iconKeys.Count
         QbarQueueIcons(iconKeys)
+}
+
+QbarSnapshotCandidate(item, queryText) {
+    candidate := Map(
+        "short", String(item["short"]),
+        "label", String(item["label"]),
+        "type", String(item["type"]))
+    for key in ["value", "exe", "candidateKey", "historyId"]
+        if item.Has(key)
+            candidate[key] := String(item[key])
+
+    commandId := item.Has("commandId") ? String(item["commandId"]) : ""
+    if commandId != "" {
+        command := QbarRegistryCommand(commandId)
+        if IsObject(command) && command["enabled"] {
+            candidate["commandId"] := commandId
+            args := item.Has("args") ? String(item["args"]) : ""
+            if !item.Has("args") {
+                resolution := QbarRegistryResolve(queryText)
+                for resolved in resolution["candidates"]
+                    if resolved["commandId"] = commandId {
+                        args := resolution["args"]
+                        break
+                    }
+                if args = ""
+                    args := QbarRegisteredCommandDisplayArguments(command, queryText)
+            }
+            candidate["args"] := args
+        } else if !IsObject(command) {
+            staticAction := QbarStaticFallbackAction(commandId)
+            if staticAction != "" {
+                candidate["staticAction"] := staticAction
+                candidate["args"] := QbarStaticCandidateArguments(item, queryText)
+            }
+        }
+    }
+    return candidate
+}
+
+QbarStaticFallbackAction(commandId) {
+    static actions := Map(
+        "builtin.ai.ask", "ai",
+        "builtin.everything.search", "everything",
+        "builtin.notes.search", "notes",
+        "builtin.clipboard.open", "clipboard",
+        "builtin.settings.open", "settings")
+    return actions.Has(commandId) ? actions[commandId] : ""
+}
+
+QbarStaticCandidateArguments(item, queryText) {
+    aliases := item.Has("aliases") && Type(item["aliases"]) = "Array"
+        ? item["aliases"] : [item["short"]]
+    lower := StrLower(Trim(queryText, " `t"))
+    bestAlias := ""
+    for alias in aliases {
+        alias := Trim(String(alias), " `t")
+        length := StrLen(alias)
+        if length = 0 || StrLen(lower) < length
+            continue
+        if SubStr(lower, 1, length) != StrLower(alias)
+            continue
+        if StrLen(lower) > length && SubStr(lower, length + 1, 1) != " "
+            continue
+        if length > StrLen(bestAlias)
+            bestAlias := alias
+    }
+    return bestAlias = "" ? "" : Trim(SubStr(queryText, StrLen(bestAlias) + 1), " `t")
 }
 
 QbarCancelIconQueue() {

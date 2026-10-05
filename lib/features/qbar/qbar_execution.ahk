@@ -1,10 +1,12 @@
 ; Qbar command execution through the plugin host.
 ;
 ; This is the executable boundary of the registry. Rows without a commandId
-; are dynamic filesystem/start-menu results and are handled by their existing
-; host-side resolution path.
+; are only handled by the static fallback path when the registry is unavailable.
+; Registered filesystem/start-menu providers receive payloads from the host's
+; current result snapshot.
 
-QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGeneration := 0) {
+QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGeneration := 0,
+    payload := 0) {
     command := QbarRegistryCommand(commandId)
     if !IsObject(command) || !command["enabled"]
         return false
@@ -44,15 +46,39 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
                 Map("page", "general")))
             return true
         case "builtin.open-path":
-            if QbarOpenPath(args)
+            path := QbarExecutionPayloadString(payload, "path", args)
+            if path = ""
+                return false
+            candidateKey := QbarExecutionPayloadString(payload, "candidateKey")
+            if ctrlHeld {
+                if QbarLocateInExplorer(path)
+                    return QbarExecutionRememberRegistered(command, args,
+                        QbarHistoryNew("reveal", path, path, Map("path", path)), candidateKey)
+            } else if QbarOpenPath(path)
                 return QbarExecutionRememberRegistered(command, args,
-                    QbarHistoryNew("path", args, args, Map("path", Trim(args))))
+                    QbarHistoryNew("path", path, path, Map("path", path)), candidateKey)
         case "builtin.open-url":
-            url := QbarNormalizeUrl(args)
+            url := QbarExecutionPayloadString(payload, "url", args)
+            url := QbarNormalizeUrl(url)
+            if url = ""
+                return false
+            candidateKey := QbarExecutionPayloadString(payload, "candidateKey")
             if QbarOpenUrl(url)
-                return QbarExecutionRememberRegistered(command, args, QbarHistoryUrlEntry(args, url))
+                return QbarExecutionRememberRegistered(command, args,
+                    QbarHistoryUrlEntry(args, url), candidateKey)
         case "builtin.start-menu.open":
-            return false
+            if !IsObject(payload) || Type(payload) != "Map"
+                return false
+            shortcutPath := QbarExecutionPayloadString(payload, "value")
+            shortcutExe := QbarExecutionPayloadString(payload, "exe")
+            shortcutLabel := QbarExecutionPayloadString(payload, "label")
+            if shortcutPath = "" || shortcutExe = "" || shortcutLabel = ""
+                return false
+            shortcut := Map("value", shortcutPath, "exe", shortcutExe, "label", shortcutLabel)
+            candidateKey := QbarExecutionPayloadString(payload, "candidateKey")
+            if QbarRunShortcut(shortcut)
+                return QbarExecutionRememberRegistered(command, args,
+                    QbarHistoryShortcutEntry(shortcut), candidateKey)
         case "builtin.search":
             settings := command["settings"]
             template := settings.Has("template") ? String(settings["template"]) : ""
@@ -77,12 +103,14 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
     return false
 }
 
-QbarExecutionRememberRegistered(command, args, historyEntry) {
+QbarExecutionRememberRegistered(command, args, historyEntry, candidateKey := "") {
     if IsObject(command) {
         if IsObject(historyEntry) {
             historyEntry["commandId"] := command["commandId"]
             historyEntry["pluginId"] := command["pluginId"]
             historyEntry["args"] := Map("args", args)
+            if candidateKey != ""
+                historyEntry["candidateKey"] := candidateKey
             if command["aliases"].Length {
                 historyEntry["input"] := command["aliases"][1]
                     . (args = "" ? "" : " " . args)
@@ -93,6 +121,12 @@ QbarExecutionRememberRegistered(command, args, historyEntry) {
     if IsObject(historyEntry)
         QbarHistoryRemember(historyEntry)
     return true
+}
+
+QbarExecutionPayloadString(payload, key, fallback := "") {
+    if Type(payload) = "Map" && payload.Has(key) && Type(payload[key]) = "String"
+        return payload[key]
+    return fallback
 }
 
 QbarExecutionBool(value) {

@@ -149,7 +149,6 @@ AiChatShow(question) {
     panelGui := PanelHostGui(AiChatHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
-    ShowSystemCursor()
     WindowBarApplyNativeMode(AiChatHost, WindowBarIsNative(AiChatHost))
     AiChatApplyWindowState()
 
@@ -258,10 +257,6 @@ AiChatWebMessageReceived(sender, args) {
     if WindowBarHandleMessage(AiChatHost, messageType, AiChatHide,
         AiChatSetPinnedState, Map("autoHide", false))
         return
-    if messageType = "cursorMove" {
-        ShowSystemCursor()
-        return
-    }
     if messageType = "streamDebug" {
         rawValid := false
         rawLength := LLMMsgNumber(msg, "rawLength", &rawValid, -1, true)

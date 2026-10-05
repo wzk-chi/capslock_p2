@@ -35,10 +35,13 @@ PanelHostCreate(pagePath, title, options := 0) {
         "focusMonitor", 0,
         "windowBarNative", false,
         "windowBarPinned", false,
+        "navigationStartingHandler", 0,
         "navigationHandler", 0,
         "messageHandler", 0,
+        "navigationStartingToken", 0,
         "navigationToken", 0,
         "messageToken", 0,
+        "acceptedNavigationId", 0,
         "registryId", 0,
         "destroyHiddenAt", 0,
         "destroyDeadline", 0,
@@ -89,8 +92,10 @@ PanelHostEnsure(host) {
         if IsNumber(host["controllerBackColor"])
             try host["controller"].DefaultBackgroundColor := host["controllerBackColor"]
         host["webView"] := host["controller"].CoreWebView2
+        host["navigationStartingHandler"] := PanelHostNavigationStarting.Bind(host)
         host["navigationHandler"] := PanelHostNavigationCompleted.Bind(host)
         host["messageHandler"] := PanelHostWebMessageReceived.Bind(host)
+        host["navigationStartingToken"] := host["webView"].add_NavigationStarting(host["navigationStartingHandler"])
         host["navigationToken"] := host["webView"].add_NavigationCompleted(host["navigationHandler"])
         host["messageToken"] := host["webView"].add_WebMessageReceived(host["messageHandler"])
         PanelHostNavigate(host)
@@ -103,7 +108,31 @@ PanelHostEnsure(host) {
     }
 }
 
+PanelHostNavigationStarting(host, sender, args) {
+    try {
+        uri := args.Uri
+        navigationId := args.NavigationId
+    } catch {
+        try args.Cancel := true
+        return
+    }
+    if !PanelHostIsPageUri(host, uri) {
+        args.Cancel := true
+        if navigationId = host["acceptedNavigationId"]
+            host["acceptedNavigationId"] := 0
+        DebugLog("panel navigation blocked title=" . host["title"])
+        return
+    }
+    host["pageReady"] := false
+    host["acceptedNavigationId"] := navigationId
+}
+
 PanelHostNavigationCompleted(host, sender, args) {
+    try navigationId := args.NavigationId
+    catch
+        navigationId := 0
+    if !navigationId || navigationId != host["acceptedNavigationId"]
+        return
     try success := args.IsSuccess
     catch
         success := false
@@ -115,6 +144,18 @@ PanelHostNavigationCompleted(host, sender, args) {
 }
 
 PanelHostWebMessageReceived(host, sender, args) {
+    try source := args.Source
+    catch
+        return
+    if !PanelHostIsPageUri(host, source)
+        return
+    try message := args.TryGetWebMessageAsString()
+    catch
+        message := ""
+    if message = "{""type"":""cursorMove""}" {
+        ShowSystemCursor()
+        return
+    }
     callbacks := host["callbacks"]
     if callbacks.Has("message")
         callbacks["message"].Call(sender, args)
@@ -125,13 +166,58 @@ PanelHostLoaderPath() {
 }
 
 PanelHostPageUrl(pagePath) {
-    return "file:///" . StrReplace(pagePath, "\", "/")
+    fullPath := PanelHostNormalizePath(pagePath)
+    if fullPath = ""
+        throw Error("Could not resolve WebView2 page path")
+    urlBuffer := Buffer(65536, 0)
+    charCount := 32768
+    result := DllCall("Shlwapi\UrlCreateFromPathW", "WStr", fullPath,
+        "Ptr", urlBuffer, "UInt*", &charCount, "UInt", 0, "Int")
+    if result < 0
+        throw Error("Could not create WebView2 page URL")
+    return StrGet(urlBuffer, "UTF-16")
+}
+
+PanelHostIsPageUri(host, uri) {
+    if !IsObject(host) || !host.Has("pagePath") || Type(uri) != "String"
+        return false
+    uriPath := PanelHostUriPath(uri)
+    expectedPath := PanelHostNormalizePath(host["pagePath"])
+    return uriPath != "" && expectedPath != "" && StrLower(uriPath) = StrLower(expectedPath)
+}
+
+PanelHostUriPath(uri) {
+    if !RegExMatch(uri, "i)^file:") || InStr(uri, "?")
+        return ""
+    fragmentAt := InStr(uri, "#")
+    if fragmentAt
+        uri := SubStr(uri, 1, fragmentAt - 1)
+    pathBuffer := Buffer(65536, 0)
+    charCount := 32768
+    result := DllCall("Shlwapi\PathCreateFromUrlW", "WStr", uri,
+        "Ptr", pathBuffer, "UInt*", &charCount, "UInt", 0, "Int")
+    if result < 0
+        return ""
+    return PanelHostNormalizePath(StrGet(pathBuffer, "UTF-16"))
+}
+
+PanelHostNormalizePath(path) {
+    if Type(path) != "String" || path = ""
+        return ""
+    pathBuffer := Buffer(65536, 0)
+    charCount := 32768
+    result := DllCall("Kernel32\GetFullPathNameW", "WStr", path,
+        "UInt", charCount, "Ptr", pathBuffer, "Ptr", 0, "UInt")
+    if !result || result >= charCount
+        return ""
+    return StrGet(pathBuffer, "UTF-16")
 }
 
 PanelHostNavigate(host) {
     if !IsObject(host) || !IsObject(host["webView"])
         return
     host["pageReady"] := false
+    host["acceptedNavigationId"] := 0
     host["webView"].Navigate(PanelHostPageUrl(host["pagePath"]))
 }
 
@@ -149,6 +235,7 @@ PanelHostShow(host, width := 0, height := 0, center := true) {
         options .= "Center"
     host["gui"].Show(Trim(options))
     host["realized"] := true
+    ShowSystemCursor()
     PanelHostFill(host)
 }
 
@@ -449,15 +536,20 @@ PanelHostDetachWebViewEvents(host) {
         return
     webView := host["webView"]
     if IsObject(webView) {
+        if host["navigationStartingToken"]
+            try webView.remove_NavigationStarting(host["navigationStartingToken"])
         if host["navigationToken"]
             try webView.remove_NavigationCompleted(host["navigationToken"])
         if host["messageToken"]
             try webView.remove_WebMessageReceived(host["messageToken"])
     }
+    host["navigationStartingToken"] := 0
     host["navigationToken"] := 0
     host["messageToken"] := 0
+    host["navigationStartingHandler"] := 0
     host["navigationHandler"] := 0
     host["messageHandler"] := 0
+    host["acceptedNavigationId"] := 0
 }
 
 PanelHostGui(host) {

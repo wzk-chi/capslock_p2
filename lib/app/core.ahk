@@ -8,6 +8,7 @@ global AppInstanceMutex := 0
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
 global DebugLogMaxBytes := 1 * 1024 * 1024
 global DebugLogging := false
+global SettingsReloadPending := false
 global KeySet := Map()
 global CapsLockHeld := false
 global CapsLockUsed := false
@@ -42,8 +43,27 @@ Initialize() {
     try SetStoreCapslockMode("Off")
     SetCapsLockState("Off")
 
-    ConfigLoad()
-    AppProfilesLoad()
+    userDocument := 0
+    if !ConfigLoad(&configError, &userDocument) {
+        errorText := configError = "defaults_missing"
+            ? "应用默认配置文件缺失，无法启动。"
+            : configError = "defaults_read"
+                ? "应用默认配置文件无法读取，请检查文件后重新启动。"
+                : configError = "user_read"
+                    ? "应用设置文件无法读取，请检查文件权限后重新启动。"
+                    : configError = "user_metadata"
+                        ? "无法确认应用设置文件状态，请检查文件权限后重新启动。"
+                        : "应用配置无法读取，请检查配置文件后重新启动。"
+        MsgBox(errorText, AppName, "Iconx")
+        ExitApp()
+        return false
+    }
+    profileChanged := false
+    if !AppProfilesLoad(&profileChanged, true, userDocument) {
+        MsgBox("应用设置文件无法完整读取，请检查文件后重新启动。", AppName, "Iconx")
+        ExitApp()
+        return false
+    }
     EnsureConfiguredElevation()
     AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
         "ptr", 0, "int", 0, "wstr", "Local\capslock_p2-running", "ptr")
@@ -69,7 +89,6 @@ Initialize() {
     OnClipboardChange(HandleClipboardChange)
     DebugLog("Hotkeys and clipboard watcher registered")
 
-    SettingsModifyTime := ConfigFileModifyTime()
     SetTimer(MonitorSettings, 500)
 
     if ConfigGlobalRead("loadingAnimation") != "0" {
@@ -161,12 +180,30 @@ ClipboardSuspendReason() {
     return reason
 }
 
-ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false, *) {
-    global SettingsVisible
+ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
+    &loadSucceeded := true, *) {
+    global SettingsVisible, SettingsReloadPending, Config, ConfigDefaults, SettingsModifyTime
+    loadSucceeded := false
     previous := ConfigSnapshot()
-    ConfigLoad()
+    previousConfig := Config
+    previousDefaults := ConfigDefaults
+    previousModifyTime := SettingsModifyTime
+    loadError := ""
+    userDocument := 0
+    if !ConfigLoad(&loadError, &userDocument) {
+        SettingsReloadPending := true
+        return []
+    }
     appProfilesChanged := false
-    AppProfilesLoad(&appProfilesChanged)
+    if !AppProfilesLoad(&appProfilesChanged, true, userDocument) {
+        Config := previousConfig
+        ConfigDefaults := previousDefaults
+        SettingsModifyTime := previousModifyTime
+        SettingsReloadPending := true
+        return []
+    }
+    SettingsReloadPending := false
+    loadSucceeded := true
     changes := ConfigEffectiveDiff(previous, Config)
     ; Apply other settings first, then register once against the combined state.
     ApplyConfigChanges(changes, true)
@@ -276,20 +313,34 @@ SettingInteger(section, key, fallback, minimum, maximum) {
 }
 
 MonitorSettings() {
-    global SettingsModifyTime, SettingsVisible
+    global SettingsModifyTime, SettingsVisible, SettingsReloadPending, SettingsFile
+    if SettingsReloadPending {
+        ReloadSettings()
+        return
+    }
     currentTime := ConfigFileModifyTime()
+    if currentTime = "" && FileExist(SettingsFile) {
+        SettingsReloadPending := true
+        ReloadSettings()
+        return
+    }
     if currentTime != SettingsModifyTime {
-        SettingsModifyTime := currentTime
         ReloadSettings()
         return
     }
     ; Check application profile content even when the coarse file timestamp did
     ; not change. Profile-only external edits should take effect immediately.
     appProfilesChanged := false
-    if AppProfilesLoad(&appProfilesChanged) && appProfilesChanged {
-        ; AppProfilesLoad already refreshed the map, so request one hotkey rebuild.
-        ReloadSettings(false, true)
-        if SettingsVisible
+    if !AppProfilesLoad(&appProfilesChanged, false) {
+        SettingsReloadPending := true
+        ReloadSettings()
+        return
+    }
+    if appProfilesChanged {
+        ; The probe did not publish; reload reads and publishes the full state.
+        loadSucceeded := false
+        ReloadSettings(false, true, &loadSucceeded)
+        if loadSucceeded && SettingsVisible
             SetTimer(SettingsPushSnapshot, -1)
     }
 }
@@ -298,13 +349,18 @@ ConfigSet(section, key, value) {
     global Config, SettingsFile, SettingsModifyTime
     normalized := ""
     if !ConfigValidateValue(section, key, value, &normalized) {
-        ShowMsg("Invalid setting value: " . section . "/" . key, 2500)
+        ShowMsg(LLMText("The setting value is invalid. Check the selected option and try again.",
+            "设置值无效，请检查选项后重试。"), 2500)
         return false
     }
     try {
         ConfigWriteValue(SettingsFile, section, key, normalized)
     } catch as writeError {
-        ShowMsg("Unable to write settings: " . writeError.Message, 2500)
+        DebugLog("Config write failed section=" . section . " key=" . key
+            . " errorType=" . Type(writeError))
+        ShowMsg(LLMText(
+            "Unable to save the setting. Check that the application folder is writable and try again.",
+            "设置无法保存。请确认安装目录可写后重试。"), 2500)
         return false
     }
     if !Config.Has(section)
@@ -602,13 +658,17 @@ RunConfiguredAction(actionText) {
     try functionObject := %functionName%
     catch as functionError {
         DebugLog("Unknown key function")
-        ShowMsg("Unknown key function: " . functionName, 2500)
+        ShowMsg(LLMText(
+            "This shortcut action is unavailable. Check the shortcut settings.",
+            "此快捷键操作不可用，请检查快捷键设置。"), 2500)
         return
     }
 
     if !HasMethod(functionObject, "Call") {
         DebugLog("Non-callable key function")
-        ShowMsg("Unknown key function: " . functionName, 2500)
+        ShowMsg(LLMText(
+            "This shortcut action is unavailable. Check the shortcut settings.",
+            "此快捷键操作不可用，请检查快捷键设置。"), 2500)
         return
     }
 
@@ -616,8 +676,10 @@ RunConfiguredAction(actionText) {
     try functionObject.Call(arguments*)
     catch as functionError {
         DebugLog("Action failed function=" . functionName
-            . " error=" . SubStr(functionError.Message, 1, 240))
-        ShowMsg(functionName . ": " . functionError.Message, 3000)
+            . " errorType=" . Type(functionError))
+        ShowMsg(LLMText(
+            "This shortcut action could not be completed. Review its settings and try again.",
+            "快捷键操作未能完成，请检查对应设置后重试。"), 3000)
     }
 }
 

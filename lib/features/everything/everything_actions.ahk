@@ -139,8 +139,8 @@ EverythingCopyFiles(path, attempt := 0, *) {
 }
 
 EverythingActionFeedback(message, isError := false) {
-    global EverythingVisible, EverythingPageReady
-    if !EverythingVisible || !EverythingPageReady
+    global EverythingVisible, EverythingHost
+    if !EverythingVisible || !PanelHostPageReady(EverythingHost)
         return
     payload := Map("message", String(message), "error", isError ? JSON.true : JSON.false)
     EverythingExec("window.showActionResult(" . JSON.stringify(payload, 0) . ");")

@@ -2,120 +2,158 @@
 ;
 ; The registry is rebuilt after startup and after a configuration transaction.
 ; Query code reads this object and never asks SQLite for each keystroke.
+; Build constructs a candidate from the current store snapshot; Publish swaps it
+; into service only after the surrounding database transaction commits.
 
 global QbarRuntimeRegistry := 0
 global QbarRuntimeGeneration := 0
 global QbarRegistryError := ""
 
-QbarRegistryRebuild() {
-    global QbarRuntimeRegistry, QbarRuntimeGeneration, QbarRegistryError, QbarStoreError
+QbarRegistryBuild(&next) {
+    global QbarRuntimeGeneration, QbarRegistryError, QbarStoreError, QbarStoreReady
     QbarRegistryError := ""
-    if !QbarStoreReady && !QbarStoreInit() {
-        QbarRegistryError := QbarStoreError
-        return false
-    }
+    next := 0
+    try {
+        if !QbarStoreReady
+            throw Error(QbarStoreError != "" ? QbarStoreError : "Qbar 数据库不可用")
+        if !QbarStoreLoadRuntimeRows(&rows)
+            throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 注册表失败")
+        if !QbarStoreLoadPluginSettings(&settingsByPlugin, &invalidPluginSettings)
+            throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 插件设置失败")
+        if !QbarStoreLoadUsageRows(&usageRows)
+            throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 使用记录失败")
+        DebugLog("Qbar registry source rows=" . rows.Length)
+        candidate := Map(
+            "generation", QbarRuntimeGeneration + 1,
+            "byAlias", Map(),
+            "byCommandId", Map(),
+            "dynamicProviders", [],
+            "visibleCommands", [],
+            "usage", Map())
 
-    rows := QbarStoreLoadRuntimeRows()
-    if !IsObject(rows) {
-        QbarRegistryError := QbarStoreError != "" ? QbarStoreError : "读取 Qbar 注册表失败"
-        return false
-    }
-    DebugLog("Qbar registry source rows=" . rows.Length)
-    settingsByPlugin := QbarStoreLoadPluginSettings()
-    next := Map(
-        "generation", QbarRuntimeGeneration + 1,
-        "byAlias", Map(),
-        "byCommandId", Map(),
-        "dynamicProviders", [],
-        "visibleCommands", [],
-        "usage", Map())
-
-    for row in rows {
-        if !row.Has("command_id") || row["command_id"] = ""
-            continue
-        commandId := row["command_id"]
-        if !next["byCommandId"].Has(commandId) {
-            instanceName := Trim(String(row["display_name"]))
-            pluginName := Trim(String(row["plugin_name"]))
-            commandTitle := Trim(String(row["command_title"]))
-            command := Map(
-                "commandId", commandId,
-                "pluginId", row["plugin_id"],
-                "definitionId", row["definition_id"],
-                "source", row["plugin_source"],
-                "instanceName", instanceName,
-                "pluginName", pluginName,
-                "displayName", QbarRegistryPreferredName(instanceName, pluginName, commandTitle),
-                "title", commandTitle,
-                "kind", row["kind"],
-                "handlerId", row["handler_id"],
-                "argMode", row["arg_mode"],
-                "priority", QbarRegistryInteger(row["priority"], 100),
-                "usageKey", row["usage_key"],
-                "aliases", [],
-                "implicitAliases", [],
-                "pluginEnabled", row["plugin_enabled"] != "0",
-                "commandEnabled", row["command_enabled"] != "0",
-                "enabled", QbarRegistryEnabled(row["plugin_enabled"], row["command_enabled"])
-                    && row["plugin_deleted"] = "" && row["command_deleted"] = ""
-                    && QbarRegistryEnabled(row["available"], "1"),
-                "pluginRetired", row["plugin_deleted"] != "",
-                "commandRetired", row["command_deleted"] != "",
-                "capabilities", QbarRegistryJsonArray(row["capabilities_json"]),
-                "settingsSchema", QbarRegistryJsonMap(row["settings_schema_json"]),
-                "settings", settingsByPlugin.Has(row["plugin_id"])
-                    ? settingsByPlugin[row["plugin_id"]] : Map(),
-                "icon", row["plugin_icon"])
-            next["byCommandId"][commandId] := command
-            if command["enabled"]
-                next["visibleCommands"].Push(command)
-            if command["kind"] = "fallback"
-                next["dynamicProviders"].Push(command)
-        }
-        command := next["byCommandId"][commandId]
-        if row["alias_enabled"] != "0" && row["normalized_alias"] != "" {
-            alias := row["normalized_alias"]
-            if !QbarRegistryArrayHas(command["aliases"], alias)
-                command["aliases"].Push(alias)
-            if command["enabled"] {
-                if !next["byAlias"].Has(alias)
-                    next["byAlias"][alias] := []
-                if !QbarRegistryArrayHas(next["byAlias"][alias], commandId)
-                    next["byAlias"][alias].Push(commandId)
+        for row in rows {
+            if !row.Has("command_id") || row["command_id"] = ""
+                continue
+            commandId := row["command_id"]
+            if !candidate["byCommandId"].Has(commandId) {
+                pluginId := row["plugin_id"]
+                definitionId := row["definition_id"]
+                definition := QbarPluginCatalogDefinitionById(definitionId)
+                catalogCommand := QbarRegistryCatalogCommand(
+                    definition, pluginId, commandId, row["handler_id"])
+                definitionValid := IsObject(definition) && IsObject(catalogCommand)
+                    && QbarRegistryDefinitionDataMatches(definition, row)
+                settingsValid := definitionValid && !invalidPluginSettings.Has(pluginId)
+                settings := Map()
+                if settingsValid {
+                    rawSettings := settingsByPlugin.Has(pluginId) ? settingsByPlugin[pluginId] : Map()
+                    if !QbarPluginHostNormalizeSettings(definition, rawSettings,
+                        &settings, &settingsError) {
+                        settingsValid := false
+                        DebugLog("Qbar plugin settings rejected by schema plugin=" . pluginId)
+                    }
+                }
+                if !settingsValid {
+                    settings := Map()
+                    DebugLog("Qbar plugin command disabled by invalid definition/settings plugin="
+                        . pluginId)
+                }
+                instanceName := Trim(String(row["display_name"]))
+                pluginName := Trim(String(row["plugin_name"]))
+                commandTitle := IsObject(catalogCommand)
+                    ? String(catalogCommand["title"]) : Trim(String(row["command_title"]))
+                command := Map(
+                    "commandId", commandId,
+                    "pluginId", pluginId,
+                    "definitionId", definitionId,
+                    "source", row["plugin_source"],
+                    "instanceName", instanceName,
+                    "pluginName", pluginName,
+                    "displayName", QbarRegistryPreferredName(instanceName, pluginName, commandTitle),
+                    "title", commandTitle,
+                    "kind", IsObject(catalogCommand) ? catalogCommand["kind"] : "disabled",
+                    "handlerId", IsObject(catalogCommand) ? catalogCommand["handlerId"] : "",
+                    "argMode", IsObject(catalogCommand) ? catalogCommand["argMode"] : "none",
+                    "priority", IsObject(catalogCommand)
+                        ? QbarRegistryInteger(catalogCommand["priority"], 100) : 0,
+                    "usageKey", row["usage_key"],
+                    "aliases", [],
+                    "implicitAliases", [],
+                    "pluginEnabled", row["plugin_enabled"] != "0",
+                    "commandEnabled", row["command_enabled"] != "0",
+                    "enabled", QbarRegistryEnabled(row["plugin_enabled"], row["command_enabled"])
+                        && row["plugin_deleted"] = "" && row["command_deleted"] = ""
+                        && QbarRegistryEnabled(row["available"], "1")
+                        && settingsValid,
+                    "pluginRetired", row["plugin_deleted"] != "",
+                    "commandRetired", row["command_deleted"] != "",
+                    "definitionValid", definitionValid,
+                    "settingsValid", settingsValid,
+                    "capabilities", IsObject(definition) ? definition["capabilities"] : [],
+                    "settingsSchema", IsObject(definition) ? definition["settingsSchema"] : Map(),
+                    "settings", settings,
+                    "icon", row["plugin_icon"])
+                candidate["byCommandId"][commandId] := command
+                if command["enabled"] {
+                    candidate["visibleCommands"].Push(command)
+                    if command["kind"] = "fallback"
+                        candidate["dynamicProviders"].Push(command)
+                }
+            }
+            command := candidate["byCommandId"][commandId]
+            if row["alias_enabled"] != "0" && row["normalized_alias"] != "" {
+                alias := row["normalized_alias"]
+                if !QbarRegistryArrayHas(command["aliases"], alias)
+                    command["aliases"].Push(alias)
+                if command["enabled"] {
+                    if !candidate["byAlias"].Has(alias)
+                        candidate["byAlias"][alias] := []
+                    if !QbarRegistryArrayHas(candidate["byAlias"][alias], commandId)
+                        candidate["byAlias"][alias].Push(commandId)
+                }
             }
         }
-    }
 
-    ; User-created commands and multi-instance built-in search/run plugins
-    ; without aliases remain invokable through their display name.
-    for commandId, command in next["byCommandId"] {
-        if command["aliases"].Length || !command["enabled"]
-            continue
-        if (command["source"] = "builtin"
-            && command["definitionId"] != "builtin.search"
-            && command["definitionId"] != "builtin.run")
-            continue
-        fallbackAlias := QbarNormalizeAlias(command["displayName"])
-        if fallbackAlias = ""
-            continue
-        command["aliases"].Push(fallbackAlias)
-        command["implicitAliases"].Push(fallbackAlias)
-        if !next["byAlias"].Has(fallbackAlias)
-            next["byAlias"][fallbackAlias] := []
-        if !QbarRegistryArrayHas(next["byAlias"][fallbackAlias], commandId)
-            next["byAlias"][fallbackAlias].Push(commandId)
-    }
+        ; User-created commands and multi-instance built-in search/run plugins
+        ; without aliases remain invokable through their display name.
+        for commandId, command in candidate["byCommandId"] {
+            if command["aliases"].Length || !command["enabled"]
+                continue
+            if (command["source"] = "builtin"
+                && command["definitionId"] != "builtin.search"
+                && command["definitionId"] != "builtin.run")
+                continue
+            fallbackAlias := QbarNormalizeAlias(command["displayName"])
+            if fallbackAlias = ""
+                continue
+            command["aliases"].Push(fallbackAlias)
+            command["implicitAliases"].Push(fallbackAlias)
+            if !candidate["byAlias"].Has(fallbackAlias)
+                candidate["byAlias"][fallbackAlias] := []
+            if !QbarRegistryArrayHas(candidate["byAlias"][fallbackAlias], commandId)
+                candidate["byAlias"][fallbackAlias].Push(commandId)
+        }
 
-    QbarRegistryLoadUsage(next["usage"])
+        QbarRegistryLoadUsage(candidate["usage"], usageRows)
+        next := candidate
+        return true
+    } catch as buildError {
+        QbarRegistryError := buildError.Message
+        DebugLog("Qbar registry build failed: " . QbarRegistryError)
+        return false
+    }
+}
+
+QbarRegistryPublish(next) {
+    global QbarRuntimeRegistry, QbarRuntimeGeneration, QbarRegistryError
     QbarRuntimeRegistry := next
     QbarRuntimeGeneration := next["generation"]
-    DebugLog("Qbar registry rebuilt commands=" . next["byCommandId"].Count
-        . " aliases=" . next["byAlias"].Count . " generation=" . next["generation"])
+    QbarRegistryError := ""
+    QbarInvalidateResultSnapshot()
     return true
 }
 
-QbarRegistryLoadUsage(target) {
-    rows := QbarStoreLoadUsageRows()
+QbarRegistryLoadUsage(target, rows) {
     for row in rows {
         if !row.Has("usage_key") || row["usage_key"] = ""
             continue
@@ -124,6 +162,35 @@ QbarRegistryLoadUsage(target) {
             "useCount", QbarRegistryInteger(row["use_count"], 0),
             "lastUsedAt", row["last_used_at"])
     }
+}
+
+QbarRegistryCatalogCommand(definition, pluginId, commandId, handlerId) {
+    if Type(definition) != "Map" || !definition.Has("commands")
+        || Type(definition["commands"]) != "Array"
+        return 0
+    for command in definition["commands"] {
+        expectedCommandId := pluginId . "." . command["id"]
+        if commandId != expectedCommandId
+            continue
+        if String(command["handlerId"]) != String(handlerId)
+            || !QbarPluginHostHandlerAllowed(String(command["handlerId"]))
+            return 0
+        return command
+    }
+    return 0
+}
+
+QbarRegistryDefinitionDataMatches(definition, row) {
+    try capabilities := JSON.Parse(String(row["capabilities_json"]), false, true)
+    catch
+        return false
+    try settingsSchema := JSON.Parse(String(row["settings_schema_json"]), false, true)
+    catch
+        return false
+    if Type(capabilities) != "Array" || Type(settingsSchema) != "Map"
+        return false
+    return JSON.stringify(capabilities, 0) = JSON.stringify(definition["capabilities"], 0)
+        && JSON.stringify(settingsSchema, 0) = JSON.stringify(definition["settingsSchema"], 0)
 }
 
 QbarRegistryResolve(text) {
@@ -265,6 +332,22 @@ QbarRegistryCommand(commandId) {
     return QbarRuntimeRegistry["byCommandId"][commandId]
 }
 
+QbarRegistryDynamicProviderByHandler(handlerId) {
+    global QbarRuntimeRegistry
+    if !IsObject(QbarRuntimeRegistry) || !QbarRuntimeRegistry.Has("dynamicProviders")
+        return 0
+    for command in QbarRuntimeRegistry["dynamicProviders"]
+        if command["enabled"] && command["handlerId"] = handlerId
+            return command
+    return 0
+}
+
+QbarRegistryDynamicProviderUnavailable(handlerId) {
+    global QbarRuntimeRegistry
+    return IsObject(QbarRuntimeRegistry)
+        && !IsObject(QbarRegistryDynamicProviderByHandler(handlerId))
+}
+
 QbarRegistryHasAlias(alias) {
     global QbarRuntimeRegistry
     normalized := QbarNormalizeAlias(alias)
@@ -295,9 +378,12 @@ QbarRegistryPluginSnapshot() {
                     || command["definitionId"] = "builtin.search"
                     || command["definitionId"] = "builtin.run"),
                 "settings", command["settings"],
+                "definitionValid", command["definitionValid"],
+                "settingsValid", command["settingsValid"],
                 "settingsSchema", command["settingsSchema"],
                 "toolSettings", toolSettings,
-                "enabled", command["pluginEnabled"],
+                "enabled", command["pluginEnabled"] && command["definitionValid"]
+                    && command["settingsValid"],
                 "commands", [])
         }
         usage := QbarRegistryUsage(command["usageKey"])
@@ -421,13 +507,6 @@ QbarRegistryFloat(value, fallback := 0) {
     try return Float(value)
     catch
         return fallback
-}
-
-QbarRegistryJsonArray(value) {
-    try parsed := JSON.Parse(value, false, true)
-    catch
-        return []
-    return Type(parsed) = "Array" ? parsed : []
 }
 
 QbarRegistryJsonMap(value) {
