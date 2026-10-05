@@ -37,6 +37,7 @@ A_HotkeyInterval := 2000
 #Include lib\features\translate\youdaoTranslate.ahk
 #Include lib\features\translate\volcengineTranslate.ahk
 #Include lib\features\dictionary.ahk
+#Include lib\features\aiChat_store.ahk
 #Include lib\features\aiChat.ahk
 #Include lib\features\qbar\qbar.ahk
 #Include lib\features\qbar\qbar_store.ahk

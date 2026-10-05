@@ -5,10 +5,10 @@
 <meta name="color-scheme" content="light dark">
 <title>capslock_p2 AI</title>
 <style>
-:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+:root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--ui-bg); color: var(--ui-text); cursor: default; }
-main { height: 100vh; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+main { height: 100vh; min-width: 0; padding: 14px 18px; display: flex; flex-direction: column; gap: 0; }
 main > .windowbar { margin: -14px -18px 0; padding-left: 18px; }
 .topbar { display: flex; align-items: center; gap: 10px; }
 .topbar-spacer { flex: 1; }
@@ -54,9 +54,80 @@ button#pinPanel.pinned:hover { background: var(--ui-accent-quiet); }
 textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--ui-line-strong); border-radius: 10px; background: var(--ui-surface); color: var(--ui-text); font: 14px/1.5 Consolas, "Microsoft YaHei", monospace; outline: none; }
 textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
 #send { min-width: 58px; align-self: stretch; }
+.app-layout { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; margin: 0 -18px -14px; }
+.sidebar { display: flex; flex: 0 0 272px; flex-direction: column; width: 272px; min-width: 0; padding: 10px; border-right: 1px solid var(--ui-line); background: var(--ui-surface-soft); transition: width .16s ease, flex-basis .16s ease; }
+.sidebar.is-collapsed { flex-basis: 64px; width: 64px; align-items: center; padding: 10px 7px; }
+.sidebar-top { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.sidebar-toggle-row { display: flex; justify-content: flex-end; }
+.sidebar.is-collapsed .sidebar-toggle-row { justify-content: center; }
+.sidebar-toggle { display: grid; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted); }
+.sidebar-toggle:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.sidebar-actions { display: grid; width: 100%; gap: 5px; }
+.sidebar-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ui-accent); text-align: left; font-weight: 500; }
+.sidebar-action:hover { background: var(--ui-accent-quiet); }
+.sidebar-action .lucide { width: 16px; height: 16px; }
+.sidebar.is-collapsed .sidebar-actions { justify-items: center; gap: 8px; }
+.sidebar.is-collapsed .sidebar-action { width: 44px; height: 44px; justify-content: center; padding: 0; }
+.sidebar.is-collapsed .sidebar-action .action-label,
+.sidebar.is-collapsed .history-section,
+.sidebar.is-collapsed .selection-bar { display: none; }
+.history-section { display: flex; flex: 1; flex-direction: column; min-height: 0; margin-top: 16px; }
+.history-heading { display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 0 2px 0 8px; }
+.history-heading h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.history-multi { display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ui-accent); }
+.history-multi:hover,.history-multi[aria-pressed="true"] { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+#historyList { display: grid; flex: 1; align-content: start; gap: 3px; min-height: 0; overflow: auto; margin-top: 5px; padding: 4px; }
+.session-row { display: flex; align-items: center; gap: 4px; min-width: 0; border-radius: 8px; }
+.session-row[aria-current="true"] { background: var(--ui-accent-soft); }
+.session-open { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--ui-text); text-align: left; }
+.session-open:hover { background: var(--ui-accent-quiet); }
+.session-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-time { color: var(--ui-muted); font-size: 12px; }
+.empty-history { padding: 10px 8px; color: var(--ui-muted); font-size: 13px; }
+.session-pin { display: none; flex: 0 0 auto; color: var(--ui-accent); }
+.session-row[data-pinned="true"] .session-pin { display: block; }
+.session-check { display: none; width: 17px; height: 17px; margin: 0 6px; accent-color: var(--ui-accent); }
+.sidebar.is-selecting .session-check { display: block; }
+.sidebar.is-selecting .session-open { order: 2; }
+.sidebar.is-selecting .session-check { order: 1; }
+.session-row:focus-within { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+#historyList .session-open:focus-visible { outline-offset: -2px; }
+.selection-bar { display: flex; align-items: center; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ui-line); }
+.selection-bar[hidden] { display: none; }
+.selection-count { flex: 1; min-width: 0; color: var(--ui-muted); }
+.selection-bar button { min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--ui-text); }
+.selection-bar button:hover { background: var(--ui-accent-quiet); }
+.selection-bar .danger-action { color: var(--ui-danger); }
+.selection-bar .danger-action:disabled { cursor: not-allowed; }
+.chat-panel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.chat-head { display: flex; align-items: center; min-height: 48px; padding: 0 18px; border-bottom: 1px solid var(--ui-line); }
+.chat-head h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#loadOlder { align-self: center; margin: 8px 0 0; padding: 5px 10px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: transparent; color: var(--ui-accent); font-weight: 500; }
+#loadOlder:hover { background: var(--ui-accent-quiet); }
+.context-menu { position: absolute; z-index: 20; display: grid; width: 190px; padding: 5px; border: 1px solid var(--ui-line-strong); border-radius: 9px; background: var(--ui-surface-raised); box-shadow: var(--ui-shadow-soft); }
+.context-menu[hidden] { display: none; }
+.context-menu button { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ui-text); text-align: left; font-weight: 500; }
+.context-menu button:hover { background: var(--ui-accent-quiet); }
+.context-menu .menu-divider { height: 1px; margin: 4px 5px; background: var(--ui-line); }
+.context-menu .menu-delete { color: var(--ui-danger); }
+#saveRetry { display: grid; gap: 6px; max-height: 140px; overflow: auto; margin: 0 18px 8px; padding: 8px 10px; border-radius: 8px; background: var(--ui-warning-soft); color: var(--ui-text); font-size: 13px; }
+#saveRetry[hidden] { display: none; }
+.save-retry-item { display: flex; align-items: center; gap: 10px; }
+.save-retry-message { flex: 1; min-width: 0; }
+.retry-save { flex: 0 0 auto; padding: 5px 10px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); color: var(--ui-accent); font-weight: 500; }
+.retry-save:hover { background: var(--ui-accent-quiet); }
+.composer { padding: 0 18px 14px 2px; }
+@media (max-width: 650px) {
+  .sidebar:not(.is-collapsed) { flex-basis: 220px; width: 220px; }
+  .chat-head { padding-inline: 12px; }
+  #messages { padding-inline: 12px; }
+  .composer { padding-inline: 12px; }
+}
 </style>
 <link rel="stylesheet" href="theme.css">
 <script src="toast.js"></script>
+<script src="dialog.js"></script>
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="windowbar.js"></script>
@@ -64,16 +135,60 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
 <body>
 <main id="mainView">
   <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 AI" data-windowbar-icon="bot"></div>
-  <div class="topbar">
-    <span id="status"></span>
-    <span class="topbar-spacer"></span>
-    <button id="newChat" class="secondary"><i data-lucide="message-square-plus"></i><span data-label></span></button>
-    <button id="openSettings" class="secondary"><i data-lucide="settings-2"></i><span data-label></span></button>
-  </div>
-  <div id="messages"></div>
-  <div class="composer">
-    <textarea id="input" rows="1" spellcheck="false"></textarea>
-    <button id="send"><i data-lucide="send"></i><span data-label></span></button>
+  <div class="app-layout" id="appLayout">
+    <aside class="sidebar is-collapsed" id="sidebar" aria-label="AI 会话侧栏">
+      <div class="sidebar-top">
+        <div class="sidebar-toggle-row">
+          <button class="sidebar-toggle" id="toggleSidebar" type="button" aria-label="展开侧栏" aria-expanded="false">
+            <i data-lucide="panel-left-open" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="sidebar-actions">
+          <button class="sidebar-action" id="newChat" type="button" aria-label="新建对话">
+            <i data-lucide="message-square-plus" aria-hidden="true"></i><span class="action-label" data-label></span>
+          </button>
+          <button class="sidebar-action" id="openSettings" type="button" aria-label="设置">
+            <i data-lucide="settings-2" aria-hidden="true"></i><span class="action-label" data-label></span>
+          </button>
+        </div>
+      </div>
+      <section class="history-section" aria-label="会话历史">
+        <div class="history-heading">
+          <h2 id="historyHeading"></h2>
+          <button class="history-multi" id="multiSelect" type="button" aria-label="进入多选" aria-pressed="false">
+            <i data-lucide="list-checks" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div id="historyList" role="list" aria-labelledby="historyHeading"></div>
+        <div class="selection-bar" id="selectionBar" hidden aria-live="polite">
+          <span class="selection-count" id="selectionCount"></span>
+          <button id="selectAllSessions" type="button"></button>
+          <button class="danger-action" id="deleteSelectedSessions" type="button"></button>
+          <button id="exitMultiSelect" type="button"></button>
+        </div>
+      </section>
+    </aside>
+
+    <section class="chat-panel" aria-label="AI 问答">
+      <div class="chat-head">
+        <h1 id="currentTitle">新对话</h1>
+        <span id="status" hidden></span>
+      </div>
+      <button id="loadOlder" type="button" hidden></button>
+      <div id="messages" aria-live="polite"></div>
+      <div id="saveRetry" hidden role="status" aria-live="polite"></div>
+      <div class="composer">
+        <textarea id="input" rows="1" spellcheck="false"></textarea>
+        <button id="send"><i data-lucide="send"></i><span data-label></span></button>
+      </div>
+    </section>
+
+    <div class="context-menu" id="sessionContextMenu" role="menu" aria-label="会话操作" hidden>
+      <button type="button" role="menuitem" data-menu-action="rename"><i data-lucide="pencil" aria-hidden="true"></i><span data-label="rename"></span></button>
+      <button type="button" role="menuitem" data-menu-action="pin"><i data-lucide="pin" aria-hidden="true"></i><span data-label="pin"></span></button>
+      <div class="menu-divider" role="separator"></div>
+      <button class="menu-delete" type="button" role="menuitem" data-menu-action="delete"><i data-lucide="trash-2" aria-hidden="true"></i><span data-label="delete"></span></button>
+    </div>
   </div>
 </main>
 
@@ -93,15 +208,72 @@ const appTitle = document.getElementById('windowTitle');
 const windowDrag = document.getElementById('windowDrag');
 const independentBtn = document.getElementById('independentPanel');
 const closeBtn = document.getElementById('closePanel');
+const currentTitle = document.getElementById('currentTitle');
+const sidebar = document.getElementById('sidebar');
+const toggleSidebarBtn = document.getElementById('toggleSidebar');
+const multiSelectBtn = document.getElementById('multiSelect');
+const historyHeading = document.getElementById('historyHeading');
+const historyList = document.getElementById('historyList');
+const selectionBar = document.getElementById('selectionBar');
+const selectionCount = document.getElementById('selectionCount');
+const selectAllBtn = document.getElementById('selectAllSessions');
+const deleteSelectedBtn = document.getElementById('deleteSelectedSessions');
+const exitMultiSelectBtn = document.getElementById('exitMultiSelect');
+const sessionContextMenu = document.getElementById('sessionContextMenu');
+const appLayout = document.getElementById('appLayout');
+const loadOlderBtn = document.getElementById('loadOlder');
+const saveRetryBar = document.getElementById('saveRetry');
+
+let hostReady = false;
+let viewGeneration = 0;
+let activeSessionId = 0;
+let sessionOffset = 0;
+let sessionHasMore = false;
+let sessionPageLoading = false;
+let olderMessagesLoading = false;
+let selectionMode = false;
+let selectedSessionIds = new Set();
+let contextSession = null;
+let lastCursorMove = 0;
 
 const STRINGS = {
   en: {
     appTitle: 'capslock_p2 AI',
     newChat: 'New chat',
     settings: 'Settings',
+    sidebar: 'AI chat sidebar',
+    chatLabel: 'AI Q&A',
+    sessionActions: 'Conversation actions',
     send: 'Send',
+    history: 'Chat history',
+    multiSelect: 'Select chats',
+    exitMultiSelect: 'Cancel',
+    selectAll: 'Select all',
+    selected: 'selected',
+    deleteSelected: 'Delete',
+    rename: 'Rename',
     pin: 'Pin',
     unpin: 'Unpin',
+    pinPanel: 'Pin',
+    unpinPanel: 'Unpin',
+    delete: 'Delete',
+    cancel: 'Cancel',
+    confirm: 'OK',
+    loadOlder: 'Load older messages',
+    emptyHistory: 'No saved conversations yet.',
+    interrupted: 'Answer not completed.',
+    saveRetry: 'The answer could not be saved. Check the data folder and retry.',
+    retrySave: 'Retry save',
+    selectSession: 'Select',
+    deleteSessionTitle: 'Delete conversation',
+    deleteSessionsTitle: 'Delete conversations',
+    deleteOneMessage: 'This conversation and its messages will be deleted.',
+    deleteManyMessage: 'The selected conversations and their messages will be deleted.',
+    expandSidebar: 'Show sidebar',
+    collapseSidebar: 'Hide sidebar',
+    nameLabel: 'Conversation name',
+    nameRequired: 'Enter a conversation name.',
+    nameTooLong: 'Names can be up to 80 characters.',
     close: 'Close',
     independent: 'Independent window',
     dragWindow: 'Drag to move',
@@ -113,11 +285,41 @@ const STRINGS = {
   },
   zh: {
     appTitle: 'capslock_p2 AI',
-    newChat: '新会话',
+    newChat: '新建对话',
     settings: '设置',
+    sidebar: 'AI 会话侧栏',
+    chatLabel: 'AI 问答',
+    sessionActions: '会话操作',
     send: '发送',
-    pin: '固定',
-    unpin: '取消固定',
+    history: '会话历史',
+    multiSelect: '进入多选',
+    exitMultiSelect: '取消',
+    selectAll: '全选',
+    selected: '项已选',
+    deleteSelected: '删除',
+    rename: '重命名',
+    pin: '置顶',
+    unpin: '取消置顶',
+    delete: '删除',
+    cancel: '取消',
+    confirm: '确定',
+    loadOlder: '加载更早消息',
+    emptyHistory: '还没有保存的会话。',
+    interrupted: '回答未完成。',
+    saveRetry: '回答已生成，但保存失败。请检查数据目录后重试。',
+    retrySave: '重试保存',
+    selectSession: '选择',
+    deleteSessionTitle: '删除会话',
+    deleteSessionsTitle: '删除会话',
+    deleteOneMessage: '这条会话及其对话记录将被删除。',
+    deleteManyMessage: '选中的会话及其对话记录将被删除。',
+    expandSidebar: '展开侧栏',
+    collapseSidebar: '折叠侧栏',
+    nameLabel: '会话名称',
+    nameRequired: '会话名称不能为空。',
+    nameTooLong: '名称不能超过 80 个字符。',
+    pinPanel: '固定',
+    unpinPanel: '取消固定',
     close: '关闭',
     independent: '独立窗口',
     dragWindow: '拖动移动窗口',
@@ -141,6 +343,20 @@ function setButtonLabel(button, text) {
   else button.textContent = text;
 }
 
+function updateSelectionUI() {
+  sidebar.classList.toggle('is-selecting', selectionMode);
+  selectionBar.hidden = !selectionMode;
+  selectionCount.textContent = `${selectedSessionIds.size} ${t('selected')}`;
+  multiSelectBtn.setAttribute('aria-pressed', selectionMode ? 'true' : 'false');
+  const multiSelectLabel = selectionMode ? t('exitMultiSelect') : t('multiSelect');
+  multiSelectBtn.setAttribute('aria-label', multiSelectLabel);
+  multiSelectBtn.title = multiSelectLabel;
+  historyList.querySelectorAll('.session-check').forEach(check => {
+    check.checked = selectedSessionIds.has(Number(check.closest('.session-row').dataset.sessionId));
+  });
+  deleteSelectedBtn.disabled = selectedSessionIds.size === 0;
+}
+
 function applyLanguage() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t('appTitle');
@@ -150,12 +366,31 @@ function applyLanguage() {
   independentBtn.setAttribute('aria-label', t('independent'));
   closeBtn.title = t('close');
   closeBtn.setAttribute('aria-label', t('close'));
-  setButtonLabel(pinBtn, pinBtn.classList.contains('pinned') ? t('unpin') : t('pin'));
+  setButtonLabel(pinBtn, pinBtn.classList.contains('pinned') ? t('unpinPanel') : t('pinPanel'));
   pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
   pinBtn.setAttribute('aria-label', pinBtn.title);
   setButtonLabel(newChatBtn, t('newChat'));
+  newChatBtn.setAttribute('aria-label', t('newChat'));
+  newChatBtn.title = t('newChat');
   setButtonLabel(settingsBtn, t('settings'));
+  settingsBtn.setAttribute('aria-label', t('settings'));
+  settingsBtn.title = t('settings');
   setButtonLabel(sendBtn, t('send'));
+  sidebar.setAttribute('aria-label', t('sidebar'));
+  document.querySelector('.chat-panel').setAttribute('aria-label', t('chatLabel'));
+  sessionContextMenu.setAttribute('aria-label', t('sessionActions'));
+  historyHeading.textContent = t('history');
+  multiSelectBtn.setAttribute('aria-label', sidebar.classList.contains('is-selecting') ? t('exitMultiSelect') : t('multiSelect'));
+  selectAllBtn.textContent = t('selectAll');
+  deleteSelectedBtn.textContent = t('deleteSelected');
+  exitMultiSelectBtn.textContent = t('exitMultiSelect');
+  sessionContextMenu.querySelector('[data-label="rename"]').textContent = t('rename');
+  sessionContextMenu.querySelector('[data-label="pin"]').textContent = t('pin');
+  sessionContextMenu.querySelector('[data-label="delete"]').textContent = t('delete');
+  loadOlderBtn.textContent = t('loadOlder');
+  saveRetryBar.querySelectorAll('.retry-save').forEach(button => button.textContent = t('retrySave'));
+  toggleSidebarBtn.setAttribute('aria-label', sidebar.classList.contains('is-collapsed') ? t('expandSidebar') : t('collapseSidebar'));
+  updateSelectionUI();
   input.placeholder = t('inputPlaceholder');
 }
 
@@ -173,7 +408,7 @@ function applyPinnedState(value) {
   WindowBar.setPinned(pinned);
   pinBtn.classList.toggle('pinned', pinned);
   pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-  setButtonLabel(pinBtn, pinned ? t('unpin') : t('pin'));
+  setButtonLabel(pinBtn, pinned ? t('unpinPanel') : t('pinPanel'));
   pinBtn.title = pinBtn.querySelector('[data-label]').textContent;
   pinBtn.setAttribute('aria-label', pinBtn.title);
 }
@@ -215,6 +450,7 @@ function createCopyButton(bubble, visible = false) {
     copyButton.classList.toggle('copied', copied);
     copyButton.title = copied ? t('copied') : t('copyFailed');
     copyButton.setAttribute('aria-label', copyButton.title);
+    AppToast.show(copied ? t('copied') : t('copyFailed'), copied ? 'success' : 'error');
     if (copied) {
       setTimeout(() => {
         copyButton.classList.remove('copied');
@@ -279,6 +515,247 @@ function renderMarkdown(text) {
 
 /* ---- host -> page ---- */
 
+let loadedTurns = [];
+
+function postView(type, fields = {}) {
+  if (!hostReady) return;
+  post({ ...fields, type, viewGeneration });
+}
+
+function formatSessionTime(rawValue) {
+  const raw = String(rawValue || '');
+  if (!/^\d{14}$/.test(raw)) return '';
+  const date = new Date(Number(raw.slice(0, 4)), Number(raw.slice(4, 6)) - 1,
+    Number(raw.slice(6, 8)), Number(raw.slice(8, 10)), Number(raw.slice(10, 12)));
+  const now = new Date();
+  const clock = date.toLocaleTimeString(lang === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) return lang === 'zh' ? `今天 ${clock}` : `Today ${clock}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return lang === 'zh' ? `昨天 ${clock}` : `Yesterday ${clock}`;
+  return lang === 'zh'
+    ? `${date.getMonth() + 1}月${date.getDate()}日`
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function makeSessionRow(session) {
+  const row = document.createElement('div');
+  row.className = 'session-row';
+  row.dataset.sessionId = String(session.id);
+  row.dataset.pinned = session.pinned ? 'true' : 'false';
+  row.dataset.title = String(session.title || '');
+  row._session = session;
+  row.setAttribute('role', 'listitem');
+  const isCurrent = Number(session.id) === activeSessionId;
+  if (isCurrent) row.setAttribute('aria-current', 'true');
+
+  const check = document.createElement('input');
+  check.className = 'session-check';
+  check.type = 'checkbox';
+  check.setAttribute('aria-label', `${t('selectSession')} ${session.title || ''}`);
+  check.checked = selectedSessionIds.has(Number(session.id));
+
+  const open = document.createElement('button');
+  open.className = 'session-open';
+  open.type = 'button';
+  open.setAttribute('aria-current', isCurrent ? 'true' : 'false');
+  const pin = createIcon('pin');
+  pin.classList.add('session-pin');
+  pin.hidden = !session.pinned;
+  const copy = document.createElement('span');
+  copy.className = 'session-copy';
+  const title = document.createElement('span');
+  title.className = 'session-title';
+  title.textContent = String(session.title || '');
+  const time = document.createElement('span');
+  time.className = 'session-time';
+  time.textContent = formatSessionTime(session.lastChatAt);
+  copy.append(title, time);
+  open.append(pin, copy);
+  row.append(check, open);
+  return row;
+}
+
+function renderSessionRows(sessions, append = false) {
+  if (!append) historyList.replaceChildren();
+  if (!append && !sessions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-history';
+    empty.textContent = t('emptyHistory');
+    historyList.appendChild(empty);
+  }
+  sessions.forEach(session => historyList.appendChild(makeSessionRow(session)));
+  refreshIcons();
+}
+
+function renderTurns(turns, resetComposer = false) {
+  loadedTurns = Array.isArray(turns) ? turns.slice() : [];
+  olderMessagesLoading = false;
+  messages.replaceChildren();
+  saveRetryBar.replaceChildren();
+  saveRetryBar.hidden = true;
+  if (resetComposer) {
+    status.textContent = '';
+    input.disabled = false;
+    sendBtn.disabled = false;
+    loadOlderBtn.disabled = false;
+  }
+  loadedTurns.forEach(turn => {
+    window.appendMessage('user', turn.question || '');
+    if (turn.answer)
+      window.appendMessage('assistant', turn.answer);
+    if (turn.status === 'generating')
+      window.setThinking(true);
+    else if (turn.status === 'interrupted' || turn.status === 'failed')
+      window.setError(t('interrupted'));
+    if (turn.savePending)
+      window.showSaveRetry({ turnId: turn.id, message: t('saveRetry') });
+  });
+}
+
+window.onHostState = function (state) {
+  if (!state || !Number.isInteger(Number(state.viewGeneration))) return;
+  hostReady = true;
+  viewGeneration = Number(state.viewGeneration);
+  activeSessionId = Number(state.sessionId) || 0;
+  markCurrentSessionRows();
+  if (!activeSessionId) clearSessionSelection();
+  lang = state.uiLanguage === 'zh' ? 'zh' : 'en';
+  currentTitle.textContent = String(state.title || t('newChat'));
+  applyLanguage();
+  applyPinnedState(!!state.pinned);
+  renderTurns(state.turns || [], true);
+  loadOlderBtn.hidden = !state.hasOlder;
+  if (!state.storageAvailable && state.storageMessage)
+    window.showStorageError({ message: state.storageMessage });
+};
+
+window.setSessionPage = function (page) {
+  if (!page || !hostReady || Number(page.viewGeneration) !== viewGeneration) return;
+  if (!page.storageAvailable) {
+    if (page && page.message) window.showStorageError({ message: page.message });
+    sessionPageLoading = false;
+    return;
+  }
+  const offset = Number(page.offset) || 0;
+  if (offset === 0) {
+    sessionOffset = 0;
+    selectedSessionIds.clear();
+    updateSelectionUI();
+  }
+  renderSessionRows(page.sessions || [], offset > 0);
+  markCurrentSessionRows();
+  sessionOffset = offset + (page.sessions || []).length;
+  sessionHasMore = !!page.hasMore;
+  sessionPageLoading = false;
+};
+
+window.exitMultiSelect = function (result) {
+  if (result && Number(result.viewGeneration) !== viewGeneration) return;
+  clearSessionSelection();
+};
+
+window.prependSessionTurns = function (result) {
+  if (!result || Number(result.viewGeneration) !== viewGeneration
+      || Number(result.sessionId) !== activeSessionId) return;
+  olderMessagesLoading = false;
+  const oldHeight = messages.scrollHeight;
+  const oldTop = messages.scrollTop;
+  const older = Array.isArray(result.turns) ? result.turns : [];
+  const seen = new Set(loadedTurns.map(turn => Number(turn.id)));
+  loadedTurns = older.filter(turn => !seen.has(Number(turn.id))).concat(loadedTurns);
+  renderTurns(loadedTurns);
+  messages.scrollTop = oldTop + messages.scrollHeight - oldHeight;
+  loadOlderBtn.hidden = !result.hasOlder;
+};
+
+window.olderMessagesFailed = function (result) {
+  if (result && Number(result.viewGeneration) === viewGeneration)
+    olderMessagesLoading = false;
+};
+
+window.updateSessionTitle = function (result) {
+  if (!result || Number(result.viewGeneration) !== viewGeneration) return;
+  const row = historyList.querySelector(`.session-row[data-session-id="${Number(result.sessionId)}"]`);
+  if (row) {
+    row.dataset.title = String(result.title || '');
+    row._session.title = String(result.title || '');
+    row.querySelector('.session-title').textContent = String(result.title || '');
+    row.querySelector('.session-check').setAttribute('aria-label', `${t('selectSession')} ${result.title || ''}`);
+  }
+  if (Number(result.sessionId) === activeSessionId)
+    currentTitle.textContent = String(result.title || '');
+};
+
+window.appendUserQuestion = function (result) {
+  if (!result || Number(result.viewGeneration) !== viewGeneration) return;
+  activeSessionId = Number(result.sessionId) || activeSessionId;
+  markCurrentSessionRows();
+  if (result.title) currentTitle.textContent = String(result.title);
+  window.appendMessage('user', String(result.text || ''));
+  loadedTurns.push({
+    id: Number(result.turnId) || 0,
+    ordinal: loadedTurns.length ? Number(loadedTurns[loadedTurns.length - 1].ordinal) + 1 : 1,
+    question: String(result.text || ''), answer: '', status: 'generating'
+  });
+  olderMessagesLoading = false;
+  input.disabled = true;
+  sendBtn.disabled = true;
+  loadOlderBtn.disabled = true;
+  window.setThinking(true);
+};
+
+window.showSaveRetry = function (result) {
+  if (!result || !Number(result.turnId)) return;
+  const turnId = Number(result.turnId);
+  let item = saveRetryBar.querySelector(`.save-retry-item[data-turn-id="${turnId}"]`);
+  if (!item) {
+    item = document.createElement('div');
+    item.className = 'save-retry-item';
+    item.dataset.turnId = String(turnId);
+    const message = document.createElement('span');
+    message.className = 'save-retry-message';
+    const button = document.createElement('button');
+    button.className = 'retry-save';
+    button.type = 'button';
+    button.dataset.turnId = String(turnId);
+    item.append(message, button);
+    saveRetryBar.appendChild(item);
+  }
+  item.querySelector('.save-retry-message').textContent = String(result.message || t('saveRetry'));
+  item.querySelector('.retry-save').textContent = t('retrySave');
+  const turn = loadedTurns.find(item => Number(item.id) === Number(result.turnId));
+  if (turn) turn.savePending = true;
+  saveRetryBar.hidden = false;
+};
+
+window.hideSaveRetry = function (result) {
+  if (!result) saveRetryBar.replaceChildren();
+  else {
+    saveRetryBar.querySelector(`.save-retry-item[data-turn-id="${Number(result.turnId)}"]`)?.remove();
+    const turn = loadedTurns.find(item => Number(item.id) === Number(result.turnId));
+    if (turn) turn.savePending = false;
+  }
+  saveRetryBar.hidden = !saveRetryBar.childElementCount;
+};
+
+window.restoreInput = function (result) {
+  if (!result) return;
+  input.value = String(result.text || '');
+  input.focus();
+};
+
+window.showStorageError = function (result) {
+  if (result && result.message)
+    AppToast.show(String(result.message), 'error');
+};
+
+window.showAnswerError = function (result) {
+  const turn = result && loadedTurns.find(item => Number(item.id) === Number(result.turnId));
+  if (turn) turn.status = 'failed';
+  window.setError(result && result.message ? String(result.message) : t('interrupted'));
+};
+
 // The AHK side owns the conversation history and echoes every message back,
 // so rendering is purely a mirror of that history.
 window.appendMessage = function (role, text) {
@@ -333,7 +810,9 @@ function scheduleStreamingRender(bubble) {
   });
 }
 
-window.startStreamingMessage = function (requestId) {
+window.startStreamingMessage = function (payload) {
+  const requestId = payload && typeof payload === 'object' ? payload.requestId : payload;
+  const turnId = payload && typeof payload === 'object' ? Number(payload.turnId) : 0;
   let bubble = messages.querySelector('.msg.assistant.thinking');
   let copyButton = assistantCopyButton(bubble);
   if (!bubble) {
@@ -347,6 +826,7 @@ window.startStreamingMessage = function (requestId) {
   bubble.className = 'msg assistant streaming thinking';
   bubble.dataset.raw = '';
   bubble.dataset.streamId = String(requestId ?? '');
+  bubble.dataset.turnId = String(turnId || '');
   bubble.dataset.nextDelta = '1';
   bubble._pendingDeltas = new Map();
   if (copyButton) {
@@ -359,6 +839,7 @@ window.startStreamingMessage = function (requestId) {
   bubble.textContent = t('thinking');
   input.disabled = true;
   sendBtn.disabled = true;
+  loadOlderBtn.disabled = true;
   scrollToBottom();
 };
 
@@ -398,7 +879,11 @@ window.appendStreaming = function (requestId, sequence, text) {
   scheduleStreamingRender(bubble);
 };
 
-window.finishStreamingMessage = function (requestId, answer) {
+window.finishStreamingMessage = function (payload, legacyAnswer) {
+  const result = payload && typeof payload === 'object'
+    ? payload : { requestId: payload, answer: legacyAnswer, status: 'complete' };
+  const requestId = result.requestId;
+  const answer = result.answer;
   const bubble = messages.querySelector('.msg.assistant.streaming');
   if (!bubble || bubble.dataset.streamId !== String(requestId ?? '')) {
     postStreamDebug('finish-stale', bubble);
@@ -415,13 +900,21 @@ window.finishStreamingMessage = function (requestId, answer) {
   }
   postStreamDebug('finish', bubble);
   if (bubble) bubble.classList.remove('streaming', 'thinking');
+  const turn = loadedTurns.find(item => Number(item.id) === Number(result.turnId || bubble?.dataset.turnId));
+  if (turn) {
+    turn.answer = String(answer ?? '');
+    turn.status = result.status || 'complete';
+  }
   status.textContent = '';
   input.disabled = false;
   sendBtn.disabled = false;
+  loadOlderBtn.disabled = false;
   input.focus();
 };
 
-window.removeStreamingMessage = function (requestId) {
+window.removeStreamingMessage = function (payload) {
+  const result = payload && typeof payload === 'object' ? payload : { requestId: payload };
+  const requestId = result.requestId;
   const bubble = messages.querySelector('.msg.assistant.streaming');
   if (!bubble || bubble.dataset.streamId !== String(requestId ?? '')) {
     postStreamDebug('remove-stale', bubble);
@@ -432,8 +925,11 @@ window.removeStreamingMessage = function (requestId) {
     bubble.parentElement.remove();
   else
     bubble.remove();
+  const turn = loadedTurns.find(item => Number(item.id) === Number(result.turnId || bubble?.dataset.turnId));
+  if (turn && result.status) turn.status = result.status;
   input.disabled = false;
   sendBtn.disabled = false;
+  loadOlderBtn.disabled = false;
   input.focus();
 };
 
@@ -484,14 +980,116 @@ window.trimMessages = function (limit) {
     bubbles.shift().remove();
 };
 
+function setSidebarCollapsed(collapsed) {
+  sidebar.classList.toggle('is-collapsed', collapsed);
+  toggleSidebarBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  toggleSidebarBtn.setAttribute('aria-label', collapsed ? t('expandSidebar') : t('collapseSidebar'));
+  toggleSidebarBtn.title = collapsed ? t('expandSidebar') : t('collapseSidebar');
+  toggleSidebarBtn.replaceChildren(createIcon(collapsed ? 'panel-left-open' : 'panel-left-close'));
+  refreshIcons();
+}
+
+function markCurrentSessionRows() {
+  historyList.querySelectorAll('.session-row').forEach(row => {
+    const isCurrent = Number(row.dataset.sessionId) === activeSessionId;
+    row.setAttribute('aria-current', isCurrent ? 'true' : 'false');
+    row.querySelector('.session-open')?.setAttribute('aria-current', isCurrent ? 'true' : 'false');
+  });
+}
+
+function clearSessionSelection() {
+  selectedSessionIds.clear();
+  selectionMode = false;
+  updateSelectionUI();
+}
+
+function toggleSessionSelection(row) {
+  const sessionId = Number(row.dataset.sessionId);
+  if (selectedSessionIds.has(sessionId)) selectedSessionIds.delete(sessionId);
+  else selectedSessionIds.add(sessionId);
+  updateSelectionUI();
+}
+
+function closeSessionContextMenu() {
+  sessionContextMenu.hidden = true;
+  contextSession = null;
+}
+
+function showSessionContextMenu(row, clientX, clientY) {
+  contextSession = row._session;
+  const pinAction = sessionContextMenu.querySelector('[data-menu-action="pin"]');
+  pinAction.querySelector('[data-label="pin"]').textContent = contextSession.pinned ? t('unpin') : t('pin');
+  sessionContextMenu.hidden = false;
+  const layoutRect = appLayout.getBoundingClientRect();
+  const menuWidth = sessionContextMenu.offsetWidth;
+  const menuHeight = sessionContextMenu.offsetHeight;
+  const left = Math.max(8, Math.min(clientX - layoutRect.left, layoutRect.width - menuWidth - 8));
+  const top = Math.max(8, Math.min(clientY - layoutRect.top, layoutRect.height - menuHeight - 8));
+  sessionContextMenu.style.left = `${left}px`;
+  sessionContextMenu.style.top = `${top}px`;
+}
+
+async function deleteSessionIds(ids, title = '') {
+  if (!ids.length) return;
+  const generation = viewGeneration;
+  const confirmed = await AppDialog.confirm({
+    title: title || (ids.length === 1 ? t('deleteSessionTitle') : t('deleteSessionsTitle')),
+    message: ids.length === 1 ? t('deleteOneMessage') : t('deleteManyMessage'),
+    confirmText: t('delete'),
+    cancelText: t('cancel'),
+    tone: 'danger'
+  });
+  if (confirmed && generation === viewGeneration)
+    postView('deleteSessions', { sessionIds: ids });
+}
+
+async function runSessionMenuAction(action) {
+  if (!contextSession) return;
+  const session = contextSession;
+  const generation = viewGeneration;
+  closeSessionContextMenu();
+  if (action === 'rename') {
+    const title = await AppDialog.prompt({
+      title: t('rename'),
+      label: t('nameLabel'),
+      value: session.title,
+      confirmText: t('confirm'),
+      cancelText: t('cancel'),
+      validate: value => !String(value).trim() ? t('nameRequired')
+        : String(value).trim().length > 80 ? t('nameTooLong') : ''
+    });
+    if (title !== null && generation === viewGeneration)
+      postView('renameSession', { sessionId: Number(session.id), title: String(title).trim() });
+  } else if (action === 'pin') {
+    if (generation === viewGeneration)
+      postView('pinSession', { sessionId: Number(session.id), pinned: !session.pinned });
+  } else if (action === 'delete') {
+    await deleteSessionIds([Number(session.id)]);
+  }
+}
+
+async function deleteSelectedSessions() {
+  const ids = Array.from(selectedSessionIds);
+  const generation = viewGeneration;
+  if (!ids.length) return;
+  const confirmed = await AppDialog.confirm({
+    title: `${t('deleteSessionsTitle')} (${ids.length})`,
+    message: t('deleteManyMessage'),
+    confirmText: t('delete'),
+    cancelText: t('cancel'),
+    tone: 'danger'
+  });
+  if (confirmed && generation === viewGeneration)
+    postView('deleteSessions', { sessionIds: ids });
+}
+
 /* ---- page -> host ---- */
 
 function send() {
   const text = input.value.trim();
-  if (!text)
+  if (!text || !hostReady || input.disabled)
     return;
-  // The history lives in AHK; it echoes the user bubble back and answers.
-  post({ type: 'ask', text: text });
+  postView('ask', { text, sessionId: activeSessionId });
   input.value = '';
   input.style.height = 'auto';
   input.focus();
@@ -505,13 +1103,28 @@ input.addEventListener('keydown', event => {
   }
 });
 
-// Let the first Esc leave an editor, then use the next Esc to close the panel.
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (document.querySelector('.app-dialog[open]')) return;
+  if (!sessionContextMenu.hidden) {
+    event.preventDefault();
+    closeSessionContextMenu();
+    return;
+  }
   const active = document.activeElement;
   if (active && (active.matches('input, textarea, select') || active.isContentEditable)) {
     event.preventDefault();
     active.blur();
+    return;
+  }
+  if (selectionMode) {
+    event.preventDefault();
+    clearSessionSelection();
+    return;
+  }
+  if (!sidebar.classList.contains('is-collapsed')) {
+    event.preventDefault();
+    setSidebarCollapsed(true);
     return;
   }
   event.preventDefault();
@@ -531,13 +1144,102 @@ messages.addEventListener('click', event => {
   if (!link)
     return;
   event.preventDefault();
-  post({ type: 'openUrl', text: link.href });
+  postView('openUrl', { text: link.href });
 });
 
-newChatBtn.addEventListener('click', () => postType('newSession'));
-settingsBtn.addEventListener('click', () => {
-  postType('openSettings');
+toggleSidebarBtn.addEventListener('click', () => {
+  setSidebarCollapsed(!sidebar.classList.contains('is-collapsed'));
 });
+newChatBtn.addEventListener('click', () => postView('newSession'));
+settingsBtn.addEventListener('click', () => postView('openSettings'));
+multiSelectBtn.addEventListener('click', () => {
+  selectionMode = !selectionMode;
+  if (!selectionMode) selectedSessionIds.clear();
+  updateSelectionUI();
+});
+exitMultiSelectBtn.addEventListener('click', clearSessionSelection);
+selectAllBtn.addEventListener('click', () => {
+  historyList.querySelectorAll('.session-row').forEach(row => selectedSessionIds.add(Number(row.dataset.sessionId)));
+  updateSelectionUI();
+});
+deleteSelectedBtn.addEventListener('click', deleteSelectedSessions);
+saveRetryBar.addEventListener('click', event => {
+  const button = event.target.closest('.retry-save');
+  if (!button) return;
+  const turnId = Number(button.dataset.turnId);
+  if (turnId) postView('retrySaveAnswer', { turnId });
+});
+loadOlderBtn.addEventListener('click', () => {
+  requestOlderMessages();
+});
+
+function requestOlderMessages() {
+  if (!activeSessionId || !loadedTurns.length || loadOlderBtn.hidden || loadOlderBtn.disabled || olderMessagesLoading) return;
+  olderMessagesLoading = true;
+  postView('loadOlderMessages', {
+    sessionId: activeSessionId,
+    beforeOrdinal: Number(loadedTurns[0].ordinal) || 0
+  });
+}
+messages.addEventListener('scroll', () => {
+  if (messages.scrollTop <= 32) requestOlderMessages();
+});
+
+historyList.addEventListener('click', event => {
+  const row = event.target.closest('.session-row');
+  if (!row) return;
+  if (event.target.closest('.session-check')) return;
+  if (selectionMode) {
+    toggleSessionSelection(row);
+    return;
+  }
+  if (event.target.closest('.session-open'))
+    postView('loadSession', { sessionId: Number(row.dataset.sessionId) });
+});
+historyList.addEventListener('change', event => {
+  const check = event.target.closest('.session-check');
+  if (!check) return;
+  const id = Number(check.closest('.session-row').dataset.sessionId);
+  if (check.checked) selectedSessionIds.add(id);
+  else selectedSessionIds.delete(id);
+  updateSelectionUI();
+});
+historyList.addEventListener('contextmenu', event => {
+  const row = event.target.closest('.session-row');
+  if (!row) return;
+  event.preventDefault();
+  showSessionContextMenu(row, event.clientX, event.clientY);
+});
+historyList.addEventListener('keydown', event => {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  const row = event.target.closest('.session-row');
+  if (!row) return;
+  event.preventDefault();
+  const rect = row.getBoundingClientRect();
+  showSessionContextMenu(row, rect.left + 24, rect.bottom);
+  sessionContextMenu.querySelector('[role="menuitem"]').focus();
+});
+sessionContextMenu.addEventListener('click', event => {
+  const item = event.target.closest('[data-menu-action]');
+  if (item) runSessionMenuAction(item.dataset.menuAction);
+});
+document.addEventListener('click', event => {
+  if (!sessionContextMenu.hidden && !sessionContextMenu.contains(event.target))
+    closeSessionContextMenu();
+});
+historyList.addEventListener('scroll', () => {
+  if (!sessionHasMore || sessionPageLoading
+      || historyList.scrollTop + historyList.clientHeight < historyList.scrollHeight - 40) return;
+  sessionPageLoading = true;
+  postView('listSessions', { offset: sessionOffset });
+});
+
+document.addEventListener('mousemove', () => {
+  const now = performance.now();
+  if (!hostReady || now - lastCursorMove < 80) return;
+  lastCursorMove = now;
+  postType('cursorMove');
+}, { passive: true });
 
 // Pushed settings carry the ui language the page should use.
 window.onHostSettings = function (s) {
@@ -546,7 +1248,7 @@ window.onHostSettings = function (s) {
 };
 
 window.setPinned = function (value) {
-  applyPinnedState(value);
+  applyPinnedState(value && typeof value === 'object' ? value.pinned : value);
 };
 
 window.setNativeWindowMode = function (value) {

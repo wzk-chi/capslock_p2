@@ -60,8 +60,8 @@ lib\
   volcengineTranslate.ahk          火山引擎翻译 API（[TVolcengine]，V4 签名、TextList 分批）
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
-  aiChat.ahk                       AI 聊天面板（使用 [LLM]、[QAI] 仅存行为设置、多轮对话）
-  aiChat_store.ahk                 AI 会话 SQLite 存储（多会话设计，尚未实现）
+  aiChat.ahk                       AI 聊天面板、会话命令和流式请求生命周期
+  aiChat_store.ahk                 AI 多会话 SQLite 存储（{app}\data\ai-chat\ai-chat.db）
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
@@ -81,9 +81,9 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 `math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 已退出运行路径，并在本轮用户授权的退役清理中删除；
 它们不属于当前运行时架构。旧诊断脚本同样不作为配置行为验证依据。
 
-### AI 问答多会话（设计待实现）
+### AI 问答多会话
 
-多会话设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。实现后由 `aiChat_store.ahk` 独占会话数据库访问；`aiChat.ahk` 编排持久化轮次、主回答和独立标题请求；`chat.html` 负责会话列表和消息视图。数据库计划放在 `{app}\data\ai-chat\ai-chat.db`，页面重开默认新会话，历史按需载入。
+多会话设计与数据字段见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。`aiChat_store.ahk` 独占会话数据库访问；`aiChat.ahk` 编排持久化轮次、主回答和首问标题请求；`chat.html` 负责会话侧栏和消息视图。数据库保存在 `{app}\data\ai-chat\ai-chat.db`，只在运行时创建。面板每次从隐藏状态重新打开时进入空白会话；历史按置顶状态、最后聊天时间倒序排列，支持切换、重命名、置顶、单条删除和多选删除。侧栏默认折叠，收起时保留新建对话和设置两个操作按钮。
 
 ## 翻译引擎注册表
 

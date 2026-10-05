@@ -1281,3 +1281,16 @@ AnimateLoading(*) {
     LoadingFrameIndex := Mod(LoadingFrameIndex, LoadingFrames.Length) + 1
     LoadingText.Text := (IsChineseLanguage() ? "正在启动" : "Starting") . LoadingFrames[LoadingFrameIndex]
 }
+
+; Restore the system pointer without increasing ShowCursor's display count when
+; Windows already considers it visible.
+ShowSystemCursor() {
+    count := DllCall("User32\ShowCursor", "Int", 1, "Int")
+    if count > 0 {
+        DllCall("User32\ShowCursor", "Int", -1, "Int")
+        return count - 1
+    }
+    while count < 0
+        count := DllCall("User32\ShowCursor", "Int", 1, "Int")
+    return count
+}

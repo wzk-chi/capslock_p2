@@ -91,7 +91,7 @@ QBar 笔记使用安装目录下的运行时数据目录：
 
 大型持久化数据遵循 `AGENTS.md`：优先保存在 `{app}\data\<功能名>\`，作为安装目录下的运行时用户数据，不列入安装包，也不由覆盖更新或卸载清理。剪贴板历史使用 `{app}\data\clipboard-history\clipboard-history.db`，运行后按需创建。更换安装目录时一并迁移相应功能的数据子目录。
 
-AI 问答多会话设计（功能尚未实现）计划使用 `{app}\data\ai-chat\ai-chat.db`。实现时该数据库只在运行时创建，不加入安装器 `[Files]` 或卸载清理项；更换安装目录时用户复制整个 `data\ai-chat` 子目录。详细设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。
+AI 问答多会话使用 `{app}\data\ai-chat\ai-chat.db`。数据库只在运行时创建；安装器通过显式资源清单打包，不包含 `data\`，也没有删除该目录的卸载项，因此覆盖更新、同目录重装和卸载不会覆盖或删除会话。更换安装目录时用户复制整个 `data\ai-chat` 子目录。详细设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。
 
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 
