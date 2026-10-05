@@ -15,7 +15,6 @@ global AllowWinTransparentToggle := true
 global MouseSpeed := 3
 global OriginalMouseSpeed := 0
 global MouseSpeedChanged := false
-global ShowSystemCursorHiddenLogged := false
 
 InitializeWindowBindings() {
     LoadWindowBindings()
@@ -457,39 +456,6 @@ activateWinAction(bindingNumber) {
     ; item when the active window is outside this group.
     nextIndex := currentIndex = 0 || currentIndex >= binding.items.Length ? 1 : currentIndex + 1
     ActivateWinId(binding.items[nextIndex].id)
-}
-
-ShowSystemCursor() {
-    global ShowSystemCursorHiddenLogged
-    ; ShowCursor() keeps a display counter. Calling it with TRUE
-    ; once is not enough when another component has taken the counter below
-    ; zero, while calling it repeatedly without compensating would make the
-    ; counter grow every time a panel gets focus. A zero return is already
-    ; visible; only balance the increment when the returned count is positive.
-    count := DllCall("ShowCursor", "Int", 1)
-    firstCount := count
-    if count < 0 {
-        while count < 0
-            count := DllCall("ShowCursor", "Int", 1)
-    } else if count > 0 {
-        count := DllCall("ShowCursor", "Int", -1)
-    }
-    if firstCount <= 0
-        DebugLog("ShowSystemCursor recovered display counter first=" . firstCount
-            . " final=" . count)
-
-    cursorInfo := Buffer(A_PtrSize = 8 ? 24 : 20, 0)
-    NumPut("UInt", cursorInfo.Size, cursorInfo)
-    if !DllCall("GetCursorInfo", "Ptr", cursorInfo, "Int")
-        return
-    cursorFlags := NumGet(cursorInfo, 4, "UInt")
-    if (cursorFlags & 1) { ; CURSOR_SHOWING
-        ShowSystemCursorHiddenLogged := false
-    } else if !ShowSystemCursorHiddenLogged {
-        DebugLog("ShowSystemCursor cursor still hidden displayCount=" . count
-            . " flags=" . cursorFlags)
-        ShowSystemCursorHiddenLogged := true
-    }
 }
 
 ClearWinMinimizeStack() {

@@ -124,7 +124,6 @@ DictionaryShow(entry := 0, query := "") {
     WindowBarApplyPinnedState(DictionaryHost, WindowBarIsPinned(DictionaryHost),
         DictionaryVisible, DictionaryHide)
     WindowBarSetPinnedPage(DictionaryHost, WindowBarIsPinned(DictionaryHost))
-    ShowSystemCursor()
 
     if PanelHostPageReady(DictionaryHost) {
         if IsObject(entry)

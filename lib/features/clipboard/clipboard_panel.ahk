@@ -64,7 +64,6 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
             SetTimer(ClipboardHistorySendState, -1)
         } else
             ClipboardHistoryRefreshVisibleView()
-        ShowSystemCursor()
         DebugLog("ClipboardHistoryShow reused pageReady=" . PanelHostPageReady(ClipboardHistoryHost))
         return true
     }
@@ -93,7 +92,6 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
     WindowBarApplyPinnedState(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost),
         true, ClipboardHistoryHide, Map("autoHide", false))
     WindowBarSetPinnedPage(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost))
-    ShowSystemCursor()
     SetTimer(ClipboardHistorySendState, -1)
     DebugLog("ClipboardHistoryShow completed pageReady=" . ClipboardHistoryPageReady
         . " windowVisible=" . ClipboardHistoryWindowVisible())

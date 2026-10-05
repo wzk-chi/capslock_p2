@@ -115,15 +115,6 @@ PanelHostNavigationCompleted(host, sender, args) {
 }
 
 PanelHostWebMessageReceived(host, sender, args) {
-    ; Cursor recovery is shared by every PanelHost page. The page sends a small
-    ; string sentinel so this fast path does not parse ordinary page messages.
-    try message := args.TryGetWebMessageAsString()
-    catch
-        message := ""
-    if message = "capslockPlus:cursorMove" {
-        ShowSystemCursor()
-        return
-    }
     callbacks := host["callbacks"]
     if callbacks.Has("message")
         callbacks["message"].Call(sender, args)

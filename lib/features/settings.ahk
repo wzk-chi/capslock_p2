@@ -28,7 +28,6 @@ SettingsShow(initialPage := "general", toastMessage := "", *) {
     panelGui := PanelHostGui(SettingsHost)
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
-    ShowSystemCursor()
     if PanelHostPageReady(SettingsHost)
         SetTimer(SettingsPushSnapshot, -1)
     return true

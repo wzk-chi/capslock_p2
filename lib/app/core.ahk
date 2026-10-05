@@ -115,7 +115,6 @@ Shutdown(*) {
     try NotesShutdown()
     try QbarShutdown()
     try QbarPluginHostShutdown()
-    try ShowSystemCursor()
     try HideLoading()
 }
 

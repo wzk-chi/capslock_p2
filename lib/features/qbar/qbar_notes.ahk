@@ -31,7 +31,6 @@ NotesShow(initialSearch := "", targetHwnd := 0, recordHistory := true) {
     WindowBarApplyPinnedState(NotesHost, WindowBarIsPinned(NotesHost),
         NotesVisible, NotesHide, Map("autoHide", false))
     WindowBarSetPinnedPage(NotesHost, WindowBarIsPinned(NotesHost))
-    ShowSystemCursor()
     if recordHistory
         QbarHistoryRemember(QbarHistoryNotesEntry(NotesPendingSearch))
     NotesScheduleStateSync()

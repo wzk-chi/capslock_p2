@@ -124,7 +124,6 @@ EverythingShow(query := "", explicitQuery := false) {
     WindowBarApplyPinnedState(EverythingHost, WindowBarIsPinned(EverythingHost),
         EverythingVisible, EverythingHide, Map("requireActive", true))
     WindowBarSetPinnedPage(EverythingHost, WindowBarIsPinned(EverythingHost))
-    ShowSystemCursor()
     PanelHostStartAutoHide(EverythingHost, EverythingHide,
         Map("requireActive", true))
     if EverythingPageReady {
@@ -356,7 +355,6 @@ EverythingExec(script) {
 EverythingFocusInput(*) {
     global EverythingVisible, EverythingHost
     if EverythingVisible && PanelHostPageReady(EverythingHost) {
-        ShowSystemCursor()
         EverythingExec("window.focusInput();")
     }
 }

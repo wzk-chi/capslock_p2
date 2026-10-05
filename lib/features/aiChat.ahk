@@ -119,7 +119,6 @@ AiChatShow(question) {
         WinActivate("ahk_id " . panelGui.Hwnd)
     WindowBarApplyNativeMode(AiChatHost, WindowBarIsNative(AiChatHost))
     AiChatApplyWindowState()
-    ShowSystemCursor()
 
     if PanelHostPageReady(AiChatHost)
         AiChatAfterReady()

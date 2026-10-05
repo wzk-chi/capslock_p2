@@ -80,7 +80,6 @@ LLMTranslateShow(text, allowEmpty := false) {
         WinActivate("ahk_id " . panelGui.Hwnd)
     LLMTranslateApplyNativeWindowMode()
     LLMTranslateApplyWindowState()
-    ShowSystemCursor()
 
     if PanelHostPageReady(LLMTranslateHost) {
         LLMTranslatePushLanguage()
