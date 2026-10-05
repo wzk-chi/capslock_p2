@@ -35,6 +35,7 @@ ConfigSchema() {
             "allowClipboard", Map("type", "bool"),
             "debug", Map("type", "bool"),
             "loadingAnimation", Map("type", "bool"),
+            "webViewDestroyMinutes", Map("type", "int", "min", 0, "max", 1440),
             "language", Map("type", "enum", "values", ["0", "1", "2"]),
             "runAsAdmin", Map("type", "bool"),
             ; Internal first-run state; it is persisted but intentionally has

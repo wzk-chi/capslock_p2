@@ -78,7 +78,8 @@ NotesEnsureWebView() {
             "escape", NotesEscape,
             "resize", NotesResize,
             "navigation", NotesNavigationCompleted,
-            "message", NotesWebMessageReceived)))
+            "message", NotesWebMessageReceived,
+            "canDestroyPage", NotesCanDestroyPage)))
     try {
         PanelHostEnsure(NotesHost)
         NotesConfigureMediaMapping()
@@ -115,6 +116,13 @@ NotesNavigationCompleted(host, sender, args) {
 NotesResize(gui, minMax, width, height) {
     global NotesHost
     PanelHostResize(NotesHost, minMax)
+}
+
+NotesCanDestroyPage(*) {
+    global NotesEditorId, NotesEditorSaving
+    ; Keep an open editor in memory so its unsaved draft and in-flight work are
+    ; not discarded while the notes window is hidden.
+    return NotesEditorId = "" && !NotesEditorSaving
 }
 
 NotesEscape(*) {

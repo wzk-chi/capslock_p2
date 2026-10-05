@@ -37,7 +37,7 @@ lib\
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
   appProfiles.ahk                  EXE 路径应用配置、继承解析与持久化
   customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射
-  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行与共用失焦隐藏生命周期
+  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行、共用失焦隐藏与隐藏页延迟释放生命周期
   windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
   qbar.ahk                         qbar 状态与稳定入口

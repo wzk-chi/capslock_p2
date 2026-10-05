@@ -333,6 +333,7 @@ ApplyConfigChanges(changes, deferCustomHotkeys := false) {
     refreshQbarIndex := false
     refreshTranslation := false
     refreshAi := false
+    refreshPanelDestroySchedule := false
 
     for section, values in changes {
         if !IsObject(values)
@@ -351,6 +352,8 @@ ApplyConfigChanges(changes, deferCustomHotkeys := false) {
                             EnsureAutostartShortcut(value = "1")
                         case "language":
                             refreshQbarIndex := true
+                        case "webViewDestroyMinutes":
+                            refreshPanelDestroySchedule := true
                     }
                 }
                 TrayMenuRefresh()
@@ -386,6 +389,8 @@ ApplyConfigChanges(changes, deferCustomHotkeys := false) {
     if refreshTranslation {
         try LLMTranslateOnSettingsSaved()
     }
+    if refreshPanelDestroySchedule
+        PanelHostRefreshDestroySchedule()
 }
 
 EnsureAutostartShortcut(enabled) {
