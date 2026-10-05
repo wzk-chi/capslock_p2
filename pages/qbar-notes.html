@@ -133,6 +133,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .floating-add:hover, .floating-add:focus-visible { transform: translateY(-1px); filter: brightness(1.06); }
 @media (max-width: 760px) { .topbar { padding: 0 10px; }.workspace, .workspace.edit-mode { grid-template-columns: 170px minmax(0, 1fr); }.floating-add { right: 16px; bottom: 16px; } }
 </style>
+<script src="cursor.js"></script>
 </head>
 <body>
 <div class="app">
@@ -222,17 +223,6 @@ function diagError(prefix, error) {
 diag('page-load', 'vditor=' + typeof Vditor + ' preview=' + typeof NotesPreview);
 const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map() };
 let searchTimer = 0;
-
-// Windows hides the pointer while typing when that system option is enabled.
-// Native edit controls show it again on mouse movement; report that movement
-// so the WebView2 host can restore the same behavior without polling.
-let cursorMovePostedAt = 0;
-document.addEventListener('mousemove', () => {
-  const now = performance.now();
-  if (now - cursorMovePostedAt < 80) return;
-  cursorMovePostedAt = now;
-  post({ type: 'cursorMove' });
-}, { passive: true });
 
 function messageValue(value, fallback = '') { return value == null ? fallback : value; }
 function toast(text, type = 'info') { if (text) AppToast.show(text, type); }

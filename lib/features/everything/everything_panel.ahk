@@ -101,10 +101,6 @@ EverythingWebMessageReceived(sender, args) {
         SetTimer(EverythingHandleAction.Bind(action, resultId, version), -1)
         return
     }
-    if messageType = "cursorMove" {
-        ShowSystemCursor()
-        return
-    }
 }
 
 EverythingHide(*) {

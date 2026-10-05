@@ -378,10 +378,6 @@ ClipboardHistoryWebMessageReceived(sender, args) {
     if WindowBarHandleMessage(ClipboardHistoryHost, messageType, ClipboardHistoryHide, 0,
         Map("autoHide", false, "requireActive", false))
         return
-    if messageType = "cursorMove" {
-        ShowSystemCursor()
-        return
-    }
     sessionId := LLMMsgField(msg, "sessionId")
     if messageType = "ready" {
         ClipboardHistoryPageReady := true

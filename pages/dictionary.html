@@ -212,6 +212,7 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="windowbar.js"></script>
+<script src="cursor.js"></script>
 </head>
 <body>
 <main class="card">
@@ -398,17 +399,6 @@ function post(obj) {
 function postType(type, text = '') {
   post({ type, text });
 }
-
-// Windows hides the pointer while typing when that system option is enabled.
-// Report mouse movement so the WebView2 host can restore the cursor without
-// polling, matching the other panels.
-let cursorMovePostedAt = 0;
-document.addEventListener('mousemove', () => {
-  const now = performance.now();
-  if (now - cursorMovePostedAt < 80) return;
-  cursorMovePostedAt = now;
-  postType('cursorMove');
-}, { passive: true });
 
 // --- rendering helpers -------------------------------------------------
 

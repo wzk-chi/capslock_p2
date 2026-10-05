@@ -55,6 +55,7 @@ button.copied:hover { background: var(--ui-success-soft); }
 <script src="../vendor/lucide/lucide.min.js"></script>
 <script src="icons.js"></script>
 <script src="windowbar.js"></script>
+<script src="cursor.js"></script>
 </head>
 <body>
 <main id="mainView">
@@ -314,17 +315,6 @@ function post(obj) {
 function postType(type, text = '') {
   post({ type, text });
 }
-
-// Windows hides the pointer while typing when that system option is enabled.
-// Native edit controls show it again on mouse movement; report that movement
-// so the WebView2 host can restore the same behavior without polling.
-let cursorMovePostedAt = 0;
-document.addEventListener('mousemove', () => {
-  const now = performance.now();
-  if (now - cursorMovePostedAt < 80) return;
-  cursorMovePostedAt = now;
-  postType('cursorMove');
-}, { passive: true });
 
 function updateCopyButtons() {
   copySourceBtn.disabled = !source.value.trim();

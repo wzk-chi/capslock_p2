@@ -210,6 +210,7 @@ body {
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: var(--ui-line-strong); background-clip: padding-box; }
 </style>
+<script src="cursor.js"></script>
 </head>
 <body>
 <main id="shell">
@@ -290,7 +291,6 @@ let menuResultId = '';
 let menuResultVersion = 0;
 let actionTimer = 0;
 let resultsInteractive = true;
-let cursorMovePostedAt = 0;
 let sortId = 'modified-desc';
 
 function t(key, ...args) {
@@ -300,14 +300,6 @@ function t(key, ...args) {
 function post(message) {
   if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(message));
 }
-// Windows can hide the pointer while typing. Mirror the AI page's native
-// edit-control behavior by asking the host to restore it on mouse movement.
-document.addEventListener('mousemove', () => {
-  const now = performance.now();
-  if (now - cursorMovePostedAt < 80) return;
-  cursorMovePostedAt = now;
-  post({ type: 'cursorMove' });
-}, { passive: true });
 function renderCategories() {
   WindowBar.debug('everything:categories:start');
   categories.textContent = '';

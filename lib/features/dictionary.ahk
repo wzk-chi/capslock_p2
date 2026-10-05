@@ -236,9 +236,6 @@ DictionaryWebMessageReceived(sender, args) {
             SetTimer(DictionarySuggestionTimer, 0)
         DictionarySuggestionTimer := DictionaryRunSuggestions.Bind(query, DictionarySessionId, DictionaryQuerySeq)
         SetTimer(DictionarySuggestionTimer, -1)
-    } else if messageType = "cursorMove" {
-        ; Same mouse-vanish-on-typing recovery as the other panels.
-        ShowSystemCursor()
     }
 }
 

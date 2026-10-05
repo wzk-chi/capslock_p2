@@ -84,6 +84,7 @@ button { cursor: pointer; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: var(--ui-line-strong); background-clip: padding-box; }
 </style>
+<script src="cursor.js"></script>
 </head>
 <body>
 <div class="app">
@@ -143,8 +144,6 @@ const state = { sessionId: '', rows: [], type: 'all', favoriteOnly: false, searc
 
 function post(message) { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(message)); }
 document.addEventListener('drop', event => { event.preventDefault(); event.stopImmediatePropagation(); }, true);
-let cursorMovePostedAt = 0;
-document.addEventListener('mousemove', () => { const now = performance.now(); if (now - cursorMovePostedAt < 80) return; cursorMovePostedAt = now; post({type:'cursorMove'}); }, { passive: true });
 function toast(text, type = 'info') { if (text) AppToast.show(text, type); }
 function icon(node, name, className = '') { if (typeof createIcon === 'function') node.appendChild(createIcon(name, className)); else node.textContent = '•'; }
 function typeIcon(type) { return type === 'image' ? 'image' : type === 'file' ? 'file' : type === 'rich' ? 'file-pen' : 'type'; }

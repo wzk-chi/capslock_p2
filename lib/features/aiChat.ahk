@@ -243,11 +243,6 @@ AiChatWebMessageReceived(sender, args) {
         DebugLog("AI page stream request=" . LLMMsgField(msg, "requestId")
             . " phase=" . LLMMsgField(msg, "phase")
             . " rawChars=" . rawText . " renderedChars=" . renderedText)
-    } else if messageType = "cursorMove" {
-        ; WebView2 does not always replay the native cursor after Windows'
-        ; mouse-vanish-on-typing behavior. Restore it on an actual page mouse
-        ; move, matching the behavior of native edit controls.
-        ShowSystemCursor()
     }
 }
 

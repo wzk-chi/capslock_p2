@@ -368,11 +368,6 @@ NotesHandleMessage(msg) {
             NotesStoreDeleteTag(LLMMsgField(msg, "tagId"))
             NotesSendTags()
             NotesSendList(NotesPendingSearch, NotesCurrentTag)
-        case "cursorMove":
-            ; WebView2 does not always replay the native cursor after Windows'
-            ; mouse-vanish-on-typing behavior. Restore it on page mouse moves,
-            ; matching the behavior of native edit controls.
-            ShowSystemCursor()
         case "diagnostic":
             ; The page reports editor and renderer lifecycle facts so a WebView2
             ; failure can be diagnosed from this log instead of from a
