@@ -31,44 +31,81 @@ GetTranslateSetting(key, defaultValue := "") {
     return ConfigRead("TTranslate", key, defaultValue)
 }
 
-; The language list is shared by the settings page, direction resolver and
-; provider adapters. Keep the stored values as stable BCP-47-like codes and
-; translate them to each provider's own code only at the transport boundary.
+; Stable codes, display labels, request names and aliases live here. Pages
+; receive only codes and labels; provider-specific transport codes stay in
+; each provider adapter.
+TranslateLanguageCatalog() {
+    static catalog := [
+        Map("code", "zh-CN", "labelZh", "简体中文", "labelEn", "Simplified Chinese",
+            "aliases", ["zh-CN", "zh-Hans", "zh-CHS", "简体中文", "Simplified Chinese"]),
+        Map("code", "zh-TW", "labelZh", "繁體中文", "labelEn", "Traditional Chinese",
+            "aliases", ["zh-TW", "zh-Hant", "zh-CHT", "繁體中文", "traditional Chinese"]),
+        Map("code", "en", "labelZh", "English", "labelEn", "English",
+            "aliases", ["en", "English", "英文", "英语"]),
+        Map("code", "ja", "labelZh", "日本語", "labelEn", "Japanese",
+            "aliases", ["ja", "Japanese", "日本語", "日语", "日文"]),
+        Map("code", "ko", "labelZh", "한국어", "labelEn", "Korean",
+            "aliases", ["ko", "Korean", "한국어", "韩语"]),
+        Map("code", "fr", "labelZh", "Français", "labelEn", "French",
+            "aliases", ["fr", "French", "français", "法语", "法文"]),
+        Map("code", "de", "labelZh", "Deutsch", "labelEn", "German",
+            "aliases", ["de", "German", "Deutsch", "德语", "德文"]),
+        Map("code", "es", "labelZh", "Español", "labelEn", "Spanish",
+            "aliases", ["es", "Spanish", "español", "西班牙语"]),
+        Map("code", "ru", "labelZh", "Русский", "labelEn", "Russian",
+            "aliases", ["ru", "Russian", "русский", "俄语"]),
+        Map("code", "it", "labelZh", "Italiano", "labelEn", "Italian",
+            "aliases", ["it", "Italian", "italiano", "意大利语"]),
+        Map("code", "pt", "labelZh", "Português", "labelEn", "Portuguese",
+            "aliases", ["pt", "Portuguese", "português", "葡萄牙语"]),
+        Map("code", "ar", "labelZh", "العربية", "labelEn", "Arabic",
+            "aliases", ["ar", "Arabic", "العربية", "阿拉伯语"])]
+    return catalog
+}
+
+TranslateLanguageCatalogSnapshot() {
+    snapshot := []
+    for language in TranslateLanguageCatalog()
+        snapshot.Push(Map("code", language["code"], "labelZh", language["labelZh"],
+            "labelEn", language["labelEn"]))
+    return snapshot
+}
+
 TranslateLanguageCodes() {
-    return ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]
+    codes := []
+    for language in TranslateLanguageCatalog()
+        codes.Push(language["code"])
+    return codes
 }
 
 TranslateLanguageName(value) {
     normalized := TranslateNormalizeLanguage(value, true)
-    static names := Map(
-        "zh-cn", "Simplified Chinese", "zh-tw", "Traditional Chinese",
-        "en", "English", "ja", "Japanese", "ko", "Korean", "fr", "French",
-        "de", "German", "es", "Spanish", "ru", "Russian", "it", "Italian",
-        "pt", "Portuguese", "ar", "Arabic", "system", "System language")
-    lowered := StrLower(normalized)
-    return names.Has(lowered) ? names[lowered] : String(value)
+    if normalized = "system"
+        return "System language"
+    for language in TranslateLanguageCatalog()
+        if language["code"] = normalized
+            return language["labelEn"]
+    return String(value)
+}
+
+TranslateLanguageAliasMap() {
+    static aliases := TranslateBuildLanguageAliasMap()
+    return aliases
+}
+
+TranslateBuildLanguageAliasMap() {
+    aliases := Map()
+    for language in TranslateLanguageCatalog()
+        for alias in language["aliases"]
+            aliases[StrLower(Trim(String(alias)))] := language["code"]
+    return aliases
 }
 
 TranslateNormalizeLanguage(value, allowSystem := false) {
-    raw := Trim(String(value))
-    lowered := StrLower(raw)
-    static aliases := Map(
-        "zh-cn", "zh-CN", "zh-hans", "zh-CN", "zh-chs", "zh-CN",
-        "简体中文", "zh-CN", "simplified chinese", "zh-CN",
-        "zh-tw", "zh-TW", "zh-hant", "zh-TW", "zh-cht", "zh-TW",
-        "繁體中文", "zh-TW", "traditional chinese", "zh-TW",
-        "en", "en", "english", "en", "英文", "en", "英语", "en",
-        "ja", "ja", "japanese", "ja", "日本語", "ja", "日语", "ja", "日文", "ja",
-        "ko", "ko", "korean", "ko", "한국어", "ko", "韩语", "ko",
-        "fr", "fr", "french", "fr", "français", "fr", "法语", "fr", "法文", "fr",
-        "de", "de", "german", "de", "deutsch", "de", "德语", "de", "德文", "de",
-        "es", "es", "spanish", "es", "español", "es", "西班牙语", "es",
-        "ru", "ru", "russian", "ru", "русский", "ru", "俄语", "ru",
-        "it", "it", "italian", "it", "italiano", "it", "意大利语", "it",
-        "pt", "pt", "portuguese", "pt", "português", "pt", "葡萄牙语", "pt",
-        "ar", "ar", "arabic", "ar", "العربية", "ar", "阿拉伯语", "ar")
+    lowered := StrLower(Trim(String(value)))
     if allowSystem && lowered = "system"
         return "system"
+    aliases := TranslateLanguageAliasMap()
     return aliases.Has(lowered) ? aliases[lowered] : ""
 }
 
@@ -78,21 +115,18 @@ TranslateSystemLanguageCode() {
 }
 
 TranslateLanguageSupported(value) {
-    code := TranslateNormalizeLanguage(value)
-    if code = ""
-        return false
-    for candidate in TranslateLanguageCodes()
-        if candidate = code
-            return true
-    return false
+    return TranslateNormalizeLanguage(value) != ""
 }
 
 TranslateOptionsSnapshot() {
+    languageA := TranslateNormalizeLanguage(GetTranslateSetting("languageA", ""))
+    languageB := TranslateNormalizeLanguage(GetTranslateSetting("languageB", ""))
+    target := TranslateNormalizeLanguage(GetTranslateSetting("targetLanguage", ""), true)
     return Map(
         "mode", Trim(GetTranslateSetting("mode", "")),
-        "languageA", Trim(GetTranslateSetting("languageA", "")),
-        "languageB", Trim(GetTranslateSetting("languageB", "")),
-        "targetLanguage", Trim(GetTranslateSetting("targetLanguage", "")))
+        "languageA", languageA = "" ? "zh-CN" : languageA,
+        "languageB", languageB = "" ? "en" : languageB,
+        "targetLanguage", target = "" ? "system" : target)
 }
 
 TranslateValidateOptions(options, &errorText := "") {

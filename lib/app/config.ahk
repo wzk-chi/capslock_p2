@@ -90,7 +90,16 @@ ConfigCloneDocument(source) {
 ; and editability. Dynamic sections accept user keys under the generic key
 ; restrictions enforced by ConfigValidateValue().
 ConfigSchema() {
-    static schema := Map(
+    static schema := ConfigBuildSchema()
+    return schema
+}
+
+ConfigBuildSchema() {
+    languages := TranslateLanguageCodes()
+    targetLanguages := ["system"]
+    for language in languages
+        targetLanguages.Push(language)
+    return Map(
         "Global", Map("kind", "static", "keys", Map(
             "autostart", Map("type", "bool"),
             "mouseSpeed", Map("type", "int", "min", 1, "max", 20),
@@ -117,9 +126,9 @@ ConfigSchema() {
             "systemPrompt", Map("type", "text", "codec", "jsonScalar"))),
         "TTranslate", Map("kind", "static", "keys", Map(
             "mode", Map("type", "enum", "values", ["fixed", "bidirectional"]),
-            "languageA", Map("type", "enum", "values", ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
-            "languageB", Map("type", "enum", "values", ["zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
-            "targetLanguage", Map("type", "enum", "values", ["system", "zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "ru", "it", "pt", "ar"]),
+            "languageA", Map("type", "enum", "values", languages),
+            "languageB", Map("type", "enum", "values", languages),
+            "targetLanguage", Map("type", "enum", "values", targetLanguages),
             "engine", Map("type", "enum", "values", ["auto", "llm", "youdao", "volcengine"]))),
         "TYoudao", Map("kind", "static", "keys", Map(
             "appPaidID", Map("type", "secret"),
@@ -135,7 +144,6 @@ ConfigSchema() {
         "Keys", Map("kind", "keys"),
         "TabHotString", Map("kind", "dynamic", "codec", "hotString"),
         "CustomHotkey", Map("kind", "dynamic", "codec", "plain"))
-    return schema
 }
 
 ConfigSchemaSections() {

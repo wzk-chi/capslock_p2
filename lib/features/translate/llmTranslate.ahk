@@ -24,17 +24,8 @@ TranslateTargetLanguageName(value) {
     if value = "" || StrLower(value) = "system"
         return SystemLanguageName()
 
-    static languageNames := Map(
-        "zh-cn", "Simplified Chinese", "zh-hans", "Simplified Chinese", "简体中文", "Simplified Chinese",
-        "zh-tw", "Traditional Chinese", "zh-hant", "Traditional Chinese", "繁體中文", "Traditional Chinese",
-        "en", "English", "english", "English", "ja", "Japanese", "japanese", "Japanese", "日本語", "Japanese",
-        "ko", "Korean", "korean", "Korean", "한국어", "Korean", "fr", "French", "french", "French", "français", "French",
-        "de", "German", "german", "German", "deutsch", "German", "es", "Spanish", "spanish", "Spanish", "español", "Spanish",
-        "ru", "Russian", "russian", "Russian", "русский", "Russian", "it", "Italian", "italian", "Italian", "italiano", "Italian",
-        "pt", "Portuguese", "portuguese", "Portuguese", "português", "Portuguese", "ar", "Arabic", "arabic", "Arabic", "العربية", "Arabic",
-        "simplified chinese", "Simplified Chinese", "traditional chinese", "Traditional Chinese")
-    normalized := StrLower(value)
-    return languageNames.Has(normalized) ? languageNames[normalized] : value
+    normalized := TranslateNormalizeLanguage(value)
+    return normalized = "" ? value : TranslateLanguageName(normalized)
 }
 
 ; True when the engine named in [TTranslate] can serve a request. Engines
@@ -224,7 +215,8 @@ LLMTranslatePushLanguage() {
     options := TranslateOptionsSnapshot()
     uiLanguage := LLMUiLanguage()
     DebugLog("translate push language=" . uiLanguage . " ready=" . PanelHostPageReady(LLMTranslateHost))
-    payload := Map("uiLanguage", uiLanguage, "translation", options)
+    payload := Map("uiLanguage", uiLanguage, "translation", options,
+        "languageCatalog", TranslateLanguageCatalogSnapshot())
     LLMTranslateExec("window.onHostSettings(" . JSON.stringify(payload, 0) . ");")
 }
 

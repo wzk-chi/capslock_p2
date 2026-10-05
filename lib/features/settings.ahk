@@ -485,6 +485,14 @@ SettingsSectionSnapshot(section) {
             continue
         result[key] := String(value)
     }
+    if section = "TTranslate" {
+        languageA := TranslateNormalizeLanguage(result.Has("languageA") ? result["languageA"] : "")
+        languageB := TranslateNormalizeLanguage(result.Has("languageB") ? result["languageB"] : "")
+        target := TranslateNormalizeLanguage(result.Has("targetLanguage") ? result["targetLanguage"] : "", true)
+        result["languageA"] := languageA = "" ? "zh-CN" : languageA
+        result["languageB"] := languageB = "" ? "en" : languageB
+        result["targetLanguage"] := target = "" ? "system" : target
+    }
     return result
 }
 
@@ -589,6 +597,7 @@ SettingsBuildSnapshot() {
         sections[section] := SettingsSectionSnapshot(section)
     return Map(
         "uiLanguage", LLMUiLanguage(),
+        "languageCatalog", TranslateLanguageCatalogSnapshot(),
         "page", SettingsPendingPage,
         "toast", SettingsPendingToast,
         "sections", sections,

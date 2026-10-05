@@ -266,7 +266,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   <main class="main">
     <header class="topbar">
       <div class="title"><h1 id="pageTitle">通用</h1><div id="status" class="status"></div></div>
-      <div class="actions"><button id="cancelBtn" class="btn ghost">取消</button><button id="saveBtn" class="btn">保存</button></div>
+      <div class="actions"><button id="cancelBtn" class="btn ghost">取消</button><button id="saveBtn" class="btn" disabled>保存</button></div>
     </header>
 
     <div class="content">
@@ -321,34 +321,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
                 <option value="bidirectional">两种语言互译</option>
               </select></label>
               <div id="bidirectionalLanguageFields" class="grid wide" hidden>
-                <label class="field"><span>语言 A</span><select data-section="TTranslate" data-key="languageA" data-pair-language-select>
-                  <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option>
-                  <option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option>
-                  <option value="de">Deutsch</option><option value="es">Español</option><option value="ru">Русский</option>
-                  <option value="it">Italiano</option><option value="pt">Português</option><option value="ar">العربية</option>
-                </select></label>
-                <label class="field"><span>语言 B</span><select data-section="TTranslate" data-key="languageB" data-pair-language-select>
-                  <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option>
-                  <option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option>
-                  <option value="de">Deutsch</option><option value="es">Español</option><option value="ru">Русский</option>
-                  <option value="it">Italiano</option><option value="pt">Português</option><option value="ar">العربية</option>
-                </select></label>
+                <label class="field"><span>语言 A</span><select data-section="TTranslate" data-key="languageA" data-pair-language-select data-translation-language-select disabled></select></label>
+                <label class="field"><span>语言 B</span><select data-section="TTranslate" data-key="languageB" data-pair-language-select data-translation-language-select disabled></select></label>
               </div>
-              <label id="fixedTargetLanguageField" class="field"><span>目标语言</span><select data-section="TTranslate" data-key="targetLanguage" data-language-select>
-                <option value="system" data-label-zh="系统语言" data-label-en="System language">系统语言</option>
-                <option value="zh-CN">简体中文</option>
-                <option value="zh-TW">繁體中文</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-                <option value="es">Español</option>
-                <option value="ru">Русский</option>
-                <option value="it">Italiano</option>
-                <option value="pt">Português</option>
-                <option value="ar">العربية</option>
-              </select></label>
+              <label id="fixedTargetLanguageField" class="field"><span>目标语言</span><select data-section="TTranslate" data-key="targetLanguage" data-language-select data-translation-language-select disabled></select></label>
             </div>
           </div>
           <div class="card"><div class="card-head"><h3>LLM翻译</h3><button class="btn ghost" id="openLlmSettingsFromTranslate">LLM 设置</button></div><div class="grid">
@@ -433,6 +409,8 @@ const post = payload => {
 };
 const clone = value => JSON.parse(JSON.stringify(value || {}));
 const pickerState = { selectedIndex: 0, kind: '', root: null, rows: [] };
+let translationLanguageCodes = [];
+let translationLanguageByCode = new Map();
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
 function hotkeyProfile() {
   if (!state.draft || !Array.isArray(state.draft.profiles) || !state.hotkeyProfileId) return null;
@@ -733,27 +711,66 @@ function setDraftValue(sectionName, key, value) {
 function readControl(node) {
   return node.type === 'checkbox' ? (node.checked ? '1' : '0') : node.value;
 }
-const TARGET_LANGUAGE_ALIASES = {
-  'system': 'system',
-  'zh-cn': 'zh-CN', 'zh-hans': 'zh-CN', '简体中文': 'zh-CN', 'simplified chinese': 'zh-CN',
-  'zh-tw': 'zh-TW', 'zh-hant': 'zh-TW', '繁體中文': 'zh-TW', 'traditional chinese': 'zh-TW',
-  'en': 'en', 'english': 'en', 'ja': 'ja', 'japanese': 'ja', '日本語': 'ja',
-  'ko': 'ko', 'korean': 'ko', '한국어': 'ko', 'fr': 'fr', 'french': 'fr', 'français': 'fr',
-  'de': 'de', 'german': 'de', 'deutsch': 'de', 'es': 'es', 'spanish': 'es', 'español': 'es',
-  'ru': 'ru', 'russian': 'ru', 'русский': 'ru', 'it': 'it', 'italian': 'it', 'italiano': 'it',
-  'pt': 'pt', 'portuguese': 'pt', 'português': 'pt', 'ar': 'ar', 'arabic': 'ar', 'العربية': 'ar'
-};
+function translationLanguageLabel(entry) {
+  return entry.labelZh;
+}
+function setSettingsLoaded(loaded) {
+  $$('[data-section][data-key]').forEach(node => { node.disabled = !loaded; });
+  $('#saveBtn').disabled = !loaded;
+}
+function setTranslationLanguageCatalog(value) {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const seen = new Set();
+  const catalog = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') return false;
+    const code = String(entry.code ?? '').trim();
+    const labelZh = String(entry.labelZh ?? '').trim();
+    const labelEn = String(entry.labelEn ?? '').trim();
+    const key = code.toLowerCase();
+    if (!/^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/i.test(code) || key === 'system'
+        || !labelZh || !labelEn || seen.has(key)) return false;
+    seen.add(key);
+    catalog.push({ code, labelZh, labelEn });
+  }
+  translationLanguageCodes = catalog.map(entry => entry.code);
+  translationLanguageByCode = new Map(catalog.map(entry => [entry.code.toLowerCase(), entry]));
+  $$('select[data-translation-language-select]').forEach(select => {
+    const previous = select.value;
+    const options = [];
+    if (select.hasAttribute('data-language-select')) {
+      const system = document.createElement('option');
+      system.value = 'system';
+      system.textContent = document.documentElement.lang === 'en' ? 'System language' : '系统语言';
+      options.push(system);
+    }
+    for (const entry of catalog) {
+      const option = document.createElement('option');
+      option.value = entry.code;
+      option.textContent = translationLanguageLabel(entry);
+      options.push(option);
+    }
+    select.replaceChildren(...options);
+    if (options.some(option => option.value === previous)) select.value = previous;
+    select.disabled = false;
+  });
+  return true;
+}
+function normalizeTranslationLanguage(value, fallback = '') {
+  const raw = String(value ?? '').trim().toLowerCase();
+  const match = translationLanguageByCode.get(raw);
+  return match ? match.code : fallback;
+}
 function normalizeTargetLanguageValue(value) {
   const raw = String(value ?? '').trim();
-  return TARGET_LANGUAGE_ALIASES[raw.toLowerCase()] || 'system';
+  return raw.toLowerCase() === 'system' ? 'system' : normalizeTranslationLanguage(raw, 'system');
 }
 function normalizeTranslationModeValue(value) {
   return String(value ?? '').trim().toLowerCase() === 'bidirectional' ? 'bidirectional' : 'fixed';
 }
 function normalizePairLanguageValue(value, fallback) {
-  const raw = String(value ?? '').trim();
-  return [...document.querySelectorAll('[data-pair-language-select] option')].some(option => option.value === raw)
-    ? raw : fallback;
+  return normalizeTranslationLanguage(value, normalizeTranslationLanguage(fallback,
+    translationLanguageCodes[0] || ''));
 }
 function updateTranslateModeFields() {
   const mode = normalizeTranslationModeValue(section('TTranslate').mode);
@@ -763,9 +780,11 @@ function updateTranslateModeFields() {
   if (fixedField) fixedField.hidden = mode === 'bidirectional';
 }
 function updateLanguageSelectLabels() {
-  const labelKey = document.documentElement.lang === 'en' ? 'labelEn' : 'labelZh';
-  $$('select[data-language-select] option[value="system"]').forEach(option => {
-    option.textContent = option.dataset[labelKey] || option.textContent;
+  $$('select[data-translation-language-select] option').forEach(option => {
+    const entry = translationLanguageByCode.get(option.value.toLowerCase());
+    option.textContent = option.value === 'system'
+      ? (document.documentElement.lang === 'en' ? 'System language' : '系统语言')
+      : entry ? translationLanguageLabel(entry) : option.value;
   });
 }
 function writeControl(node) {
@@ -2088,6 +2107,12 @@ function receiveSnapshot(snapshot) {
     setStatus('外部配置已变化；请保存当前修改或取消后重新载入', true);
     return;
   }
+  if (!setTranslationLanguageCatalog(snapshot && snapshot.languageCatalog)) {
+    setSettingsLoaded(false);
+    setStatus('语言选项加载失败，请重新打开设置。', true);
+    return;
+  }
+  setSettingsLoaded(true);
   const selectedProfileId = state.hotkeyProfileId;
   closeHotkeyApplicationDialog();
   const sections = clone(snapshot.sections);
@@ -2360,6 +2385,7 @@ $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const rootId = 'tabList';
   addPairRow(sectionName, $('#' + rootId), '', '', sectionName === 'TabHotString');
 }));
+setSettingsLoaded(false);
 bindStaticControls();
 post({ type: 'getSettings' });
 </script>
