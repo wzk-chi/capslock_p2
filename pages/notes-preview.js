@@ -95,15 +95,34 @@
     return /^(P|DIV|SECTION|ARTICLE|PRE|BLOCKQUOTE|TABLE|UL|OL|H[1-6]|HR)$/.test(tag);
   }
 
-  function rowsFor(node, marker, out) {
+  function addRow(out, row, budget) {
+    if (budget.stopped) return;
+    var cost = row.cost || 1;
+    if (budget.used + cost > budget.maxRows) {
+      budget.stopped = true;
+      budget.truncated = true;
+      return;
+    }
+    out.push(row);
+    budget.used += cost;
+  }
+
+  function rowsFor(node, marker, out, budget) {
+    if (budget.stopped) return;
     var tag = node.tagName;
     if (isChrome(node)) return;
-    if (tag === 'HR') { out.push({ kind: 'rule', cost: 1 }); return; }
+    if (budget.used >= budget.maxRows) {
+      budget.stopped = true;
+      budget.truncated = true;
+      return;
+    }
+    if (tag === 'HR') { addRow(out, { kind: 'rule', cost: 1 }, budget); return; }
     if (tag === 'UL' || tag === 'OL') {
       for (var i = 0; i < node.children.length; i++) {
+        if (budget.stopped) break;
         var li = node.children[i];
         if (li.tagName !== 'LI') continue;
-        rowsFor(li, tag === 'OL' ? (i + 1) + '.' : '•', out);
+        rowsFor(li, tag === 'OL' ? (i + 1) + '.' : '•', out, budget);
       }
       return;
     }
@@ -111,9 +130,10 @@
       var kids = node.children;
       var any = false;
       for (var j = 0; j < kids.length; j++) {
-        if (isBlockTag(kids[j].tagName)) { rowsFor(kids[j], '▏', out); any = true; }
+        if (budget.stopped) break;
+        if (isBlockTag(kids[j].tagName)) { rowsFor(kids[j], '▏', out, budget); any = true; }
       }
-      if (!any) out.push({ kind: 'text', node: node, marker: '▏', copy: plainText(node), cost: 1 });
+      if (!any) addRow(out, { kind: 'text', node: node, marker: '▏', copy: plainText(node), cost: 1 }, budget);
       return;
     }
     if (tag === 'PRE') {
@@ -121,16 +141,16 @@
       if (code === '') return;
       var lines = code.split('\n');
       var shown = Math.min(lines.length, DEFAULTS.maxCodeLines);
-      out.push({
+      addRow(out, {
         kind: 'code', node: node, copy: code, cost: shown,
         display: lines.slice(0, shown).join('\n') + (lines.length > shown ? '\n…' : '')
-      });
+      }, budget);
       return;
     }
     if (tag === 'TABLE') {
       var grid = tableGrid(node);
       if (!grid.rows.length) return;
-      out.push({
+      addRow(out, {
         kind: 'table', node: node, grid: grid.rows, header: grid.header,
         // Tab separated so it can be pasted straight into a spreadsheet, and one
         // line per row so it stays readable anywhere else.
@@ -139,64 +159,57 @@
         // the preview budget. A table that does not fit is dropped whole, like
         // every other block.
         cost: Math.min(grid.rows.length, DEFAULTS.maxRows)
-      });
+      }, budget);
       return;
     }
     var img = imageOf(node);
     if (img) {
-      out.push({ kind: 'image', node: node, img: img, src: img.getAttribute('src') || '',
-                 alt: normalise(img.getAttribute('alt')), cost: DEFAULTS.imageRows });
+      addRow(out, { kind: 'image', node: node, img: img, src: img.getAttribute('src') || '',
+                    alt: normalise(img.getAttribute('alt')), cost: DEFAULTS.imageRows }, budget);
       return;
     }
-    // Vditor wraps some blocks in its own containers (a code block can arrive as
-    // div.vditor-code holding the <pre>), so a wrapper with block children is
-    // descended into instead of being flattened into one text row.
+    // Descend into Vditor wrappers without collecting blocks after the row budget.
     if (/^(DIV|SECTION|ARTICLE)$/.test(tag)) {
-      var inner = [];
+      var hasBlockChildren = false;
       for (var k = 0; k < node.children.length; k++) {
-        if (isBlockTag(node.children[k].tagName)) inner.push(node.children[k]);
+        if (!isBlockTag(node.children[k].tagName)) continue;
+        hasBlockChildren = true;
+        rowsFor(node.children[k], marker, out, budget);
+        if (budget.stopped) break;
       }
-      if (inner.length) {
-        for (var m = 0; m < inner.length; m++) rowsFor(inner[m], marker, out);
-        return;
-      }
+      if (hasBlockChildren) return;
     }
     var text = plainText(node);
     if (text === '') return;
     var level = headingLevel(tag);
-    out.push({
+    addRow(out, {
       kind: level ? 'heading' : 'text', node: node, marker: marker, copy: text,
       level: level, cost: 1
-    });
+    }, budget);
   }
 
-  // Flattens rendered Markdown into individually copyable rows.
-  function collect(rendered) {
+  // Flattens only as much rendered Markdown as the preview can display.
+  function collect(rendered, options) {
+    var opts = options || {};
+    var requestedMax = opts.maxRows == null ? DEFAULTS.maxRows : Number(opts.maxRows);
+    var budget = {
+      maxRows: Number.isFinite(requestedMax) ? Math.max(0, requestedMax) : DEFAULTS.maxRows,
+      used: 0,
+      truncated: false,
+      stopped: false
+    };
     var out = [];
     var kids = rendered.children;
-    for (var i = 0; i < kids.length; i++) rowsFor(kids[i], '', out);
-    return out;
-  }
-
-  // Keeps whole rows until the budget is spent. A row that does not fit is
-  // dropped rather than partly rendered, matching what the AHK parser did.
-  function budget(rows, options) {
-    var opts = options || {};
-    var maxRows = opts.maxRows == null ? DEFAULTS.maxRows : opts.maxRows;
-    var kept = [], used = 0;
-    for (var i = 0; i < rows.length; i++) {
-      var cost = rows[i].cost || 1;
-      if (used + cost > maxRows) return { rows: kept, used: used, truncated: true };
-      kept.push(rows[i]);
-      used += cost;
+    for (var i = 0; i < kids.length; i++) {
+      if (budget.stopped) break;
+      rowsFor(kids[i], '', out, budget);
     }
-    return { rows: kept, used: used, truncated: false };
+    return { rows: out, used: budget.used, truncated: budget.truncated };
   }
 
   global.NotesPreview = {
     defaults: DEFAULTS,
     collect: collect,
-    budget: budget,
     plainText: plainText,
     codeText: codeText
   };

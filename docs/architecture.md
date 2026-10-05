@@ -61,6 +61,7 @@ lib\
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
   aiChat.ahk                       AI 聊天面板（使用 [LLM]、[QAI] 仅存行为设置、多轮对话）
+  aiChat_store.ahk                 AI 会话 SQLite 存储（多会话设计，尚未实现）
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
@@ -79,6 +80,10 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 
 `math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 已退出运行路径，并在本轮用户授权的退役清理中删除；
 它们不属于当前运行时架构。旧诊断脚本同样不作为配置行为验证依据。
+
+### AI 问答多会话（设计待实现）
+
+多会话设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。实现后由 `aiChat_store.ahk` 独占会话数据库访问；`aiChat.ahk` 编排持久化轮次、主回答和独立标题请求；`chat.html` 负责会话列表和消息视图。数据库计划放在 `{app}\data\ai-chat\ai-chat.db`，页面重开默认新会话，历史按需载入。
 
 ## 翻译引擎注册表
 

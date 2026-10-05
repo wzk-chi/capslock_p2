@@ -33,6 +33,8 @@ button { color: inherit; cursor: default; }
 .search input::placeholder { color: var(--ui-subtle); }
 .search-button { flex: 0 0 37px; width: 37px; height: 35px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: 8px; background: var(--ui-button-bg); color: var(--ui-button-text); font-size: 16px; }
 .search-button:hover, .search-button:focus-visible { filter: brightness(1.06); }
+.date-filter, .page-size { height: 35px; padding: 0 8px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
+.date-filter { flex: 0 0 118px; }
 .workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
 .workspace.edit-mode { grid-template-columns: 220px minmax(0, 1fr); }
 .workspace.edit-mode .browse { display: none; }
@@ -51,8 +53,8 @@ button { color: inherit; cursor: default; }
 .tag-row.active { font-weight: 650; }
 .tag-count { color: var(--ui-subtle); font-size: 10px; }
 .browse { min-width: 0; min-height: 0; background: var(--ui-bg); }
-.browse { overflow: auto; padding: 22px clamp(18px, 3vw, 34px) 30px; }
-.browse-inner { max-width: 760px; margin: 0 auto; }
+.browse { display: flex; flex-direction: column; align-items: center; overflow: hidden; padding: 0 clamp(18px, 3vw, 34px); }
+.browse-inner { width: 100%; max-width: 760px; min-height: 0; flex: 1; overflow: auto; margin: 0; padding: 22px 0 14px; }
 .browse-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .browse-heading h1 { margin: 0; font-size: 19px; font-weight: 650; }
 .muted { color: var(--ui-subtle); font-size: 10px; }
@@ -82,6 +84,13 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .note-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--ui-subtle); font-size: 10px; }
 .note-tag { margin-left: auto; color: var(--ui-accent-strong); }
 .empty { padding: 35px 10px; color: var(--ui-muted); text-align: center; font-size: 12px; }
+.pagination { width: 100%; max-width: 760px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 0; border-top: 1px solid var(--ui-line); background: var(--ui-bg); color: var(--ui-muted); font-size: 11px; }
+.page-button { width: 29px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
+.page-button .lucide { width: 14px; height: 14px; }
+.page-button:hover:not(:disabled), .page-button:focus-visible { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); }
+.page-button:disabled { opacity: .45; }
+.page-label { min-width: 68px; text-align: center; }
+.page-size { height: 28px; }
 .editor-page { min-width: 0; min-height: 0; height: 100%; display: flex; overflow: auto; padding: 0 clamp(18px, 3vw, 34px); background: var(--ui-bg); }
 .editor-page .editor { width: min(900px, 100%); height: 100%; min-height: 0; margin: 0 auto; border: 0; border-radius: 0; box-shadow: none; background: var(--ui-bg); }
 .editor { width: min(900px, 100%); height: min(670px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-line-strong); border-radius: 12px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
@@ -138,7 +147,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 <div class="app">
   <div class="windowbar" data-windowbar data-windowbar-title="capslock_p2 笔记" data-windowbar-icon="file-text"></div>
   <header class="topbar">
-    <div class="search-group"><label class="search" aria-label="搜索标题、正文和标签"><i data-lucide="search"></i><input id="search" type="search" placeholder="搜索标题、正文或标签…"></label><button id="searchButton" class="search-button" type="button" aria-label="搜索"><i data-lucide="search"></i></button></div>
+    <div class="search-group"><label class="search" aria-label="搜索标题、正文和标签"><i data-lucide="search"></i><input id="search" type="search" placeholder="搜索标题、正文或标签…"></label><select id="dateFilter" class="date-filter" aria-label="日期筛选"><option value="all">全部日期</option><option value="today">今天</option><option value="3">近 3 天</option><option value="7">近 7 天</option><option value="30">近 30 天</option><option id="selectedDateOption" value="custom-date" hidden></option><option value="custom">选择日期…</option></select><button id="searchButton" class="search-button" type="button" aria-label="搜索"><i data-lucide="search"></i></button></div>
   </header>
   <div id="workspace" class="workspace">
     <aside class="sidebar" aria-label="标签列表">
@@ -152,6 +161,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
         <div id="multiTools" class="multi-tools"><label><input id="selectAll" class="select-all" type="checkbox"> 全选</label><span id="selectedCount">已选 0</span><button id="multiDelete" class="multi-button danger icon-only" type="button" aria-label="删除所选笔记" title="删除所选笔记" disabled><i data-lucide="trash"></i></button><button id="multiExit" class="multi-button icon-only" type="button" aria-label="退出多选" title="退出多选"><i data-lucide="x"></i></button></div>
         <div id="notes"></div>
       </div>
+      <nav class="pagination" aria-label="笔记分页"><button id="prevPage" class="page-button" type="button" aria-label="上一页"><i data-lucide="chevron-left"></i></button><span id="pageLabel" class="page-label">第 1 / 1 页</span><button id="nextPage" class="page-button" type="button" aria-label="下一页"><i data-lucide="chevron-right"></i></button><select id="pageSize" class="page-size" aria-label="每页数量"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></nav>
     </main>
     <main id="editorPage" class="editor-page" aria-label="编辑笔记">
       <section class="editor">
@@ -220,13 +230,58 @@ function diagError(prefix, error) {
   diag(prefix, 'name=' + ((error && error.name) || 'unknown') + ' msgLen=' + String((error && error.message) || '').length);
 }
 diag('page-load', 'vditor=' + typeof Vditor + ' preview=' + typeof NotesPreview);
-const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map() };
+const dateFilter = $('dateFilter');
+const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), total: 0, dateFilter: 'all', selectedDate: '', dateAfter: '', dateBefore: '', page: 1, pageSize: 20, pageCount: 1 };
 let searchTimer = 0;
 
 function messageValue(value, fallback = '') { return value == null ? fallback : value; }
 function toast(text, type = 'info') { if (text) AppToast.show(text, type); }
-function submitQuery() { clearTimeout(searchTimer); state.search = $('search').value; post({ type: 'query', text: state.search, tag: state.currentTag }); }
-function requestQuery() { clearTimeout(searchTimer); searchTimer = setTimeout(submitQuery, 180); }
+function utcTimestamp(date) { return date.toISOString().replace(/\D/g, '').slice(0, 14); }
+function localDateInputValue(date = new Date()) { const pad = value => String(value).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
+function dateRangeForFilter() {
+  if (state.dateFilter === 'all') return { after: '', before: '' };
+  if (state.dateFilter === 'custom') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(state.selectedDate)) return { after: '', before: '' };
+    const [year, month, day] = state.selectedDate.split('-').map(Number);
+    return { after: utcTimestamp(new Date(year, month - 1, day)), before: utcTimestamp(new Date(year, month - 1, day + 1)) };
+  }
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (state.dateFilter !== 'today') start.setDate(start.getDate() - Math.max(1, Number(state.dateFilter) || 1) + 1);
+  return { after: utcTimestamp(start), before: '' };
+}
+function updateDateFilterLabel() {
+  const option = $('selectedDateOption');
+  option.hidden = !state.selectedDate;
+  option.textContent = state.selectedDate;
+  $('dateFilter').value = state.dateFilter === 'custom' && state.selectedDate ? 'custom-date' : state.dateFilter;
+}
+async function chooseCustomDate() {
+  const previousFilter = state.dateFilter;
+  const previousDate = state.selectedDate;
+  const value = await AppDialog.prompt({ title: '选择日期', label: '日期', type: 'date', value: previousDate || localDateInputValue(), confirmText: '应用' });
+  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    state.dateFilter = previousFilter;
+    state.selectedDate = previousDate;
+    updateDateFilterLabel();
+    return;
+  }
+  state.dateFilter = 'custom';
+  state.selectedDate = String(value);
+  updateDateFilterLabel();
+  requestQuery();
+}
+function submitQuery(resetPage = true, page = state.page) {
+  clearTimeout(searchTimer);
+  state.search = $('search').value;
+  state.page = resetPage ? 1 : Math.max(1, Number(page) || 1);
+  if (resetPage) state.selectedIds.clear();
+  const range = dateRangeForFilter();
+  state.dateAfter = range.after;
+  state.dateBefore = range.before;
+  post({ type: 'query', text: state.search, tag: state.currentTag, dateFilter: state.dateFilter, selectedDate: state.selectedDate, dateAfter: state.dateAfter, dateBefore: state.dateBefore, page: state.page, pageSize: state.pageSize });
+}
+function requestQuery(resetPage = true, page = state.page) { clearTimeout(searchTimer); searchTimer = setTimeout(() => submitQuery(resetPage, page), 180); }
 function toggleEditor(on) { $('workspace').classList.toggle('edit-mode', on); $('addNote').classList.toggle('editor-hidden', on); }
 function escapeExternalImages(markdown) { return String(markdown || '').replace(/!\[([^\]]*)\]\((?!asset:)[^)]*\)/g, '$1'); }
 // Turns stored "asset:<id>" image references into the media host URLs the page
@@ -405,7 +460,7 @@ function handleEditorUpload(files) {
 async function stopWritable(writable) { if (!writable) return; try { if (typeof writable.abort === 'function') await writable.abort(); else await writable.close(); } catch {} }
 async function cancelPendingUploads(editorId) { const pendingItems = Array.from(state.pendingUploads.entries()); for (const [requestId, pending] of pendingItems) { pending.cancelled = true; await stopWritable(pending.writable); pending.writable = null; state.pendingUploads.delete(requestId); if (pending.reject) pending.reject(new Error('图片上传已取消')); if (!pending.cancelRequested) { pending.cancelRequested = true; post({ type: 'assetCancel', editorId, requestId, assetId: pending.assetId || '' }); } } }
 async function receiveAssetHandle(data, objects) { const requestId = String(data.requestId || ''); const pending = state.pendingUploads.get(requestId); const handle = objects && objects[0]; if (!pending || !handle || !state.editor || data.editorId !== state.editor.editorId) return; pending.assetId = String(data.assetId || ''); try { const writable = await handle.createWritable(); pending.writable = writable; if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.write(pending.file); if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.close(); pending.writable = null; if (pending.cancelled || !state.pendingUploads.has(requestId)) { post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: true }); } catch (error) { pending.writable = null; if (!pending.cancelled && state.pendingUploads.has(requestId)) post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: false }); } }
-function renderTags() { const root = $('tags'); root.textContent = ''; const all = document.createElement('button'); all.className = `tag-row${state.currentTag === '' ? ' active' : ''}`; all.type = 'button'; all.innerHTML = '<span>全部笔记</span><span class="tag-count">' + state.notes.length + '</span>'; all.onclick = () => { state.currentTag = ''; requestQuery(); renderTags(); }; root.appendChild(all); const none = document.createElement('button'); none.className = `tag-row${state.currentTag === '__none__' ? ' active' : ''}`; none.type = 'button'; none.innerHTML = '<span>无标签</span><span class="tag-count"> </span>'; none.onclick = () => { state.currentTag = '__none__'; requestQuery(); renderTags(); }; root.appendChild(none); state.tags.forEach(tag => { const row = document.createElement('button'); row.className = `tag-row${state.currentTag === tag.name ? ' active' : ''}`; row.type = 'button'; row.innerHTML = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.count}</span>`; row.onclick = () => { state.currentTag = tag.name; requestQuery(); renderTags(); }; root.appendChild(row); }); $('tagCount').textContent = `${state.tags.reduce((sum, tag) => sum + Number(tag.count || 0), 0)} 篇`; }
+function renderTags() { const root = $('tags'); root.textContent = ''; const all = document.createElement('button'); all.className = `tag-row${state.currentTag === '' ? ' active' : ''}`; all.type = 'button'; all.innerHTML = '<span>全部笔记</span><span class="tag-count">' + state.total + '</span>'; all.onclick = () => { state.currentTag = ''; requestQuery(); renderTags(); }; root.appendChild(all); const none = document.createElement('button'); none.className = `tag-row${state.currentTag === '__none__' ? ' active' : ''}`; none.type = 'button'; none.innerHTML = '<span>无标签</span><span class="tag-count"> </span>'; none.onclick = () => { state.currentTag = '__none__'; requestQuery(); renderTags(); }; root.appendChild(none); state.tags.forEach(tag => { const row = document.createElement('button'); row.className = `tag-row${state.currentTag === tag.name ? ' active' : ''}`; row.type = 'button'; row.innerHTML = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.count}</span>`; row.onclick = () => { state.currentTag = tag.name; requestQuery(); renderTags(); }; root.appendChild(row); }); $('tagCount').textContent = `${state.tags.reduce((sum, tag) => sum + Number(tag.count || 0), 0)} 篇`; }
 function editorHasTag(name) { return !!state.editor && (state.editor.tags || []).some(tag => String(tag).toLowerCase() === String(name).toLowerCase()); }
 function renderEditorTagOptions(show = false) { if (!state.editor) return; const root = $('editorTagOptions'); const query = $('editorTagInput').value.trim().toLowerCase(); root.textContent = ''; state.tags.filter(tag => !query || String(tag.name).toLowerCase().includes(query)).forEach(tag => { const option = document.createElement('button'); option.type = 'button'; option.className = `tag-option${editorHasTag(tag.name) ? ' selected' : ''}`; const label = document.createElement('span'); label.textContent = tag.name; const mark = document.createElement('span'); if (editorHasTag(tag.name)) mark.appendChild(createIcon('check')); option.append(label, mark); option.onclick = event => { event.preventDefault(); const index = (state.editor.tags || []).findIndex(value => String(value).toLowerCase() === String(tag.name).toLowerCase()); if (index >= 0) state.editor.tags.splice(index, 1); else state.editor.tags.push(tag.name); renderEditorTags(true); $('editorTagInput').focus(); }; root.appendChild(option); }); if (!root.children.length) { const empty = document.createElement('div'); empty.className = 'muted'; empty.textContent = query ? '按 Enter 添加新标签' : '暂无标签'; empty.style.padding = '6px 8px'; root.appendChild(empty); } root.classList.toggle('hidden', !show); refreshIcons(); }
 function renderEditorTags(showOptions = false) { if (!state.editor) return; const unique = []; const seen = new Set(); (state.editor.tags || []).forEach(value => { const name = String(value).trim(); const key = name.toLowerCase(); if (name && !seen.has(key)) { seen.add(key); unique.push(name); } }); state.editor.tags = unique; const chips = $('editorTagChips'); chips.textContent = ''; state.editor.tags.forEach((tag, index) => { const chip = document.createElement('span'); chip.className = 'tag-chip'; const label = document.createElement('span'); label.textContent = tag; const remove = document.createElement('button'); remove.type = 'button'; remove.title = '移除标签'; remove.appendChild(createIcon('x')); remove.onclick = event => { event.preventDefault(); event.stopPropagation(); state.editor.tags.splice(index, 1); renderEditorTags(true); $('editorTagInput').focus(); }; chip.append(label, remove); chips.appendChild(chip); }); renderEditorTagOptions(showOptions); refreshIcons(); }
@@ -499,14 +554,40 @@ function previewFallback(container, source) {
 // rendered HTML is reused until the note actually changes. Caching the string
 // rather than nodes matters: each render needs its own DOM to move into a card.
 const previewHtmlCache = new Map();
+const PREVIEW_HTML_CACHE_LIMIT = 64;
+const pendingPreviewNotes = new WeakMap();
+const previewObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    previewObserver.unobserve(entry.target);
+    const note = pendingPreviewNotes.get(entry.target);
+    if (note) renderPreview(entry.target, note);
+  });
+}, { rootMargin: '160px' });
+function previewAssetSignature(note) {
+  return JSON.stringify((note.assets || []).map(asset => [String(asset.id), String(asset.url)]));
+}
 function previewHtml(note) {
   const key = String(note.id);
+  const markdown = String(note.markdown || '');
+  const assetSignature = previewAssetSignature(note);
   const cached = previewHtmlCache.get(key);
-  if (cached && cached.revision === note.revision && cached.assets === note.assets) return Promise.resolve(cached.html);
+  if (cached && cached.revision === note.revision && cached.markdown === markdown
+      && cached.assetSignature === assetSignature) {
+    previewHtmlCache.delete(key);
+    previewHtmlCache.set(key, cached);
+    return Promise.resolve(cached.html);
+  }
   const { source } = substituteAssetImages(note.markdown, note.assets);
   if (!String(source).trim()) return Promise.resolve(null);
   return Vditor.md2html(source, { cdn: VEDITOR_CDN, hljs: { enable: false }, markdown: { toc: false } })
-    .then(html => { previewHtmlCache.set(key, { revision: note.revision, assets: note.assets, html }); return html; });
+    .then(html => {
+      previewHtmlCache.delete(key);
+      previewHtmlCache.set(key, { revision: note.revision, markdown, assetSignature, html });
+      if (previewHtmlCache.size > PREVIEW_HTML_CACHE_LIMIT)
+        previewHtmlCache.delete(previewHtmlCache.keys().next().value);
+      return html;
+    });
 }
 function fillPreview(container, note) {
   // This page is read from disk every time the panel opens, so it can be newer
@@ -517,20 +598,91 @@ function fillPreview(container, note) {
     if (!diagHostOld) { diagHostOld = true; diag('host-old', 'payload has no markdown field'); toast('笔记页面与后台版本不一致，按 CapsLock+F5 重载脚本', 'error'); }
     return;
   }
-  const assetByUrl = new Map((note.assets || []).map(asset => [String(asset.url), String(asset.id)]));
   if (typeof Vditor === 'undefined') { previewFallback(container, substituteAssetImages(note.markdown, note.assets).source); return; }
+  pendingPreviewNotes.set(container, note);
+  previewObserver.observe(container);
+}
+function renderPreview(container, note) {
+  const assetByUrl = new Map((note.assets || []).map(asset => [String(asset.url), String(asset.id)]));
   previewHtml(note)
     .then(html => {
-      if (html === null) return;
+      if (html === null || !container.isConnected) return;
       const holder = document.createElement('div');
       holder.innerHTML = html;
-      const picked = NotesPreview.budget(NotesPreview.collect(holder), { maxRows: 12 });
+      const picked = NotesPreview.collect(holder, { maxRows: 12 });
       if (!diagPreviewLogged) { diagPreviewLogged = true; diag('preview-ok', 'rows=' + picked.rows.length + ' truncated=' + picked.truncated); }
       picked.rows.forEach(row => container.appendChild(previewRowElement(note, row, assetByUrl)));
     })
-    .catch(error => { diagError('preview-failed', error); previewFallback(container, substituteAssetImages(note.markdown, note.assets).source); });
+    .catch(error => {
+      if (!container.isConnected) return;
+      diagError('preview-failed', error);
+      previewFallback(container, substituteAssetImages(note.markdown, note.assets).source);
+    });
 }
-function renderNotes() { const root = $('notes'); root.textContent = ''; $('noteCount').textContent = `${state.notes.length} 篇`; $('multiTools').classList.toggle('visible', state.multi); $('workspace').classList.toggle('multi-mode', state.multi); if (!state.notes.length) { root.innerHTML = '<div class="empty">暂无笔记</div>'; updateActionState(); return; } state.notes.forEach(note => { const entry = document.createElement('article'); entry.className = `note-entry${note.pinned ? ' pinned' : ''}`; entry.oncontextmenu = event => { event.preventDefault(); showContextMenu(event, note); }; const title = document.createElement('button'); title.type = 'button'; title.className = 'note-title'; title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`; title.onclick = event => { if (event.target.matches('input')) { const id = String(note.id); event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id); updateSelection(); return; } if (state.multi) { const id = String(note.id); state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id); renderNotes(); updateSelection(); return; } beginEdit(String(note.id)); }; entry.appendChild(title); const lines = document.createElement('div'); lines.className = 'preview-lines'; entry.appendChild(lines); fillPreview(lines, note); const meta = document.createElement('div'); meta.className = 'note-meta'; meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`; entry.appendChild(meta); root.appendChild(entry); }); updateActionState(); refreshIcons(); }
+function renderPagination() {
+  $('pageLabel').textContent = `第 ${state.page} / ${state.pageCount} 页`;
+  $('prevPage').disabled = state.page <= 1;
+  $('nextPage').disabled = state.page >= state.pageCount;
+  $('pageSize').value = String(state.pageSize);
+}
+function renderNotes() {
+  previewObserver.disconnect();
+  const root = $('notes');
+  root.textContent = '';
+  $('noteCount').textContent = `${state.total} 篇`;
+  renderPagination();
+  $('multiTools').classList.toggle('visible', state.multi);
+  $('workspace').classList.toggle('multi-mode', state.multi);
+  if (!state.notes.length) {
+    root.innerHTML = '<div class="empty">暂无笔记</div>';
+    updateActionState();
+    refreshIcons();
+    return;
+  }
+
+  state.notes.forEach(note => {
+    const entry = document.createElement('article');
+    entry.className = `note-entry${note.pinned ? ' pinned' : ''}`;
+    entry.oncontextmenu = event => {
+      event.preventDefault();
+      showContextMenu(event, note);
+    };
+
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'note-title';
+    title.innerHTML = `<input class="note-check" type="checkbox" ${state.selectedIds.has(String(note.id)) ? 'checked' : ''} aria-label="选择笔记">${note.pinned ? '<span class="pin-mark"><i data-lucide="pin"></i></span>' : ''}<span>${escapeHtml(note.title || '无标题')}</span>`;
+    title.onclick = event => {
+      const id = String(note.id);
+      if (event.target.matches('input')) {
+        event.target.checked ? state.selectedIds.add(id) : state.selectedIds.delete(id);
+        updateSelection();
+        return;
+      }
+      if (state.multi) {
+        state.selectedIds.has(id) ? state.selectedIds.delete(id) : state.selectedIds.add(id);
+        renderNotes();
+        updateSelection();
+        return;
+      }
+      beginEdit(id);
+    };
+    entry.appendChild(title);
+
+    const lines = document.createElement('div');
+    lines.className = 'preview-lines';
+    entry.appendChild(lines);
+
+    const meta = document.createElement('div');
+    meta.className = 'note-meta';
+    meta.innerHTML = `<span>${formatStamp(note.updatedAt)}</span><span class="note-tag">${escapeHtml(note.tag || '')}</span>`;
+    entry.appendChild(meta);
+    root.appendChild(entry);
+    fillPreview(lines, note);
+  });
+  updateActionState();
+  refreshIcons();
+}
 function updateSelection() { $('selectedCount').textContent = `已选 ${state.selectedIds.size}`; $('selectAll').checked = state.notes.length > 0 && state.notes.every(note => state.selectedIds.has(String(note.id))); $('multiDelete').disabled = state.selectedIds.size === 0; updateActionState(); }
 function updateActionState() { updateContextMenu(); }
 function formatStamp(value) {
@@ -572,31 +724,23 @@ async function deleteSelectedNotes() {
   if (ids.length && await AppDialog.confirm({ title: '删除笔记', message: `删除 ${ids.length} 篇笔记？`, confirmText: '删除', tone: 'danger' }))
     post({ type: 'deleteNotes', noteIds: ids });
 }
+dateFilter.addEventListener('change', () => {
+  if (dateFilter.value === 'custom') { chooseCustomDate(); return; }
+  if (dateFilter.value === 'custom-date') { state.dateFilter = 'custom'; requestQuery(); return; }
+  state.dateFilter = dateFilter.value;
+  state.selectedDate = '';
+  updateDateFilterLabel();
+  requestQuery();
+});
+$('prevPage').addEventListener('click', () => { if (state.page > 1) requestQuery(false, state.page - 1); });
+$('nextPage').addEventListener('click', () => { if (state.page < state.pageCount) requestQuery(false, state.page + 1); });
+$('pageSize').addEventListener('change', () => { state.pageSize = Math.max(1, Number($('pageSize').value) || 20); requestQuery(false, 1); });
 // The code-block escape hatches that used to live here (codeBlockOf,
 // exitCodeBlock, codeBlockText, caretCodeBlockOffset, handleEditorEnter,
 // applyTool) are gone with the contenteditable editor: Vditor handles Enter
 // inside a code fence, and its toolbar replaces execCommand.
 
 $('search').addEventListener('input', requestQuery); $('search').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitQuery(); } }); $('searchButton').onclick = submitQuery; $('editorTagInput').addEventListener('focus', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('input', () => renderEditorTagOptions(true)); $('editorTagInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addEditorTagFromInput(); } else if (event.key === 'Backspace' && !$('editorTagInput').value && state.editor && state.editor.tags.length) { state.editor.tags.pop(); renderEditorTags(true); } }); document.addEventListener('mousedown', event => { if (!$('editorTagPicker').contains(event.target)) $('editorTagOptions').classList.add('hidden'); if (!$('contextMenu').contains(event.target)) hideContextMenu(); }); $('addNote').onclick = () => beginEdit(); $('contextCopy').onclick = contextCopy; $('contextPaste').onclick = contextPaste; $('contextEdit').onclick = contextEdit; $('contextPin').onclick = contextPin; $('contextDelete').onclick = contextDelete; $('contextMulti').onclick = contextToggleMulti; $('multiDelete').onclick = deleteSelectedNotes; $('multiExit').onclick = () => { if (state.multi) toggleMulti(); }; $('selectAll').onchange = event => { if (event.target.checked) state.notes.forEach(note => state.selectedIds.add(String(note.id))); else state.selectedIds.clear(); renderNotes(); updateSelection(); }; $('addTag').onclick = () => updateTag('add'); $('renameTag').onclick = () => updateTag('rename'); $('deleteTag').onclick = () => updateTag('delete'); $('cancelEdit').onclick = requestCancelEditor; $('editorBack').onclick = requestCancelEditor; $('saveEdit').onclick = saveEditor;
-// Diagnostic only. Vditor's table row/column panel is built into the wysiwyg
-// popover, which is a different element from the ir one (the bundle creates a
-// popover for wysiwyg and none for ir), and it is display:none until something
-// shows it. A click therefore reports the mode and the panel's state once per
-// change, so why the panel is missing can be read from the log rather than
-// guessed at. Counts and pixels only, no content.
-let diagPopover = '';
-document.addEventListener('click', () => {
-  if (!noteEditorReady || !noteEditor) return;
-  setTimeout(() => {
-    let panel = null;
-    try { panel = document.querySelector('.vditor-wysiwyg .vditor-panel'); } catch (error) { panel = null; }
-    const state = 'mode=' + noteEditor.getCurrentMode() + ' panel=' + (panel
-      ? (panel.style.display || 'unset') + ' kids=' + panel.children.length + ' top=' + panel.style.top + ' left=' + panel.style.left
-      : 'absent');
-    if (state !== diagPopover) { diagPopover = state; diag('popover', state); }
-  }, 80);
-}, true);
-
 // Removing the ir button from the edit-mode menu did not put ir out of reach:
 // Vditor's own key handler maps Alt+Ctrl+7/8/9 to wysiwyg/ir/sv with a
 // /^Digit[7-9]$/ test on event.code, not through its q() shortcut matcher, so
@@ -632,7 +776,71 @@ document.addEventListener('keydown', event => {
   if (!diagBlockedMode) { diagBlockedMode = true; diag('mode-shortcut-blocked', 'Ctrl+Alt+8 -> ir'); }
 }, true);
 
-const handleHostMessage = event => { const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {}; if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; } if (data.type === 'setTags') { state.tags = data.tags || []; renderTags(); if (data.error) toast(data.error, 'error'); if (state.editor) renderEditorTags(); return; } if (data.type === 'setNotes') { state.notes = data.notes || []; state.search = data.search || ''; state.currentTag = data.tag || ''; $('search').value = state.search; state.selectedIds.clear(); hideContextMenu(); renderTags(); renderNotes(); if (data.error) toast(data.error, 'error'); return; } if (data.type === 'openEditor') { openEditor(data); return; } if (data.type === 'assetWriteResult') { const pending = state.pendingUploads.get(String(data.requestId)); if (!pending) return; state.pendingUploads.delete(String(data.requestId)); if (data.ok) { pending.assetId = String(data.assetId || ''); pending.url = String(data.url || ''); if (pending.resolve) pending.resolve({ url: pending.url, assetId: pending.assetId, name: pending.name }); } else { const message = data.error || '图片写入失败'; toast(message, 'error'); if (pending.reject) pending.reject(new Error(message)); } return; } if (data.type === 'saveResult') { if (!state.editor) return; state.editor.saving = false; $('saveEdit').disabled = false; if (data.ok) { toast('已保存', 'success'); closeEditor(); } else toast(data.error || '保存失败', 'error'); return; } if (data.type === 'cancelResult') { closeEditor(); return; } if (data.type === 'actionResult') { if (data.ok) { toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success'); if (data.action === 'delete') state.selectedIds.clear(); } else toast(data.error || '操作失败', 'error'); return; } if (data.type === 'confirmCancel') { requestCancelEditor(); } };
+const handleHostMessage = event => {
+  const data = typeof event.data === 'string' ? (() => { try { return JSON.parse(event.data); } catch { return {}; } })() : event.data || {};
+  if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; }
+  if (data.type === 'setTags') {
+    state.tags = data.tags || [];
+    renderTags();
+    if (data.error) toast(data.error, 'error');
+    if (state.editor) renderEditorTags();
+    return;
+  }
+  if (data.type === 'setNotes') {
+    state.notes = data.notes || [];
+    state.search = data.search || '';
+    state.currentTag = data.tag || '';
+    state.total = Math.max(0, Number(data.total) || 0);
+    state.page = Math.max(1, Number(data.page) || 1);
+    state.pageSize = [20, 50, 100].includes(Number(data.pageSize)) ? Number(data.pageSize) : 20;
+    state.pageCount = Math.max(1, Number(data.pageCount) || 1);
+    state.dateFilter = String(data.dateFilter || 'all');
+    state.selectedDate = String(data.selectedDate || '');
+    state.dateAfter = String(data.dateAfter || '');
+    state.dateBefore = String(data.dateBefore || '');
+    $('search').value = state.search;
+    updateDateFilterLabel();
+    hideContextMenu();
+    renderTags();
+    renderNotes();
+    updateSelection();
+    if (data.error) toast(data.error, 'error');
+    return;
+  }
+  if (data.type === 'openEditor') { openEditor(data); return; }
+  if (data.type === 'assetWriteResult') {
+    const pending = state.pendingUploads.get(String(data.requestId));
+    if (!pending) return;
+    state.pendingUploads.delete(String(data.requestId));
+    if (data.ok) {
+      pending.assetId = String(data.assetId || '');
+      pending.url = String(data.url || '');
+      if (pending.resolve) pending.resolve({ url: pending.url, assetId: pending.assetId, name: pending.name });
+    } else {
+      const message = data.error || '图片写入失败';
+      toast(message, 'error');
+      if (pending.reject) pending.reject(new Error(message));
+    }
+    return;
+  }
+  if (data.type === 'saveResult') {
+    if (!state.editor) return;
+    state.editor.saving = false;
+    $('saveEdit').disabled = false;
+    if (data.ok) { toast('已保存', 'success'); closeEditor(); }
+    else toast(data.error || '保存失败', 'error');
+    return;
+  }
+  if (data.type === 'cancelResult') { closeEditor(); return; }
+  if (data.type === 'actionResult') {
+    if (data.ok) {
+      toast(data.action === 'copyLine' ? '已复制' : data.action === 'copyImage' ? '已复制图片' : '已完成', 'success');
+      if (data.action === 'delete') { state.selectedIds.clear(); updateSelection(); }
+    } else toast(data.error || '操作失败', 'error');
+    return;
+  }
+  if (data.type === 'confirmCancel') requestCancelEditor();
+};
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
 
 setTimeout(() => post({ type: 'ready' }), 0);

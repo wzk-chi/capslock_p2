@@ -281,6 +281,9 @@ const STRINGS = {
 let lang = 'zh';
 let category = 'all';
 let results = [];
+let sortedResultsSource = null;
+let sortedResultsSortId = '';
+let sortedResultsCache = [];
 let icons = {};
 let selectedIndex = -1;
 let resultsVersion = 0;
@@ -376,6 +379,8 @@ function sortOptionKey() {
   return option ? option[1] : 'sortNameAsc';
 }
 function sortedResults() {
+  if (sortedResultsSource === results && sortedResultsSortId === sortId)
+    return sortedResultsCache;
   const ordered = results.slice();
   const [field, direction] = sortId.split('-');
   const sign = direction === 'desc' ? -1 : 1;
@@ -396,7 +401,10 @@ function sortedResults() {
     }
     return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' }) * sign;
   });
-  return ordered;
+  sortedResultsSource = results;
+  sortedResultsSortId = sortId;
+  sortedResultsCache = ordered;
+  return sortedResultsCache;
 }
 function requestQuery(immediate) {
   if (composing) return;
@@ -415,8 +423,7 @@ function hideSortMenu() {
 }
 function showMenu(event, item) {
   hideSortMenu();
-  selectedIndex = sortedResults().indexOf(item);
-  renderResults();
+  updateSelectedResult(sortedResults().indexOf(item));
   menuResultId = item.id;
   menuResultVersion = resultsVersion;
   contextMenu.classList.remove('hidden');
@@ -440,7 +447,8 @@ function renderResults() {
     resultList.appendChild(empty);
     return;
   }
-  sortedResults().forEach((item, index) => {
+  const ordered = sortedResults();
+  ordered.forEach((item, index) => {
     const row = document.createElement('div');
     row.className = 'result' + (index === selectedIndex ? ' selected' : '') + (resultsInteractive ? '' : ' stale');
     row.dataset.index = String(index);
@@ -469,7 +477,7 @@ function renderResults() {
     row.append(icon, copy);
     row.addEventListener('mousedown', event => event.preventDefault());
     if (resultsInteractive) {
-      row.addEventListener('click', () => { selectedIndex = index; renderResults(); resultList.focus(); });
+      row.addEventListener('click', () => { updateSelectedResult(index); resultList.focus(); });
       row.addEventListener('dblclick', () => post({ type: 'action', action: 'open', resultId: item.id, resultsVersion: String(resultsVersion) }));
       row.addEventListener('contextmenu', event => { event.preventDefault(); showMenu(event, item); });
     }
@@ -477,13 +485,22 @@ function renderResults() {
   });
   refreshIcons();
 }
+function updateSelectedResult(index) {
+  const previousIndex = selectedIndex;
+  if (previousIndex === index) return;
+  if (previousIndex >= 0)
+    resultList.querySelector(`[data-index="${previousIndex}"]`)?.classList.remove('selected');
+  selectedIndex = index;
+  const row = resultList.querySelector(`[data-index="${selectedIndex}"]`);
+  if (row) {
+    row.classList.add('selected');
+    row.scrollIntoView({ block: 'nearest' });
+  }
+}
 function selectResult(index) {
   const ordered = sortedResults();
   if (!ordered.length) return;
-  selectedIndex = (index + ordered.length) % ordered.length;
-  renderResults();
-  const row = resultList.querySelector(`[data-index="${selectedIndex}"]`);
-  if (row) row.scrollIntoView({ block: 'nearest' });
+  updateSelectedResult((index + ordered.length) % ordered.length);
 }
 
 window.initialize = function (payload) {

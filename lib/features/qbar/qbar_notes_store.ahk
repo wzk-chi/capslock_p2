@@ -320,9 +320,21 @@ NotesStoreExec(sql) {
     return true
 }
 
-NotesStoreList(searchText := "", tagName := "") {
+NotesStoreList(searchText := "", tagName := "", dateAfter := "", dateBefore := "",
+    page := 1, pageSize := 20) {
+    global NotesStoreError
     if !NotesStoreInit()
         return 0
+    dateAfter := Trim(String(dateAfter))
+    dateBefore := Trim(String(dateBefore))
+    invalidAfter := dateAfter != "" && !RegExMatch(dateAfter, "^\d{14}$")
+    invalidBefore := dateBefore != "" && !RegExMatch(dateBefore, "^\d{14}$")
+    if invalidAfter || invalidBefore {
+        NotesStoreError := "日期筛选无效"
+        return 0
+    }
+    if pageSize != 20 && pageSize != 50 && pageSize != 100
+        pageSize := 20
     where := "1=1"
     searchText := Trim(searchText)
     if searchText != "" {
@@ -340,11 +352,25 @@ NotesStoreList(searchText := "", tagName := "") {
         where .= " AND EXISTS (SELECT 1 FROM note_tags ft JOIN tags ftag ON ftag.id=ft.tag_id"
             . " WHERE ft.note_id=n.id AND ftag.name=" . NotesStoreSql(tagName) . ")"
     }
+    if dateAfter != ""
+        where .= " AND n.updated_at>=" . Integer(dateAfter)
+    if dateBefore != ""
+        where .= " AND n.updated_at<" . Integer(dateBefore)
+    if !NotesStoreQuery("SELECT COUNT(*) AS matching FROM notes n WHERE " . where . ";",
+        &countTable)
+        return 0
+    total := countTable.RowCount > 0 ? Integer(countTable.Rows[1][1]) : 0
+    pageCount := Max(1, Ceil(total / pageSize))
+    page := page > pageCount ? pageCount : Max(1, Integer(page))
+    if !total
+        return Map("rows", [], "total", 0, "page", 1, "pageCount", 1)
+    offset := (page - 1) * pageSize
     sql := "SELECT n.id,n.title,substr(n.content_md,1,4000),n.pinned,n.updated_at,"
         . "IFNULL((SELECT t.name FROM note_tags nt JOIN tags t ON t.id=nt.tag_id"
         . " WHERE nt.note_id=n.id ORDER BY t.name LIMIT 1),'')"
         . " FROM notes n WHERE " . where
-        . " ORDER BY n.pinned DESC,n.updated_at DESC,n.id DESC;"
+        . " ORDER BY n.pinned DESC,n.updated_at DESC,n.id DESC"
+        . " LIMIT " . pageSize . " OFFSET " . offset . ";"
     if !NotesStoreQuery(sql, &table)
         return 0
     noteIds := []
@@ -372,7 +398,7 @@ NotesStoreList(searchText := "", tagName := "") {
             "updatedAt", String(raw[5]),
             "tag", raw[6]))
     }
-    return rows
+    return Map("rows", rows, "total", total, "page", page, "pageCount", pageCount)
 }
 
 ; Change token for a note: the page echoes it back with a click and the store

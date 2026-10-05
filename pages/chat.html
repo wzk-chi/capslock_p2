@@ -306,6 +306,33 @@ window.appendMessage = function (role, text) {
   scrollToBottom();
 };
 
+function cancelStreamingRender(bubble) {
+  if (bubble._renderFrame) cancelAnimationFrame(bubble._renderFrame);
+  bubble._renderFrame = 0;
+}
+
+function renderStreamingBubble(bubble, scroll = true) {
+  bubble.classList.remove('thinking');
+  bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
+  const copyButton = assistantCopyButton(bubble);
+  if (copyButton) {
+    copyButton.hidden = true;
+    copyButton.disabled = true;
+  }
+  if (scroll) scrollToBottom();
+}
+
+function scheduleStreamingRender(bubble) {
+  if (bubble._renderFrame) return;
+  const streamId = bubble.dataset.streamId;
+  bubble._renderFrame = requestAnimationFrame(() => {
+    bubble._renderFrame = 0;
+    if (!bubble.isConnected || bubble.dataset.streamId !== streamId
+        || !bubble.classList.contains('streaming')) return;
+    renderStreamingBubble(bubble);
+  });
+}
+
 window.startStreamingMessage = function (requestId) {
   let bubble = messages.querySelector('.msg.assistant.thinking');
   let copyButton = assistantCopyButton(bubble);
@@ -316,6 +343,7 @@ window.startStreamingMessage = function (requestId) {
     messages.appendChild(entry.row);
     refreshIcons();
   }
+  cancelStreamingRender(bubble);
   bubble.className = 'msg assistant streaming thinking';
   bubble.dataset.raw = '';
   bubble.dataset.streamId = String(requestId ?? '');
@@ -367,14 +395,7 @@ window.appendStreaming = function (requestId, sequence, text) {
     bubble._pendingDeltas.delete(next);
     applyDelta(delta);
   }
-  bubble.classList.remove('thinking');
-  bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
-  const copyButton = assistantCopyButton(bubble);
-  if (copyButton) {
-    copyButton.hidden = true;
-    copyButton.disabled = true;
-  }
-  scrollToBottom();
+  scheduleStreamingRender(bubble);
 };
 
 window.finishStreamingMessage = function (requestId, answer) {
@@ -383,9 +404,10 @@ window.finishStreamingMessage = function (requestId, answer) {
     postStreamDebug('finish-stale', bubble);
     return;
   }
+  cancelStreamingRender(bubble);
   bubble.dataset.raw = String(answer ?? '');
   bubble._pendingDeltas = new Map();
-  bubble.innerHTML = renderMarkdown(bubble.dataset.raw);
+  renderStreamingBubble(bubble);
   const copyButton = assistantCopyButton(bubble);
   if (copyButton) {
     copyButton.hidden = !bubble.dataset.raw;
@@ -405,6 +427,7 @@ window.removeStreamingMessage = function (requestId) {
     postStreamDebug('remove-stale', bubble);
     return;
   }
+  cancelStreamingRender(bubble);
   if (bubble.parentElement && bubble.parentElement.classList.contains('message-row'))
     bubble.parentElement.remove();
   else

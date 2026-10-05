@@ -395,6 +395,7 @@ source.addEventListener('input', updateCopyButtons);
 result.addEventListener('input', updateCopyButtons);
 
 window.setSource = function (text) {
+  cancelPendingStream();
   source.value = text || '';
   result.value = '';
   directionManual = false;
@@ -427,6 +428,7 @@ window.startTranslate = function () {
 };
 
 window.startStreaming = function () {
+  cancelPendingStream();
   result.value = '';
   source.disabled = true;
   sourceLanguageSelect.disabled = true;
@@ -437,10 +439,25 @@ window.startStreaming = function () {
   setStatus('translating', 'loading');
 };
 
-window.appendStreaming = function (text) {
-  result.value += text || '';
+let pendingStreamText = '';
+let streamRenderFrame = 0;
+function cancelPendingStream() {
+  if (streamRenderFrame) cancelAnimationFrame(streamRenderFrame);
+  streamRenderFrame = 0;
+  pendingStreamText = '';
+}
+function flushPendingStream() {
+  streamRenderFrame = 0;
+  if (!pendingStreamText) return;
+  result.value += pendingStreamText;
+  pendingStreamText = '';
   result.scrollTop = result.scrollHeight;
   updateCopyButtons();
+}
+window.appendStreaming = function (text) {
+  pendingStreamText += text || '';
+  if (!streamRenderFrame)
+    streamRenderFrame = requestAnimationFrame(flushPendingStream);
 };
 
 window.setLoading = function (loading) {
@@ -456,7 +473,9 @@ window.setLoading = function (loading) {
 };
 
 window.setResult = function (text) {
+  cancelPendingStream();
   result.value = text || '';
+  result.scrollTop = result.scrollHeight;
   updateCopyButtons();
   setStatus('done', 'done');
   source.disabled = false;
@@ -468,6 +487,7 @@ window.setResult = function (text) {
 };
 
 window.setError = function (text) {
+  cancelPendingStream();
   result.value = '';
   updateCopyButtons();
   status.textContent = text || t('failed');
@@ -481,6 +501,7 @@ window.setError = function (text) {
 };
 
 window.setNeedsDirection = function (text) {
+  cancelPendingStream();
   directionReady = false;
   directionManual = false;
   source.disabled = false;

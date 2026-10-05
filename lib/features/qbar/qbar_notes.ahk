@@ -5,6 +5,12 @@ global NotesVisible := false
 global NotesPendingSearch := ""
 global NotesTargetHwnd := 0
 global NotesQuerySeq := 0
+global NotesDateFilter := "all"
+global NotesSelectedDate := ""
+global NotesDateAfter := ""
+global NotesDateBefore := ""
+global NotesCurrentPage := 1
+global NotesPageSize := 20
 global NotesEditorCounter := 0
 global NotesEditorId := ""
 global NotesEditorNoteId := ""
@@ -167,21 +173,70 @@ NotesSendTags() {
         "error", NotesStoreError))
 }
 
-NotesSendList(searchText := "", tagName := "") {
+NotesSendList(searchText := "", tagName := "", dateFilter := "", selectedDate := "",
+    dateAfter := "", dateBefore := "", page := 0, pageSize := 0) {
     global NotesQuerySeq, NotesPendingSearch, NotesCurrentTag, NotesStoreError
+    global NotesDateFilter, NotesSelectedDate, NotesDateAfter, NotesDateBefore
+    global NotesCurrentPage, NotesPageSize
     if !NotesVisible
         return
+    if dateFilter != "" {
+        if !RegExMatch(dateFilter, "^(all|today|3|7|30|custom)$")
+            return
+        selectedDate := String(selectedDate)
+        dateAfter := String(dateAfter)
+        dateBefore := String(dateBefore)
+        if !NotesDateFilterBoundsValid(dateFilter, selectedDate, dateAfter, dateBefore)
+            return
+        NotesDateFilter := dateFilter
+        NotesSelectedDate := selectedDate
+        NotesDateAfter := dateAfter
+        NotesDateBefore := dateBefore
+    }
     NotesPendingSearch := String(searchText)
     NotesCurrentTag := String(tagName)
+    if page <= 0
+        NotesCurrentPage := 1
+    else if page > 1000000
+        NotesCurrentPage := 1000000
+    else
+        NotesCurrentPage := Max(1, Integer(page))
+    if pageSize = 20 || pageSize = 50 || pageSize = 100
+        NotesPageSize := Integer(pageSize)
     NotesQuerySeq += 1
-    rows := NotesStoreList(NotesPendingSearch, NotesCurrentTag)
+    result := NotesStoreList(NotesPendingSearch, NotesCurrentTag, NotesDateAfter,
+        NotesDateBefore, NotesCurrentPage, NotesPageSize)
     listError := ""
-    if !IsObject(rows) {
+    if !IsObject(result) {
         listError := NotesStoreError
         rows := []
+        total := 0
+        NotesCurrentPage := 1
+        pageCount := 1
     }
-    NotesPost(Map("type", "setNotes", "notes", rows, "search", NotesPendingSearch, "tag", NotesCurrentTag,
+    else {
+        rows := result["rows"]
+        total := result["total"]
+        NotesCurrentPage := result["page"]
+        pageCount := result["pageCount"]
+    }
+    NotesPost(Map("type", "setNotes", "notes", rows, "search", NotesPendingSearch,
+        "tag", NotesCurrentTag, "total", total, "page", NotesCurrentPage,
+        "pageSize", NotesPageSize, "pageCount", pageCount,
+        "dateFilter", NotesDateFilter, "selectedDate", NotesSelectedDate,
+        "dateAfter", NotesDateAfter, "dateBefore", NotesDateBefore,
         "error", listError))
+}
+
+NotesDateFilterBoundsValid(filter, selectedDate, dateAfter, dateBefore) {
+    if filter = "all"
+        return selectedDate = "" && dateAfter = "" && dateBefore = ""
+    if filter = "custom"
+        return RegExMatch(selectedDate, "^\d{4}-\d{2}-\d{2}$")
+            && RegExMatch(dateAfter, "^\d{14}$")
+            && RegExMatch(dateBefore, "^\d{14}$")
+            && Integer(dateAfter) < Integer(dateBefore)
+    return selectedDate = "" && RegExMatch(dateAfter, "^\d{14}$") && dateBefore = ""
 }
 
 NotesBeginEdit(noteId := "") {
@@ -323,7 +378,16 @@ NotesHandleMessage(msg) {
         case "ready":
             NotesScheduleStateSync()
         case "query":
-            NotesSendList(LLMMsgField(msg, "text"), LLMMsgField(msg, "tag"))
+            pageValid := false
+            page := LLMMsgNumber(msg, "page", &pageValid, 1, true)
+            pageSizeValid := false
+            pageSize := LLMMsgNumber(msg, "pageSize", &pageSizeValid, 20, true)
+            if !pageValid || !pageSizeValid
+                return
+            NotesSendList(LLMMsgField(msg, "text"), LLMMsgField(msg, "tag"),
+                LLMMsgField(msg, "dateFilter"), LLMMsgField(msg, "selectedDate"),
+                LLMMsgField(msg, "dateAfter"), LLMMsgField(msg, "dateBefore"),
+                page, pageSize)
         case "beginEdit":
             NotesBeginEdit(LLMMsgField(msg, "noteId"))
         case "saveNote":
