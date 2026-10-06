@@ -128,6 +128,7 @@ Shutdown(*) {
     try SetTimer(MouseSpeedTick, 0)
     try RestoreMouseSpeed()
     try LLMTranslateShutdown()
+    try TranslateLanguageDetectShutdown()
     try SettingsShutdown()
     try DictionaryShutdown()
     try AiChatShutdown()

@@ -54,7 +54,7 @@ lib\
   qbar_notes_store.ahk             安装目录下 SQLite 正文/元数据存储
   qbar_notes_actions.ahk           原始图片文件、WebView2 文件句柄和笔记剪贴板动作
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
-  languageDetect.ahk               互译模式的本地原文语言识别与候选状态
+  languageDetect.ahk               Windows ELS 候选识别、A/B 方向判断与回退状态
   llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
   llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
   youdaoTranslate.ahk              有道智云翻译 API（[TYoudao]，WinHttp + SHA-256 签名）
@@ -104,7 +104,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - `[TTranslate]` 的 `mode=fixed` 使用 `targetLanguage`；`mode=bidirectional` 使用 `languageA` 和
   `languageB`。`TranslateResolveDirection()` 在 provider 调用前生成一次请求快照，固定模式直接解析目标，
   互译模式根据 `languageDetect.ahk` 或面板的原／目标语言选择生成方向。三个 provider 只消费快照中的目标语言。
-- `languageDetect.ahk` 对中日韩、阿拉伯文、俄文等脚本做本地识别，对拉丁文字使用常见词评分；识别不确定或来源不属于配置语言对时，方向解析以语言 A 为目标回退，并在面板标明来源未确定。用户也可手动选择或交换方向。
+- `languageDetect.ahk` 调用 Windows 自带 ELS 语言识别服务，将原文规范化为 NFC UTF-16，从系统按相关性排序的候选中选取第一个匹配 A/B 的语言。没有手写词表，也没有额外网络请求；候选排序不转换成数值置信度。空候选允许单个 UTF-16 NUL，不能视为接口异常；此时若原文的全部字母／文字只符合 A/B 中一侧的文字系统，可据此选择方向，同文字系统或混合文字仍保留不确定状态。只有一个中文选项时接受系统的任意中文标签；简繁互译需要明确的变体标签。无法匹配、无法区分、仅有数字／符号或服务不可用时，以语言 A 为目标回退并提示方向未确定。用户也可手动选择或交换方向。方向日志记录语言对、候选标签、判断原因和采用的方向，空结果另记录输入长度和结果字节数，不记录原文。服务枚举结果在进程内复用，退出时在翻译面板关闭后释放。
 
 provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` 头部注释，核心是：
 

@@ -161,29 +161,6 @@ TranslateValidateOptions(options, &errorText := "") {
     return true
 }
 
-TranslateMatchLanguage(detected, languageA, languageB) {
-    rawDetected := StrLower(Trim(String(detected)))
-    detected := TranslateNormalizeLanguage(detected)
-    if detected = "" && rawDetected = "zh"
-        detected := "zh"
-    if detected = languageA
-        return languageA
-    if detected = languageB
-        return languageB
-    ; A detector may know that text is Chinese without enough evidence to
-    ; distinguish simplified and traditional variants. That is safe only when
-    ; the configured pair contains one Chinese option.
-    if detected = "zh" {
-        aChinese := InStr(StrLower(languageA), "zh-") = 1
-        bChinese := InStr(StrLower(languageB), "zh-") = 1
-        if aChinese && !bChinese
-            return languageA
-        if bChinese && !aChinese
-            return languageB
-    }
-    return ""
-}
-
 ; Resolve one request's source and target before a provider is called. The
 ; returned map is a request snapshot: providers must consume its target rather
 ; than re-reading the global mode or trying to detect the source themselves.
@@ -223,34 +200,20 @@ TranslateResolveDirection(text, options, sourceOverride := "", targetOverride :=
         return result
     }
 
-    detected := TranslateDetectLanguage(text)
-    if !IsObject(detected) || detected["status"] != "recognized" {
-        ; Short identifiers, code, and mixed text may not contain enough
-        ; evidence for the local detector. Fall back to B -> A so the
-        ; configured first language remains the default target.
-        result["status"] := "ready"
-        result["sourceLanguage"] := languageB
-        result["targetLanguage"] := languageA
-        result["manual"] := false
-        result["fallback"] := true
-        return result
-    }
-    source := TranslateMatchLanguage(detected["language"], languageA, languageB)
-    if source = "" {
-        ; A recognized language outside the configured pair cannot select a
-        ; valid automatic direction. Use the same safe default target A.
-        result["status"] := "ready"
-        result["sourceLanguage"] := languageB
-        result["targetLanguage"] := languageA
-        result["manual"] := false
-        result["fallback"] := true
-        return result
-    }
+    detected := TranslateDetectLanguage(text, languageA, languageB)
+    result["fallback"] := detected["status"] != "recognized"
+    source := result["fallback"] ? languageB : detected["language"]
     target := source = languageA ? languageB : languageA
     result["status"] := "ready"
     result["sourceLanguage"] := source
     result["targetLanguage"] := target
     result["manual"] := false
+    candidates := ""
+    for candidate in detected["candidates"]
+        candidates .= (candidates = "" ? "" : ",") . candidate
+    DebugLog("translate direction pair=" . languageA . "/" . languageB
+        . " status=" . detected["status"] . " reason=" . detected["reason"]
+        . " candidates=" . candidates . " source=" . source . " target=" . target)
     return result
 }
 
