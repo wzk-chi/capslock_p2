@@ -5,6 +5,7 @@
 ; persistent source.
 
 global QbarHistoryLoaded := false
+global QbarHistoryLoading := false
 global QbarHistoryItems := []
 global QbarHistoryNextId := 1
 global QbarHistoryLimit := 10
@@ -16,50 +17,70 @@ global QbarUsageItems := Map()
 global QbarUsageHalfLifeSeconds := 604800 ; seven days
 
 QbarHistoryEnsureLoaded() {
-    global QbarHistoryLoaded, QbarHistoryItems, QbarUsageItems, QbarStoreError
+    global QbarHistoryLoaded, QbarHistoryLoading, QbarHistoryItems, QbarUsageItems
+    global QbarStoreError, QbarHistoryLimit
     if QbarHistoryLoaded
-        return
-    QbarHistoryItems := []
-    QbarUsageItems := Map()
-    if !QbarStoreReady && !QbarStoreInit()
-        return
-    if !QbarStoreDeduplicateRunHistory()
-        DebugLog("Qbar run history deduplication failed")
-    seenHistory := Map()
-    historyRows := QbarStoreLoadHistoryRows(QbarHistoryLimit)
-    for row in historyRows {
-        try entry := QbarHistoryEntryFromStore(row)
-        catch as loadError {
-            DebugLog("Qbar history row rejected errorType=" . Type(loadError))
-            continue
+        return true
+    if QbarHistoryLoading
+        return false
+
+    QbarHistoryLoading := true
+    try {
+        if !QbarStoreReady && !QbarStoreInit()
+            return false
+        if !QbarStoreDeduplicateRunHistory()
+            DebugLog("Qbar run history deduplication failed")
+
+        historyRows := []
+        if !QbarStoreLoadHistoryRows(&historyRows, QbarHistoryLimit) {
+            DebugLog("Qbar history rows could not be loaded: " . QbarStoreError)
+            return false
         }
-        if !IsObject(entry)
-            continue
-        identity := QbarHistoryIdentity(entry)
-        if identity = "" {
-            DebugLog("Qbar history row rejected: invalid payload")
-            continue
+        usageRows := []
+        if !QbarStoreLoadUsageRows(&usageRows) {
+            DebugLog("Qbar usage rows could not be loaded: " . QbarStoreError)
+            return false
         }
-        if seenHistory.Has(identity)
-            continue
-        seenHistory[identity] := true
-        QbarHistoryItems.Push(entry)
-    }
-    if !QbarHistoryItems.Length && QbarStoreError = ""
-        QbarHistorySeedInitialSettings()
-    usageRows := []
-    if QbarStoreLoadUsageRows(&usageRows) {
+
+        candidateHistory := []
+        seenHistory := Map()
+        for row in historyRows {
+            try {
+                entry := QbarHistoryEntryFromStore(row)
+                if !IsObject(entry)
+                    continue
+                identity := QbarHistoryIdentity(entry)
+                if identity = "" {
+                    DebugLog("Qbar history row rejected: invalid payload")
+                    continue
+                }
+                if seenHistory.Has(identity)
+                    continue
+                seenHistory[identity] := true
+                candidateHistory.Push(entry)
+            } catch as loadError {
+                DebugLog("Qbar history row rejected errorType=" . Type(loadError))
+            }
+        }
+
+        candidateUsage := Map()
         for row in usageRows {
             if row.Has("usage_key")
-                QbarUsageItems[row["usage_key"]] := Map(
+                candidateUsage[row["usage_key"]] := Map(
                     "score", QbarStoreFloat(row["score"], 0),
                     "lastUsedUtc", QbarHistoryStoreTime(row["last_used_at"]),
                     "useCount", QbarStoreInteger(row["use_count"], 0))
         }
-    } else {
-        DebugLog("Qbar usage rows could not be loaded: " . QbarStoreError)
+
+        QbarHistoryItems := candidateHistory
+        QbarUsageItems := candidateUsage
+        if !QbarHistoryItems.Length
+            QbarHistorySeedInitialSettings()
+        QbarHistoryLoaded := true
+        return true
+    } finally {
+        QbarHistoryLoading := false
     }
-    QbarHistoryLoaded := true
 }
 
 QbarHistorySeedInitialSettings() {
@@ -168,7 +189,8 @@ QbarHistoryNew(kind, label, input, payload, commandId := "") {
 
 QbarHistoryRemember(entry) {
     global QbarHistoryItems, QbarHistoryLimit
-    QbarHistoryEnsureLoaded()
+    if !QbarHistoryEnsureLoaded()
+        return false
     normalized := QbarHistoryNormalizeEntry(entry)
     if !IsObject(normalized)
         return false
@@ -272,8 +294,9 @@ QbarHistoryDefaultCommandId(kind) {
 ; execution time for deterministic tie-breaking in the page sort.
 QbarUsageInfo(key) {
     global QbarUsageItems, QbarUsageHalfLifeSeconds
-    QbarHistoryEnsureLoaded()
     info := Map("score", 0, "lastUsedUtc", "")
+    if !QbarHistoryEnsureLoaded()
+        return info
     if key = "" || !QbarUsageItems.Has(key)
         return info
 
@@ -323,9 +346,10 @@ QbarHistoryUsageKey(entry) {
 
 QbarHistoryRows(limit := 10) {
     global QbarHistoryItems, QbarHistoryDisplayLimit
-    QbarHistoryEnsureLoaded()
-    limit := Max(0, Min(QbarHistoryDisplayLimit, Integer(limit)))
     rows := []
+    if !QbarHistoryEnsureLoaded()
+        return rows
+    limit := Max(0, Min(QbarHistoryDisplayLimit, Integer(limit)))
     if limit = 0
         return rows
     for entry in QbarHistoryItems {
@@ -580,7 +604,8 @@ QbarHistorySettingsPageAllowed(page) {
 
 QbarHistoryReplay(historyId, querySeq := 0, pageQueryId := 0) {
     global QbarHistoryItems
-    QbarHistoryEnsureLoaded()
+    if !QbarHistoryEnsureLoaded()
+        return false
     if !QbarHistoryCanReplay(historyId, querySeq, pageQueryId)
         return false
 
@@ -759,7 +784,16 @@ QbarHistoryEntryPayloadValid(entry) {
     runQuery := false
     switch kind {
         case "run":
-            return QbarHistoryPayloadString(payload, "command", &value) && value != ""
+            if !QbarHistoryPayloadString(payload, "command", &value) || value = ""
+                return false
+            if entry.Has("args") {
+                if Type(entry["args"]) != "Map"
+                    return false
+                if entry["args"].Has("args")
+                    && Type(entry["args"]["args"]) != "String"
+                    return false
+            }
+            return true
         case "shortcut":
             return QbarHistoryPayloadString(payload, "shortcutPath", &value)
                 && value != "" && QbarHistoryPayloadString(payload, "exe", &value)

@@ -792,17 +792,17 @@ QbarStoreLoadUsageRows(&rows) {
     return true
 }
 
-QbarStoreLoadHistoryRows(limit := 10) {
+QbarStoreLoadHistoryRows(&rows, limit := 10) {
     rows := []
     limit := Max(1, Min(100, Integer(limit)))
     if !QbarStoreRows("SELECT h.id,h.command_id,h.plugin_id,h.command_title,h.candidate_key,"
         . "h.input_text,h.args_json,h.payload_json,h.replayable,h.created_at,h.last_used_at,c.handler_id "
         . "FROM command_history h LEFT JOIN commands c ON c.id=h.command_id "
         . "ORDER BY h.last_used_at DESC,h.id DESC LIMIT " . limit . ";", &table)
-        return rows
+        return false
     for raw in table.Rows
         rows.Push(QbarStoreRowMap(table, raw))
-    return rows
+    return true
 }
 
 ; A run command's elevation flag changes the stored command text ("*RunAs"),

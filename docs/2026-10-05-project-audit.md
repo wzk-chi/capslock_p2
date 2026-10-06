@@ -5,8 +5,11 @@
 细化及再次复核日期：2026-10-05
 性能测量及对应整改日期：2026-10-06
 整改完成性与修复方式复审日期：2026-10-06（基于提交 `3636570`）
+提交内容复核日期：2026-10-06（提交 `b5c7a62`）
 
-状态：原 36 项已逐项核对；本次修复第 10、11、15、16、20、21、24、34 项相关的 R01–R09 共 9 组遗漏。实现修改已进入复审，全部 AHK include 在临时启用 `#Warn All, StdOut` 并解除入口中的 `VarUnset, Off` 后 `/validate` 返回 exit=0、无警告，工作区 `git diff --check` 通过。另行复读了修改调用链并修正发现的静态问题；项目约束禁止启动应用和运行项目测试，因此 WebView、窗口、异步时序等行为没有动态验证。第 01 项保留首轮职责拆分；第 09、26、35 项按原有证据保留现策略；第 25、31 项优化仍有既有测量数据支持。本轮更新了实现及本文档，没有新增测试或运行项目脚本。
+状态：原 36 项已逐项核对；整改提交 `b5c7a62` 对第 10、11、15、16、20、21、24、34 项相关的 R01–R09 共 9 组遗漏进行了修改。提交复核确认 R03 当时仍为部分完成；随后工作区已补齐坏 run 参数隔离及历史/统计读取失败重试。全部 AHK include 在临时启用 `#Warn All, StdOut` 并解除入口中的 `VarUnset, Off` 后 `/validate` 返回 exit=0、无警告，提交及当前工作区差异检查通过。项目约束禁止启动应用和运行项目测试，WebView、窗口、异步时序等行为未动态验证。第 01 项保留首轮职责拆分；第 09、26、35 项按原有证据保留现策略；第 25、31 项优化仍有既有测量数据支持。
+
+**提交复核结论：** `b5c7a62` 已覆盖 R01/R02/R04–R09 的原触发路径及 Sort 参数错误；R03 的原 URL payload 缺键已修复，但该提交尚未补齐 run 历史参数检查及数据库读取失败后的重试。随后已在工作区修复 F01/F02，具体实现与当前校验结果见文末回填记录。这些结论来自源码与 API 契约核对，不代表运行验收。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -756,7 +759,7 @@ R01–R09 均已按记录修复，并静态复读对应调用链。复审期间�
 
 基准实现为提交 `3636570` 加上本次工作区修改；复审前只有审查文档存在未提交修改。本节记录 R01–R09 的确认依据、修复范围和验收情况；前文“依据”可能保留初审时源码观察，应以实施状态和本节为当前结论。本次修改了实现与文档，没有提交或打包。逻辑结论来自静态调用链，不描述为动态复现。
 
-结论：此前确认的 24 项和本次修复的 9 组均按源码调用链复核；第 01、27、34 项按完整职责边界保留首轮拆分，09、26、35 项按依据保留现策略。R01–R09 已实现建议中的最小修复，并做过静态复核；但 2026-10-06 用户报告窗口绑定加载时 Sort 参数错误，证明此前复核仍漏掉了 API 参数契约。该问题已按官方 AHK v2 文档修正并记录在第 21 项；应用运行路径仍未验证。R07 的副作用早于最新提交；本轮修正属于补齐遗漏，不把它描述为新引入回归。
+结论：此前确认的 24 项和本次修改的 9 组均按源码调用链复核；第 01、27、34 项按完整职责边界保留首轮拆分，09、26、35 项按依据保留现策略。R01–R09 均有对应修改并做过静态复核；2026-10-06 用户报告的 Sort 参数错误已修正并记录在第 21 项，但应用运行路径仍未验证。随后对 `b5c7a62` 的提交复核确认 R03 的坏 run 参数与读取失败重试仍未补齐，当前完成性以文末提交复核记录为准。R07 的副作用早于最新提交；本轮修正属于补齐遗漏，不把它描述为新引入回归。
 
 ### 36 项完成情况与修复方式评价
 
@@ -772,6 +775,7 @@ R01–R09 均已按记录修复，并静态复读对应调用链。复审期间�
 | 08 指针恢复 | 已完成 | 八页共享节流监听及宿主显示/激活入口已覆盖，新增脚本进入清单。 |
 | 09 外部图片 | 已处理，保留策略 | README 明确当前外部加载行为；没有证据要求引入代理或媒体存储。 |
 | 10 候选执行身份 | 已完成修复 | 候选快照、fallback 可用条件与当前注册表执行门已覆盖；多空白/Tab 匹配保留参数原文，见 R01/R04。 |
+| 11 历史与统计 | 已补齐（工作区） | 定位动作持久化、Notes 成功后单次记账、坏 payload/args 隔离和历史/统计读取失败重试均已落实；工作区修复尚未提交。 |
 | 12 提交/发布 | 已完成，文档已纠偏 | 同连接事务内 Build、提交后 Publish、派生索引在事务外刷新合理；坏插件 JSON 实际禁用相应命令而非拒绝整个构建。 |
 | 13 Qbar 数据目录 | 已完成 | 官方 backup、双库校验、无覆盖发布及保留旧库适合迁移；安装目录不可写时明确失败，无隐式 AppData 回退。 |
 | 14 ES 参数边界 | 已完成 | 固定客户端开关后追加 -search*，保留查询原文；比整体引用查询准确。 |
@@ -820,7 +824,7 @@ R01–R09 均已按记录修复，并静态复读对应调用链。复审期间�
 - 触发及证据：最近一条 URL 历史 payload_json 无效或为 {}。EntryFromStore 仍产生 kind=url 的 entry；EnsureLoaded 在执行授权之前调用 Identity，后者直接访问 payload["url"] 并抛缺键异常。其他 kind 也有类似直接字段读取。Loaded 标志已提前置为 true，异常还会留下部分初始化的历史状态。
 - 影响：一条损坏记录影响其余历史列表及后续记账；新加入的 replay payload 检查只在执行/可重放判断生效，时间上晚于故障点。
 - 最小修改意见：从执行授权中提取共用的“记录结构/payload 类型”校验，在加载后、Identity 前调用；结构校验不要要求工具当前启用，否则会把正常的停用历史一并丢弃。坏记录可保留标题/输入并标不可重放，Identity 使用安全的记录 ID，或逐条跳过并写脱敏日志；一条坏记录不能中断整个循环。Loaded 只在加载流程正常收尾时发布，或明确保留可重试失败态。
-- 实施：增加独立于当前插件启用状态的 `QbarHistoryEntryPayloadValid()`；Identity 与重放授权在访问 payload 字段前使用。加载逐条隔离解析/结构错误并记录错误类型，Loaded 在加载收尾后才发布。坏记录被跳过，其余记录继续加载；停用工具的结构有效历史仍可展示。**状态：已修复；未对损坏数据库做运行注入。**
+- 实施：增加独立于当前插件启用状态的 `QbarHistoryEntryPayloadValid()`；原 URL payload 缺键在 Identity 前被拒绝，停用工具的结构有效历史仍可展示。提交复核曾发现该 helper 未校验 run 的 args 值类型、Identity 在逐条 try 外，且数据库查询失败仍推进 Loaded；这些缺口已在提交后工作区补齐，见文末回填记录。未对损坏数据库做运行注入。
 
 ### R04 [P2] 多词别名的连续空白归一只发生在存储端
 
@@ -832,7 +836,7 @@ R01–R09 均已按记录修复，并静态复读对应调用链。复审期间�
 ### R05 [P2] 首次 Notes 执行重复记账，延后失败也已记成功
 
 - 关联原条目：11、16。位置：[qbar_execution.ahk:32](../lib/features/qbar/qbar_execution.ahk#L32)、[qbar_commands.ahk:257](../lib/features/qbar/qbar_commands.ahk#L257)、[267](../lib/features/qbar/qbar_commands.ahk#L267)、[qbar_notes.ahk:24](../lib/features/qbar/qbar_notes.ahk#L24)、[qbar_history.ahk:169](../lib/features/qbar/qbar_history.ahk#L169)、[212](../lib/features/qbar/qbar_history.ahk#L212)。
-- 触发及证据：注册 Notes handler 调用 QbarScheduleNotes(args,true)，只排队 NotesShow 就立即 RememberRegistered；NotesShow 成功显示又因为 recordHistory=true 再 Remember。两次 Remember 都推进 Usage，第二次由默认 NotesEntry 生成，还会丢失首条保存的 args/真实别名输入。若延后打开失败，第一笔成功统计已经发生。
+- 触发及证据：注册 Notes handler 调用 QbarScheduleNotes(args,true)，只排队 NotesShow 就立即 RememberRegistered；NotesShow 成功显示又因为 recordHistory=true 再 Remember。两次 Remember 都推进 Usage，第二次由默认 NotesEntry 生成，还会丢失首条保存的 args/命令展示输入。若延后打开失败，第一笔成功统计已经发生。此前“真实别名输入”的措辞不准确：RememberRegistered 在本提交前后都按命令第一别名重建 input，并未保存用户实际键入的别名。
 - 影响：使用频率每次增加两次，历史内容可能被默认输入覆盖，失败打开也被当成功。
 - 最小修改意见：排队前构造带 commandId/pluginId/args 和展示快照的 entry，复用现有 QbarNotesHistoryAction；由 NotesShow(...,false) 成功后统一 Remember 一次。注册调用处不能再立即记账。仅将 recordHistory=false、仍保留立即 Remember，不能解决提前成功的问题。
 - 实施：注册 Notes handler 先将稳定 commandId/pluginId/args 附到 history entry，再调用现有 `QbarScheduleNotesHistory()`。排队阶段不记账，`NotesShow(..., false)` 成功后由唯一的 `QbarNotesHistoryAction()` 记一次；失败不记。历史重放共用该成功回调。**状态：已修复；未运行面板创建失败或事件时序。**
@@ -893,3 +897,52 @@ $text
 4. 每组修改后先按上述静态验收点复读完整调用链，再执行全警告语法校验。真实时序、窗口/网络/视觉及故障路径仍需另行运行验证；本次未执行这些验证。
 
 现有 `capslock_p2-debug.log` 的相关记录主要来自整改前，未提供上述当前代码缺口的动态复现。既有 `temp/perf-20261006/` CSV 用于复核第 25/26/31 项数据，本次没有重新运行测量或读写用户数据库。已完成项的修复总体保持复用现有服务、职责清楚和局部修改；剩余问题需要补齐已有边界，不需要推翻当前架构。
+
+## 提交 b5c7a62 内容复核
+
+复核对象为 `b5c7a62e53395043791350ea0c523b207ceb6986` 相对父提交的 15 个文件。逐项核对 R01–R09 与 Sort 修正，并复读修改函数的创建、持久化、恢复、执行和取消调用点；该次提交复核本身没有修改实现代码。
+
+提交结论：R01/R02/R04–R09 与 Sort 修正均已从源码上覆盖此前列出的原触发路径；R03 的原 URL payload 缺键已拦住，但坏记录隔离和失败重试仍各有一处缺口，因此提交 b5c7a62 当时只能判为部分完成。F01/F02 是原边界未补齐，不认定为该提交新引入的回归。当前工作区后续修复见本节末。
+
+### 原问题逐项核对
+
+| 项目 | 提交复核状态 | 核对依据 |
+| --- | --- | --- |
+| R01 禁用/移除别名后的旁路执行 | 原触发路径已覆盖 | [qbar_commands.ahk:46](../lib/features/qbar/qbar_commands.ahk#L46)、[115](../lib/features/qbar/qbar_commands.ahk#L115) 与 [qbar_index.ahk:309](../lib/features/qbar/qbar_index.ahk#L309) 对候选、raw 和缺命令 fallback 都要求注册表不可用；注册表有效时走当前 enabled/alias 规则。 |
+| R02 定位历史被恢复成打开 | 原触发路径已覆盖 | 三个 reveal 创建入口均保存 action=reveal；[qbar_history.ahk:129](../lib/features/qbar/qbar_history.ahk#L129) 恢复 kind，Normalize 保留 action，Authorize 校验 action 与 handler，重放分发到 LocateInExplorer。旧记录没有 action 时按 open 处理的约定保留。 |
+| R03 坏历史影响整体加载 | 提交时部分完成，工作区已修复 | 提交时 run args 可绕过结构校验，Identity 在 try 外；历史/usage 读取失败仍标 Loaded=true。见 F01/F02 及下方回填。 |
+| R04 多词别名连续空白 | 原触发路径已覆盖 | [qbar_registry.ahk:196](../lib/features/qbar/qbar_registry.ahk#L196) 按非空白词构造归一化前缀并保留最长匹配，用最后别名词在原文中的位置提取参数；参数内部空白不重写，冲突候选排序保留。 |
+| R05 Notes 重复或提前记账 | 原触发路径已覆盖 | [qbar_execution.ahk:32](../lib/features/qbar/qbar_execution.ahk#L32) 只准备 entry 和排队；[qbar_commands.ahk:267](../lib/features/qbar/qbar_commands.ahk#L267) 仅在 NotesShow(...,false) 返回成功后 Remember 一次。重放收到 deferred 后跳过自身的 Remember，失败返回不记账。 |
+| R06 Everything 旧任务清理/发布 | 原触发路径已覆盖 | [qbar_everything.ahk:267](../lib/features/qbar/qbar_everything.ahk#L267) CSV 解析后按预期 job 清理；ClearJob 在短 Critical 内核对 owner，释放针对摘下的本地 job。启动/重试安装也检查请求与空 owner。[everything.ahk:247](../lib/features/everything/everything.ahk#L247) 在交换结果前重查请求；payload 使用参数 requestId，页面拒绝较旧请求。 |
+| R07 替换 HWND 未落盘 | 原触发路径已覆盖 | FindReplacementWindow 唯一调用方在 [windows.ahk:525](../lib/features/windows.ahk#L525)。finder 只返回句柄；调用方比较替换前 id，再赋值/保存，原先恒 false 的保存条件已消除。 |
+| R08 profile 原文快路径过晚 | 原触发路径已覆盖 | [appProfiles.ahk:26](../lib/input/appProfiles.ahk#L26) 直接读原文，37 行才解析；相同内容在解析前返回，接受基线仅在对应成功分支推进。ConfigParseIni 的 loaded/exists/content 输出契约保持。 |
+| R09 停止/隐藏后仍启动录制 | 原触发路径已覆盖 | [settings_capture.ahk:93](../lib/features/settings/settings_capture.ahk#L93) 停止同时取消 timer、清 pending 并推进 generation；Hide/Shutdown 调用集中停止。启动检查代次/可见性/页面就绪；回传检查 generation/captureId，页面按 captureId 接收；待启动期间自定义快捷键停用。 |
+| Sort 第三个参数错误 | 参数契约已修正 | [windows.ahk:164](../lib/features/windows.ahk#L164) 不再把换行符传成 Callback，使用默认 LF 分隔；19 位非负数字键的字符串顺序仍对应数值顺序。 |
+
+### F01 [P2] run 历史的坏 args 仍可中断整体加载（已在工作区修复）
+
+- 位置：[lib/features/qbar/qbar_history.ahk:38](../lib/features/qbar/qbar_history.ahk#L38)、[749](../lib/features/qbar/qbar_history.ahk#L749)、[812](../lib/features/qbar/qbar_history.ahk#L812)。
+- 具体输入条件：一条 builtin.run 历史的 payload_json 为 `{"command":"cmd"}` 等合法命令结构，args_json 为 `{"args":{}}`（同样可为数组）。command_id 非空时，EntryFromStore 会把 args_json 解析成 Map；共用 PayloadValid 只检查 payload.command，并不检查 entry.args.args。
+- 故障链：Identity 进入 run 分支后在 812 行调用 String(entry["args"]["args"])。该值是 Map，仓内未给 Map 定义 ToString；[AHK v2 String 官方文档](https://www.autohotkey.com/docs/v2/lib/String.htm)明确对象无 ToString 方法会抛 MethodError。Loader 的 try 只包 EntryFromStore，38 行的 Identity 在 try 外，因此该记录仍中断整个循环；Loaded 未推进，后续调用会再次遇到同一记录。
+- 修改意见：在 749 行的共用记录校验中补齐 run 的 args 容器和值类型契约；允许缺字段回退时应明确区分“缺字段”和“字段存在但类型错误”，不得用 String(object) 强行转换。将 31–46 行的单条记录解析、校验、Identity 和去重处理纳入同一个逐条 try，拒绝的记录写不含参数正文的诊断并继续下一条。Authorize 已有 args 字符串检查，加载必须在 Identity 前执行相同类型保护。
+- 判定边界：由实际分支与官方 API 契约静态确认，未注入或修改用户数据库，未做运行复现。
+
+### F02 [P2] 历史查询失败后仍永久接受为已加载（已在工作区修复）
+
+- 位置：[lib/features/qbar/qbar_history.ahk:29](../lib/features/qbar/qbar_history.ahk#L29)、[51](../lib/features/qbar/qbar_history.ahk#L51)、[62](../lib/features/qbar/qbar_history.ahk#L62)；存储接口 [qbar_store.ahk:795](../lib/features/qbar/qbar_store.ahk#L795)、错误状态重置 [506](../lib/features/qbar/qbar_store.ahk#L506)。
+- 具体触发条件：初始化已成功，但随后一次历史 SELECT 失败，例如临时 SQLite 读取错误。LoadHistoryRows 将失败返回为 [] 并设置 QbarStoreError；Loader 仅用该错误跳过初始设置 seed，继续读取 usage。后续 StoreRows 会重置 QbarStoreError，最后无论历史/usage 查询是否成功都执行 Loaded=true。
+- 影响：一次查询失败会被接受为空历史；当前进程后续 EnsureLoaded 在 20 行直接返回，故障解除后也不会重新加载旧历史。usage 查询失败同样会接受空统计。把 Loaded 从入口挪到末尾尚不足以满足原要求中的“失败保持可重试”。
+- 修改意见：由 store 提供明确的历史读取成功/失败结果，复用 LoadUsageRows(&rows) 的布尔返回方式，避免将失败与成功空列表合并。Loader 检查两次读取结果，失败时保留可重试状态；正常读取完成后再发布候选历史/统计与 Loaded。坏记录的逐条跳过属于一次成功读取内的容错，不能与数据库读取失败混为一类。
+- 判定边界：此路径在原实现已存在，提交仅修正了部分 Loaded 时机；当前日志未提供该故障的运行复现。
+
+### 本次校验与文档纠偏
+
+- 完整入口及全部 include 以 stdin 同时启用 All, StdOut、解除 VarUnset, Off 后执行 /validate，exit=0、无输出；提交差异 git diff b5c7a62^ b5c7a62 --check 通过。这些结果不检测运行时数据类型和加载状态语义，不能否定 F01/F02。
+- 已查现有 DebugLog；17:28 的记录可见窗口绑定解析继续、Qbar 初始化和历史列表展示，但没有覆盖坏 args、查询失败、快速取消或任务交错的证据。未启动应用、执行项目脚本或编写测试。
+- 将 R03 和总表第 11 项更新为部分完成；补回总表遗漏的第 11 项。R05 的“真实别名输入”修正为命令展示输入：PrepareHistoryEntry 仍采用 command.aliases[1]，原提交并未增加实际键入别名的保存能力。
+
+### F01/F02 工作区修复回填（2026-10-06）
+
+- F01：[qbar_history.ahk:52](../lib/features/qbar/qbar_history.ahk#L52) 将单行转换、结构校验、Identity、去重整体包在逐条 try 中；异常只记录类型并继续。共用校验 [qbar_history.ahk:786](../lib/features/qbar/qbar_history.ahk#L786) 检查 run 的 args 容器为 Map，若含 args 字段则必须为 String。坏的嵌套 Map 在 Identity 前被跳过，不再传给 String()。
+- F02：存储层 [qbar_store.ahk:795](../lib/features/qbar/qbar_store.ahk#L795) 改为经 ByRef 返回 rows，并用布尔结果区分读取失败与成功的空列表。EnsureLoaded 使用 Loading 标记抑制重入，在历史和 usage 查询都成功后才发布候选 Map/Array 并设置 Loaded；任一查询失败均由 finally 清除 Loading，后续调用可重试。Remember、UsageInfo、Rows 和 Replay 在加载失败时安全返回，不消费部分状态。
+- 全入口/全部 include 的全警告 AHK /validate 返回 exit=0、无警告；当前三文件差异 git diff --check 通过。按 AGENTS.md 未运行应用、项目脚本或测试；坏 args 隔离及 SQLite 临时失败后的重试未做动态验证。本回填修改位于工作区，尚未纳入 b5c7a62。
