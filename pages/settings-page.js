@@ -9,10 +9,11 @@ const state = {
   qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
   qbarCreateSaving: false, qbarCreateDialog: null,
   hotkeyProfileId: '', baseProfileStamp: '', profilesDirty: false, overridesOnly: false,
-  hotkeyApplicationDialog: null
+  hotkeyApplicationDialog: null, customHotkeyActions: []
 };
 let shortcutRecording = null;
 let shortcutCaptureSequence = 0;
+const CUSTOM_HOTKEY_BUILTIN_PREFIX = '@builtin:shortcut/';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const post = payload => {
@@ -490,6 +491,59 @@ function shortcutActionLabel(action) {
     return ACTION_LABELS[name] + ' ' + args;
   return ACTION_LABELS[name] + '（' + args + '）';
 }
+function normalizeCustomHotkeyActions(value) {
+  if (!Array.isArray(value)) return [];
+  const unsupported = new Set([
+    'keyFunc_send', 'keyFunc_run', 'keyFunc_doubleChar', 'keyFunc_sendChar',
+    'keyFunc_winbind_activate', 'keyFunc_winbind_binding'
+  ]);
+  return [...new Set(value.filter(id => {
+    if (typeof id !== 'string' || !id.startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX)) return false;
+    const action = id.slice(CUSTOM_HOTKEY_BUILTIN_PREFIX.length);
+    return /^[A-Za-z0-9_]+$/.test(action)
+      && Object.prototype.hasOwnProperty.call(ACTION_LABELS, action)
+      && !unsupported.has(action);
+  }))];
+}
+function customHotkeyBuiltinActionLabel(id) {
+  const action = String(id || '').startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX)
+    ? String(id).slice(CUSTOM_HOTKEY_BUILTIN_PREFIX.length) : '';
+  return Object.prototype.hasOwnProperty.call(ACTION_LABELS, action)
+    ? ACTION_LABELS[action] : '当前功能不可用';
+}
+function populateCustomHotkeyBuiltinActions(select, selectedId = '') {
+  select.replaceChildren();
+  const groupedActions = new Map(SHORTCUT_GROUPS.map(group => [group.id, []]));
+  state.customHotkeyActions.forEach(id => {
+    const action = id.slice(CUSTOM_HOTKEY_BUILTIN_PREFIX.length);
+    const category = shortcutActionCategory(action);
+    if (!groupedActions.has(category)) groupedActions.set(category, []);
+    groupedActions.get(category).push(id);
+  });
+  SHORTCUT_GROUPS.forEach(group => {
+    const ids = groupedActions.get(group.id) || [];
+    if (!ids.length) return;
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.label;
+    ids.forEach(id => {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = customHotkeyBuiltinActionLabel(id);
+      optgroup.append(option);
+    });
+    select.append(optgroup);
+  });
+  if (selectedId && !state.customHotkeyActions.includes(selectedId)) {
+    const unavailable = document.createElement('option');
+    unavailable.value = selectedId;
+    unavailable.textContent = '当前功能不可用';
+    unavailable.disabled = true;
+    select.append(unavailable);
+  }
+  const value = selectedId || state.customHotkeyActions[0] || '';
+  select.value = value;
+  return select.value;
+}
 function ahkSendLabel(value) {
   const raw = String(value || '').trim();
   let index = 0;
@@ -784,21 +838,30 @@ function updateCustomHotkeyKey(row, triggerInput, formatValue = false) {
 function customHotkeyActionValue(row) {
   if (row.dataset.mode === 'native') return '@native';
   if (row.dataset.mode === 'block') return '@block';
+  if (row.dataset.mode === 'builtin') return row.dataset.builtinAction || '';
   return row.dataset.sendValue || '';
 }
-function updateCustomHotkeyMode(row, modeSelect, sendInput, sendRecord) {
+function updateCustomHotkeyMode(row, modeSelect, sendInput, actionSelect, sendRecord) {
   const previousMode = row.dataset.mode || 'send';
   const mode = modeSelect.value;
   if (shortcutRecording && shortcutRecording.row === row && mode !== 'send')
     stopShortcutRecording();
   if (previousMode === 'send') row.dataset.sendValue = normalizeCustomSend(sendInput.value);
+  if (previousMode === 'builtin') row.dataset.builtinAction = actionSelect.value || row.dataset.builtinAction || '';
   row.dataset.mode = mode;
   const isSending = mode === 'send';
+  const isBuiltin = mode === 'builtin';
+  if (isBuiltin)
+    row.dataset.builtinAction = populateCustomHotkeyBuiltinActions(
+      actionSelect, row.dataset.builtinAction || '');
+  sendInput.hidden = isBuiltin;
+  actionSelect.hidden = !isBuiltin;
   sendInput.disabled = !isSending;
   sendInput.value = isSending
     ? formatCustomSend(row.dataset.sendValue || '')
     : mode === 'native' ? '保留原有功能' : '已禁用此快捷键';
   sendInput.placeholder = isSending ? '例如 Ctrl+C' : '';
+  sendRecord.hidden = !isSending;
   sendRecord.disabled = !isSending;
   if (row.dataset.key)
     setShortcutDraftValue('CustomHotkey', row.dataset.key, customHotkeyActionValue(row));
@@ -831,8 +894,11 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   row.className = 'pair-row custom-hotkey-row';
   row.dataset.key = normalizeCustomTrigger(initialTrigger);
   row.dataset.mode = initialSend === '@native' ? 'native'
-    : initialSend === '@block' ? 'block' : 'send';
+    : initialSend === '@block' ? 'block'
+      : String(initialSend).startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX) ? 'builtin' : 'send';
   row.dataset.sendValue = row.dataset.mode === 'send' ? normalizeCustomSend(initialSend) : '';
+  row.dataset.builtinAction = row.dataset.mode === 'builtin'
+    ? String(initialSend) : state.customHotkeyActions[0] || '';
 
   const triggerField = document.createElement('div');
   triggerField.className = 'custom-hotkey-field';
@@ -857,16 +923,17 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   const sendField = document.createElement('div');
   sendField.className = 'custom-hotkey-field';
   const sendLabel = document.createElement('span');
-  sendLabel.textContent = '快捷键行为';
+  sendLabel.textContent = '映射目标';
   const sendControl = document.createElement('div');
   sendControl.className = 'custom-hotkey-control';
   const modeSelect = document.createElement('select');
   modeSelect.className = 'custom-hotkey-mode';
-  modeSelect.setAttribute('aria-label', '快捷键行为');
-  [['send', '发送按键'], ['native', '保留原功能'], ['block', '禁用快捷键']].forEach(([value, label]) => {
+  modeSelect.setAttribute('aria-label', '映射目标类型');
+  [['send', '发送按键'], ['builtin', '自带功能'], ['native', '保留原功能'], ['block', '禁用快捷键']].forEach(([value, label]) => {
     const option = document.createElement('option');
     option.value = value;
     option.textContent = label;
+    if (value === 'builtin' && !state.customHotkeyActions.length) option.disabled = true;
     modeSelect.append(option);
   });
   modeSelect.value = row.dataset.mode;
@@ -875,18 +942,36 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
     : row.dataset.mode === 'native' ? '保留原有功能' : '已禁用此快捷键';
   sendInput.placeholder = row.dataset.mode === 'send' ? '例如 Ctrl+C' : '';
   sendInput.disabled = row.dataset.mode !== 'send';
+  sendInput.hidden = row.dataset.mode === 'builtin';
   sendInput.setAttribute('aria-label', '发送按键');
+  const actionSelect = document.createElement('select');
+  actionSelect.className = 'custom-hotkey-action';
+  actionSelect.setAttribute('aria-label', '自带功能');
+  if (row.dataset.mode === 'builtin')
+    row.dataset.builtinAction = populateCustomHotkeyBuiltinActions(
+      actionSelect, row.dataset.builtinAction);
+  actionSelect.hidden = row.dataset.mode !== 'builtin';
+  actionSelect.disabled = row.dataset.mode !== 'builtin';
   const sendRecord = document.createElement('button');
   sendRecord.type = 'button';
   sendRecord.className = 'btn ghost custom-hotkey-record';
   sendRecord.textContent = '录制';
   sendRecord.title = '录制发送键';
   sendRecord.disabled = row.dataset.mode !== 'send';
+  sendRecord.hidden = row.dataset.mode !== 'send';
   sendRecord.addEventListener('click', () =>
     startCustomHotkeyRecording(row, sendInput, 'send', sendRecord));
-  modeSelect.addEventListener('change', () =>
-    updateCustomHotkeyMode(row, modeSelect, sendInput, sendRecord));
-  sendControl.append(modeSelect, sendInput, sendRecord);
+  modeSelect.addEventListener('change', () => {
+    updateCustomHotkeyMode(row, modeSelect, sendInput, actionSelect, sendRecord);
+    actionSelect.disabled = modeSelect.value !== 'builtin';
+  });
+  actionSelect.addEventListener('change', () => {
+    row.dataset.builtinAction = actionSelect.value;
+    if (row.dataset.key)
+      setShortcutDraftValue('CustomHotkey', row.dataset.key, customHotkeyActionValue(row));
+    syncCustomHotkeyRemove(row);
+  });
+  sendControl.append(modeSelect, sendInput, actionSelect, sendRecord);
   sendField.append(sendLabel, sendControl);
 
   const remove = document.createElement('button');
@@ -1757,6 +1842,8 @@ function receiveSnapshot(snapshot) {
     setStatus('语言选项加载失败，请重新打开设置。', true);
     return;
   }
+  state.customHotkeyActions = normalizeCustomHotkeyActions(
+    snapshot && snapshot.customHotkeyActions);
   setSettingsLoaded(true);
   const selectedProfileId = state.hotkeyProfileId;
   closeHotkeyApplicationDialog();

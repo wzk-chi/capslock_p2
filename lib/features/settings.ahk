@@ -414,6 +414,7 @@ SettingsBuildSnapshot() {
         "toast", SettingsPendingToast,
         "sections", sections,
         "keys", SettingsKeySnapshot(),
+        "customHotkeyActions", CustomHotkeyBuiltinActionSnapshot(),
         "profiles", AppProfilesSnapshot(),
         "profileStamp", AppProfilesStampValue(),
         "bindings", SettingsBindingSnapshot(),
