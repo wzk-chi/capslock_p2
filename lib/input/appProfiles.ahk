@@ -142,6 +142,33 @@ AppProfileBoolean(value, fallback := false) {
     return fallback
 }
 
+AppProfileTryBoolean(value, &parsed := false) {
+    parsed := false
+    if Type(value) = "ComValue" {
+        try {
+            if value == JSON.true {
+                parsed := true
+                return true
+            }
+            if value == JSON.false
+                return true
+        } catch {
+            return false
+        }
+        return false
+    }
+    if IsObject(value)
+        return false
+    lowered := StrLower(Trim(String(value)))
+    if lowered = "1" || lowered = "true" || lowered = "on" {
+        parsed := true
+        return true
+    }
+    if lowered = "0" || lowered = "false" || lowered = "off"
+        return true
+    return false
+}
+
 AppProfileNormalizePath(path) {
     path := StrReplace(Trim(String(path)), "/", "\")
     return StrLower(RTrim(path, "\"))
@@ -266,7 +293,11 @@ AppProfilesNormalizeDraft(profiles, &normalizedProfiles := 0, &errorText := "") 
         profileId := rawProfile.Has("id") ? Trim(String(rawProfile["id"])) : ""
         displayName := rawProfile.Has("displayName") ? Trim(String(rawProfile["displayName"])) : ""
         exePath := rawProfile.Has("exePath") ? AppProfileNormalizePath(rawProfile["exePath"]) : ""
-        enabled := rawProfile.Has("enabled") ? AppProfileBoolean(rawProfile["enabled"], true) : true
+        enabled := true
+        if rawProfile.Has("enabled") && !AppProfileTryBoolean(rawProfile["enabled"], &enabled) {
+            errorText := "应用配置启用状态无效。"
+            return false
+        }
         if (!AppProfileIsValidId(profileId) || exePath = ""
             || RegExMatch(displayName, "[`r`n]") || RegExMatch(exePath, "[`r`n]")) {
             errorText := "应用配置缺少有效的程序路径。"

@@ -45,7 +45,6 @@ global QbarEsBundledStarted := false ; true only when this session launched the 
 global QbarEsBundledState := "unknown" ; unknown|starting|reachable|failed
 global QbarEsWarmupDeadline := 0
 global QbarEsBundledFailed := false ; start declined; do not prompt again this session
-global QbarEsResultContext := 0
 
 ; Panel geometry in logical pixels, mirrored by qbar.html's CSS variables.
 ; Screen-relative: 420 logical px at 1920x1080, wider on bigger screens and

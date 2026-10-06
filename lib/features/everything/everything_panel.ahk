@@ -111,8 +111,7 @@ EverythingHide(*) {
 }
 
 EverythingCancelSearch(reason := "") {
-    global EverythingEsMode, EverythingQueryCallback, EverythingQuerySeq
-    EverythingEsMode := false
+    global EverythingQueryCallback, EverythingQuerySeq
     EverythingCancelIconQueue()
     EverythingQuerySeq += 1
     if IsObject(EverythingQueryCallback)
@@ -123,9 +122,8 @@ EverythingCancelSearch(reason := "") {
 
 EverythingShutdown(*) {
     global EverythingHost, EverythingVisible, EverythingWindowInitialized
-    global EverythingEsMode, QbarEsBundledStarted
+    global QbarEsBundledStarted
     EverythingVisible := false
-    EverythingEsMode := false
     EverythingCancelSearch("shutdown")
     if QbarEsBundledStarted {
         everythingExe := QbarEsEverythingExe()

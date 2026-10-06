@@ -244,8 +244,11 @@ QbarPluginHostDeletePlugin(pluginId) {
                 throw Error(QbarStoreError != "" ? QbarStoreError : "提交工具删除失败")
         } catch as deleteError {
             try QbarStoreRollback()
-            QbarPluginHostError := deleteError.Message
-            DebugLog("Qbar plugin delete failed plugin=" . pluginId . " error=" . QbarPluginHostError)
+            QbarPluginHostError := ""
+            diagnostic := deleteError.Message
+            DebugLog("Qbar plugin delete failed plugin=" . pluginId
+                . " errorType=" . Type(deleteError)
+                . " detailLength=" . StrLen(diagnostic))
             return false
         }
         QbarRegistryPublish(nextRegistry)

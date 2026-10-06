@@ -5,7 +5,7 @@
 细化及再次复核日期：2026-10-05
 性能测量及对应整改日期：2026-10-06
 
-状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改完成：第 01–34、36 项的代码修改及静态核查已完成；第 35 项按复核结论保留现实现。第 25、31 项已按性能数据完成优化；第 26 项已度量并保留原 checkpoint 策略。入口、全部 AHK include 和本轮临时测量脚本均用 AutoHotkey /validate 与 #Warn All, StdOut 校验，exit=0 且无警告。本轮经用户授权只运行了 temp/perf-20261006/ 内的测量脚本：剪贴板和 AI 使用合成数据库，词典只读打开项目词库；未启动应用、未触碰用户数据库、未运行项目测试。
+状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点；最终代码复审发现的第 20 项独立 Everything 查询回归、第 33 项快捷键分组展开状态问题，以及第 03、05、23 项的回执、错误提示和 profile 校验边界均已修复并静态复核。第 25、31 项已按性能数据完成优化；第 26 项已度量并保留原 checkpoint 策略。当前入口及全部 AHK include 以 AutoHotkey `/validate` 和 `#Warn All, StdOut` 校验通过，exit=0 且无警告。本轮没有启动应用、运行项目脚本或测试。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -69,11 +69,13 @@
 
 **实施状态：已完成第 02 项代码修复。** [lib/app/config.ahk](../lib/app/config.ahk) 的 `ConfigLoad()` 现在一次读取默认文档和用户文档，额外取得文件存在状态；用户文件不存在仍按空覆盖处理，默认文件缺失、现存用户文件读取失败或文件时间不可确认均返回分类错误。默认原始 Map 只解析一次，以克隆副本叠加用户值，分别解码候选默认值和生效配置；两者构建成功后才发布 `ConfigDefaults`、`Config` 与 `SettingsModifyTime`，并把成功读取的用户 Map 交给同一次初始化/重载的 profile 解析。用户文件在读取前后时间戳变化时拒绝本次候选并重试。失败日志仅记录阶段类别并对连续同类重试去重，不记录配置正文。
 
+**边界补充：** `ConfigParseIni()` 当前以 `FileExist(path) = ""` 认定目标缺失。它能将已发现存在但 UTF-8 `FileRead()` 失败与不存在区分；对 Windows 文件属性查询自身因父目录不可访问等原因失败时，AHK 的 `FileExist()` 是否能可靠区分该错误与真正的未找到，本次没有运行或查阅 API 契约确认。因此前述保证针对可观察到“存在”的用户文件；stat 失败/目录权限错误语义待进一步核实，不将其记为已证明修复。
+
 [lib/input/appProfiles.ahk](../lib/input/appProfiles.ahk) 的 `AppProfilesLoad()` 改为先构造 profile 候选，可按调用选择暂不发布；初始化/重载会复用 ConfigLoad 已读取的用户 Map，避免二次读取到另一个文件版本。[lib/app/core.ahk](../lib/app/core.ahk) 的 `Initialize()` 检查配置和 profile 首次解析结果；失败时显示错误并退出，不注册不完整配置的热键。`ReloadSettings()` 增加可选 `loadSucceeded` 输出；配置或 profile 候选读取失败均不应用差异、不重建快捷键、不推送设置快照，profile 解析失败时同时恢复旧配置 Map 和已接受时间戳。`MonitorSettings()` 不再预先接受新时间戳；profile 检查只读候选，任一读取失败都会设置重试标志，每 500ms 继续尝试，直到一次完整加载成功并更新接受时间。
 
 AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明为局部变量，并将 `ReloadSettings()` 的临时文档重命名为 `loadedUserDocument`，避免同名全局遮蔽。
 
-[lib/features/settings.ahk](../lib/features/settings.ahk) 的保存调用检查 reload 结果：若 INI 已写入但读取/应用失败，会明确提示“已写入但未应用”，保留失败态，并在普通设置保存失败分支提前返回，避免随后推送旧配置快照。设置页的 profile 冲突检查也只比较未发布候选；只有完整重载成功才替换运行态。写入 helper 和 profile 保存路径不再抢先更新 `SettingsModifyTime`，使监视器保留重试机会。**第 03 项的剩余跨存储回执和部分提交重试已在本轮完成，见下节。**
+[lib/features/settings.ahk](../lib/features/settings.ahk) 的保存调用检查 reload 结果：若 INI 已写入但读取/应用失败，会明确提示“已写入但未应用”，保留失败态，并在普通设置保存失败分支提前返回，避免随后推送旧配置快照。设置页的 profile 冲突检查也只比较未发布候选；只有完整重载成功才替换运行态。写入 helper 和 profile 保存路径不再抢先更新 `SettingsModifyTime`，使监视器保留重试机会。**第 03 项的跨存储回执与部分提交重试已完成，但最终静态复审发现回执合并边界存在一项缺陷，修复状态见下节。**
 
 **静态核查：** 已检索并检查 `ConfigLoad()`、`ReloadSettings()`、`MonitorSettings()` 及全部显式 reload 调用点；缺失用户 INI 与读取失败走不同路径，重载失败最终保留旧配置/profile 运行态，不应用差异或推送设置快照；初始读取失败会退出初始化。AHK `/validate` 通过；文件监视重试的运行时行为未验证。
 
@@ -85,20 +87,22 @@ AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明�
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) `SettingsApplyQbarPlugin()`、[lib/features/settings.ahk:473](../lib/features/settings.ahk#L473) `SettingsApplyDraft()`、[423](../lib/features/settings.ahk#L423) 回执构建及 [699](../lib/features/settings.ahk#L699) 普通回执发送。页面在 [pages/settings-page.js:1778](../pages/settings-page.js#L1778) 合并保存回执、[1939](../pages/settings-page.js#L1939) 处理普通结果、[1325](../pages/settings-page.js#L1325) 提交独立工具保存及 [1735](../pages/settings-page.js#L1735) 拒收带草稿的外部快照。
+- 位置：[lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) `SettingsApplyQbarPlugin()`、[474](../lib/features/settings.ahk#L474) `SettingsApplyDraft()`、[424](../lib/features/settings.ahk#L424) 回执构建及 [716](../lib/features/settings.ahk#L716) 普通回执发送。页面在 [pages/settings-page.js:1782](../pages/settings-page.js#L1782) 合并保存回执、[1924](../pages/settings-page.js#L1924) 提交普通设置、[1950](../pages/settings-page.js#L1950) 处理普通结果、[1325](../pages/settings-page.js#L1325) 提交独立工具保存及 [1737](../pages/settings-page.js#L1737) 拒收带草稿的外部快照。
 - 先做第 15 项的插件 patch 校验，再调用 ConfigPrepareUserOverrides() 准备 INI 候选；现 `SettingsApplyDraft()` 已对普通配置和 profile 统一使用候选内容，并维持最多一次 ConfigAtomicWrite()，任何字段校验失败都发生在写盘前。
 - 若保留两存储，回执必须表达实际提交结果，不能只发送 ok/text。建议附带 iniCommitted、pluginsCommitted、runtimeApplied，以及已提交字段的实际值/基线；提交成功后的 registry/UI 刷新问题与第 12 项共同处理。不要在失败时把旧 INI 全文件回写覆盖外部编辑。
-- 页面 `settingsSaved()` 只清理已确认提交的 dirtyFields/profiles/plugins 标记，更新相应 baseSections/baseProfileStamp，重新比较仍未保存的 draft。**再次复核补充：**仅调用 SettingsPushSnapshot() 不够，因为 [pages/settings-page.js:1735](../pages/settings-page.js#L1735) 的 `receiveSnapshot()` 会拒绝带草稿的快照；因此使用独立保存回执更新基线，同时保留保存期间用户继续编辑的新值。
+- 页面 `settingsSaved()` 依据本次保存的 `saveId` 查提交时 section 字段快照；回执只合并当前值仍等于该次提交值的字段，再更新已提交域基线并重新比较仍未保存的 draft。用户提交后即使把字段改回旧基线，也会因值不再等于提交快照而保留。**再次复核补充：**仅调用 SettingsPushSnapshot() 不够，因为 [pages/settings-page.js:1735](../pages/settings-page.js#L1735) 的 `receiveSnapshot()` 会拒绝带草稿的快照；因此使用独立保存回执更新基线，同时保留保存期间用户继续编辑的新值。
 - 独立 Everything 工具弹窗也需更新 `qbarPluginSaved()` 和 [pages/settings-page.js:1181](../pages/settings-page.js#L1181) `applySavedQbarPluginToDraft()`：INI 已提交而插件事务失败时说明已保存部分并保留弹窗重试，不能关闭并清空全部编辑。若后续将 `esMaxResults` 归到插件 store 的同一事务，须同步 QbarEsMaxResults() 读取和设置快照，不能只改表单。
 - 静态确认：任何“保存失败/部分保存”分支与实际提交标志一致；取消、失败和普通外部快照均不会抹掉未提交草稿。不需要跨文件/SQLite 通用事务框架。
 
-**实施状态：已完成代码修改并静态复核。** `SettingsApplyDraft()` 先校验插件 patch、全局配置和应用 profile，再用 `ConfigPrepareUserOverrides()` 构造 INI 候选；若有 profile 修改，会合并到同一候选文件，全部校验完成后最多原子写入一次。配置写入后才进行运行态重载，再提交独立的插件数据库事务；未引入通用跨存储事务。
+**实施状态：保存边界与部分提交回执已完成，回执合并缺陷已修复并静态核查。** `SettingsApplyDraft()` 先校验插件 patch、全局配置和应用 profile，再用 `ConfigPrepareUserOverrides()` 构造 INI 候选；若有 profile 修改，会合并到同一候选文件，全部校验完成后最多原子写入一次。配置写入后才进行运行态重载，再提交独立的插件数据库事务；未引入通用跨存储事务。
 
-宿主 `settingsSaved()` / `qbarPluginSaved()` 回执现在携带 `settingsFileCommitted`、`runtimeApplied` 及各存储域的提交标记和已提交域快照。INI 已写但重载失败时明确报告“已写入、未应用”，不把运行态旧快照标成已提交基线；INI/profile 已应用但插件数据库失败时报告部分成功，并仅刷新已提交域的页面基线。页面保留用户保存期间新增的草稿差异，后续重试只重新提交未完成部分。独立的 Everything 工具保存也会保留弹窗，并在文件搜索数量已保存而插件事务失败时明确指出部分提交；对应 Qbar 设置基线同步到已应用值，避免主页面之后把旧数量写回。插件事务已提交后若剪贴板通知等后续刷新失败，回执仍反映已提交，并显示刷新提示。
+宿主 `settingsSaved()` / `qbarPluginSaved()` 回执现在携带 `settingsFileCommitted`、`runtimeApplied` 及各存储域的提交标记和已提交域快照。INI 已写但重载失败时明确报告“已写入、未应用”，不把运行态旧快照标成已提交基线；INI/profile 已应用但插件数据库失败时报告部分成功，并仅刷新已提交域的页面基线。独立的 Everything 工具保存也会保留弹窗，并在文件搜索数量已保存而插件事务失败时明确指出部分提交；对应 Qbar 设置基线同步到已应用值，避免主页面之后把旧数量写回。插件事务已提交后若剪贴板通知等后续刷新失败，回执仍反映已提交，并显示刷新提示。
 
 插件创建、删除及独立保存也通过保存回执更新内存中的插件基线，因此带有全局未保存草稿时，页面拒收普通外部 snapshot 也不会丢失已提交的 Qbar 状态。回执刷新会保留草稿中相对旧基线已变化的字段；成功保存后再按新基线重新计算 dirty 状态。
 
-静态核查覆盖两种保存入口、全部 `SettingsSendSaved`/`SettingsSendQbarPluginSaved` 回执、INI candidate/write/reload 顺序和页面的 committed-domain baseline 合并。按项目约束未运行 AHK、WebView、脚本或测试；文件监视器遇到部分保存、用户保存期间继续编辑、真实数据库提交失败与 WebView 回执时序仍未运行确认。
+最终复审发现字段值比较无法识别“旧值 A → 提交 B → 回执前又编辑为 A”：比较旧基线会误判为未编辑并覆盖新草稿。现页面为每次普通保存分配 `saveId`，保留最多 8 个请求的提交字段快照，宿主在成功或带部分提交回执中回传同一 ID；仅当前字段仍等于本次提交值时才应用回执值。无 ID、找不到对应快照或被窗口淘汰的回执不会更新配置草稿基线。页面另记录最新已应用的回执 ID，拒绝较旧请求迟到的回执回退已提交基线。此逻辑覆盖成功回执及带回执的部分提交失败；没有提交域回执的验证/失败响应只更新提示，不动基线。静态核查已确认全部 `SettingsSendSaved()` 返回路径都回传当前请求 ID。
+
+静态核查覆盖两种保存入口、全部 `SettingsSendSaved`/`SettingsSendQbarPluginSaved` 回执、INI candidate/write/reload 顺序和页面的 committed-domain baseline 合并。修改后的 AHK 入口通过 `/validate` 与 `#Warn All, StdOut`；按项目约束未运行 AHK 程序、WebView、脚本或测试。文件监视器遇到部分保存、用户保存期间继续编辑、真实数据库提交失败与 WebView 回执时序仍未运行确认。
 
 ### 04 LLM 连接测试同步等待——部分成立，P2 响应风险
 
@@ -133,9 +137,11 @@ AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明�
 - 同一 catch 记录功能、阶段、错误类别和脱敏诊断；不要 dump 传入配置 Map、API 凭据、完整 endpoint/用户正文。core 第 618–619 行当前已经记录底层动作错误，须一起审查敏感字段，避免 UI 修复后将原文无条件搬进日志。
 - 静态确认：错误路径均有用户能采取的下一步；页面通知仍用 AppToast/AppDialog，宿主 ToolTip 仍走 ShowMsg()。本条只统一呈现，不改变异常是否返回/重试的业务语义。
 
-**实施状态：已完成首批用户可见错误修正并静态核查。** `ConfigSet()` 的 schema 错误改为本地化字段校验提示；写文件失败提示检查安装目录可写并重试，日志只留 section/key 和错误类型。`RunConfiguredAction()` 的无效 handler 与执行异常改成本地化“检查快捷键设置/重试”提示，日志保留经过格式约束的函数名及错误类型，不再写异常原文。设置 WebView 创建/导航与窗口、应用选择器失败都给出本地化重开/重试说明，不把 WebView/COM/文件选择器消息直接显示给用户。窗口绑定保存失败提示检查所选窗口后重试；读取/写入异常日志改为阶段、绑定号和错误类型。
+**实施状态：目标用户可见错误修正和静态核查已完成。** `ConfigSet()` 的 schema 错误改为本地化字段校验提示；写文件失败提示检查安装目录可写并重试，日志只留 section/key 和错误类型。`RunConfiguredAction()` 的无效 handler 与执行异常改成本地化“检查快捷键设置/重试”提示，日志保留经过格式约束的函数名及错误类型，不再写异常原文。设置 WebView 创建/导航与窗口、应用选择器失败都给出本地化重开/重试说明，不把 WebView/COM/文件选择器消息直接显示给用户。窗口绑定保存失败提示检查所选窗口后重试；读取/写入异常日志改为阶段、绑定号和错误类型。
 
-静态检索确认 core、settings、windows 的目标 UI catch 不再拼接 `Error.Message`；设置整体保存仍按提交状态提示成功、部分成功或失败，应用产生的字段验证错误保留。未运行程序、脚本或 UI；本地化实际显示、各类异常的重试路径以及用户能否据提示修复问题仍未运行验证。
+最终代码复审发现设置页“删除 Qbar 工具”失败回执仍直接显示 `QbarPluginHostError`，其删除分支可携带 SQLite/store 或 AHK 异常原文。现回执使用固定的本地化重试说明；PluginHost 仅在日志记录异常类型和消息长度，不传播异常正文，settings 层也不再把 host/store 错误值拼入日志或 UI。
+
+静态检索确认 core、settings、windows 的目标 UI catch 不再拼接 `Error.Message`，且删除工具回执不再透传内部错误；设置整体保存仍按提交状态提示成功、部分成功或失败，应用产生的字段验证错误保留。未运行程序、脚本或 UI；本地化实际显示、各类异常的重试路径以及用户能否据提示修复问题仍未运行验证。
 
 ### 06 AI 使用说明仍描述旧会话规则——成立，P2
 
@@ -266,7 +272,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 页面、分类和 Qbar alias 入口不再整体 quote/反斜杠变换，也不删除看似 ES 开关的搜索文本；边界只在客户端命令构造处处理，避免破坏合法搜索语法。
 - 保留 limit+1 截断判断、后端 probe/切换、job seq、取消/重试/超时与 CSV 解码。静态确认每个 ES search/probe 构造都在 -search* 后放 query，之后没有选项拼接；空查询、短语和看似 -n/-export-csv 的文本需后续运行确认。
 
-**实施状态：已完成代码修改，静态核查通过。** `lib/features/qbar/qbar_everything.ahk` 已移除 probe/空值/普通查询各自构造的 `queryArg`，probe 固定使用 `1`、普通查询保留原始 `arg`，并在全部 ES 客户端选项（含导出路径）之后统一追加 `-search*`。静态检查确认 query 不再整体引用或变换，`-search*` 后没有其他客户端开关拼接；探测/搜索仍共用原 job 生命周期与 CSV 导出流程。遵守项目约束，未运行程序、脚本或测试；空查询、短语引号和看似开关的搜索文本仍待允许运行时验证。
+**实施状态：已完成代码修改，静态核查通过。** `lib/features/qbar/qbar_everything.ahk` 已移除 probe/空值/普通查询各自构造的 `queryArg`，probe 固定使用 `1`、普通查询保留原始 `arg`，并在全部 ES 客户端选项（含导出路径）之后统一追加 `-search*`。当前 `QbarEsResolveBackend()` 唯一调用方是独立 Everything 页面；它请求配置上限加一项，以便页面判断是否截断。静态检查确认 query 不再整体引用或变换，`-search*` 后没有其他客户端开关拼接；探测、回退、重试和结果发布沿用同一查询代次。遵守项目约束，未运行程序、脚本或测试；空查询、短语引号和看似开关的搜索文本仍待允许运行时验证。
 
 ### 15 插件修改缺少设置和身份关系校验——成立，P2
 
@@ -466,13 +472,15 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 **具体位置与建议改法**
 
-- 位置：[lib/input/appProfiles.ahk:252](../lib/input/appProfiles.ahk#L252) `AppProfilesNormalizeDraft()` 与 [328](../lib/input/appProfiles.ahk#L328) `AppProfilePrepareDraftContent()`；调用在 [lib/features/settings.ahk:545](../lib/features/settings.ahk#L545) 和 [576](../lib/features/settings.ahk#L576)。
+- 位置：[lib/input/appProfiles.ahk:279](../lib/input/appProfiles.ahk#L279) `AppProfilesNormalizeDraft()` 与 [359](../lib/input/appProfiles.ahk#L359) `AppProfilePrepareDraftContent()`；调用在 [lib/features/settings.ahk:559](../lib/features/settings.ahk#L559) 和 [593](../lib/features/settings.ahk#L593)。
 - 建议把严格验证和规范化提成 AppProfilesNormalizeDraft(profiles, &normalizedProfiles, &errorText)，在一次遍历里处理 ID/path 去重、缺省名称、enabled、Keys/CustomHotkey 标量和 @native 限制；非法用户输入报错，不 continue 丢项。
 - SettingsApplyDraft() 第 665 行接收 normalizedProfiles；第 691 行的序列化只消费它，去掉 PrepareDraftContent() 开头第二份规则。当前仅这一个严格 UI 调用链，可直接统一接口，不保留一套兼容包装来重复校验。
 - 316–382 行的未知 metadata、未知 key 与额外 KeyProfile 子段保留逻辑必须完整保留，缺省继承仍通过省略空 override 表达；序列化改造不能把它们当成脏数据清掉。
 - 静态确认：每条验证规则只在规范化边界有一份；严格草稿错误仍阻止全部 INI 写入；磁盘加载的容错路径与 UI 严格路径不要互相替代。
 
-**实施状态：已完成规范化与序列化分层，静态核查通过。** `AppProfilesNormalizeDraft()` 一次遍历草稿，完成 profile ID/路径校验与去重、显示名缺省、enabled 规范化、`Keys`/`CustomHotkey` Map 类型及字段校验、`@native` 限制，并返回规范 profile 数据；错误类型或未知快捷键分组会拒绝整个草稿，不再静默跳过。`SettingsApplyDraft()` 只调用该严格入口一次；`AppProfilePrepareDraftContent()` 只序列化规范数据并保留原 INI 中的未知 metadata、未知键和额外 KeyProfile 子段。未运行程序或测试，运行时配置写入行为未验证。
+**实施状态：已完成规范化、序列化分层和复审边界修复；静态核查通过。** `SettingsApplyDraft()` 在 `profilesDirty=true` 时现在要求消息携带 Array 类型的 `profiles`，缺失或错误类型立即拒绝，不再替换为空数组后可能删除所有 profile。`AppProfilesNormalizeDraft()` 对缺失的 `enabled` 使用默认 true；显式字段只接受布尔、0/1 或 true/false/on/off，其他值拒绝整个草稿。原有 ID/路径校验与去重、显示名缺省、快捷键分组类型/字段校验、`@native` 限制和未知 metadata 保留规则维持不变。
+
+静态复核确认 malformed payload 在任何写盘前被拒绝、显式布尔解析有失败状态、合法缺省仍归一化为字符串 1，并且 `AppProfilePrepareDraftContent()` 只接收已规范化 Array。AHK `/validate` 与 `#Warn All, StdOut` 通过；未运行程序或测试，profile 写盘及设置页保存时序未动态验证。
 
 ### 24 每 500ms 重新解析 profile——成立，已整改，P3
 
@@ -608,7 +616,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/everything/everything_panel.ahk:95](../lib/features/everything/everything_panel.ahk#L95) action分支95–104；[lib/features/everything/everything.ahk:368](../lib/features/everything/everything.ahk#L368) FindResult()/HandleAction（368–399）、164–190查询启动及250–263版本发布；页面 [pages/everything.html:436](../pages/everything.html#L436) 菜单、481双击及618–619键盘动作。
+- 位置：[lib/features/everything/everything_panel.ahk:95](../lib/features/everything/everything_panel.ahk#L95) action分支95–104；[lib/features/everything/everything.ahk:368](../lib/features/everything/everything.ahk#L368) FindResult()/HandleAction（368–399）、160–200查询启动及216–263版本发布；共享进程、重试与发布门在 [lib/features/qbar/qbar_everything.ahk:10](../lib/features/qbar/qbar_everything.ahk#L10)；页面 [pages/everything.html:436](../pages/everything.html#L436) 菜单、481双击及618–619键盘动作。
 - 消息入口复用 [lib/shared/llm.ahk:162](../lib/shared/llm.ahk#L162) LLMMsgNumber(integerOnly=true)，要求解析成功、结果为 Integer 且版本大于 0 才排队；定时回调接收解析后的整数，不传原始字符串。
 - FindResult() 去掉 version="" 默认值，拒绝非 Integer、非正数或与 EverythingResultsVersion 不符，再按 resultId 查找。该函数目前只有 HandleAction 一个调用点，必须同步其参数；不能只在消息入口比较版本，因为 timer 执行前结果集可能变化。
 - 新查询开始时立即推进结果版本，使旧菜单/旧结果动作失效；该查询成功后的结果发布使用此版本。这样队列中的旧动作即使在新搜索尚未返回时才执行，也不能操作旧结果。保留单调版本、结果 ID、页面 resultsInteractive、菜单 menuResultVersion 快照和“结果已不可用”反馈，不另建候选快照。
@@ -618,7 +626,10 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 - 修改 [lib/features/everything/everything_panel.ahk](../lib/features/everything/everything_panel.ahk) 的 action 消息入口：复用 LLMMsgNumber(integerOnly=true)，仅将解析成功的正 Integer 版本绑定到延迟动作；缺失、格式非法、非正数或不能表示为 Integer 的版本不会入队。
 - 修改 [lib/features/everything/everything.ahk](../lib/features/everything/everything.ahk)：每次新查询开始时推进 EverythingResultsVersion，查询结果沿用该代次发布；EverythingFindResult() 改为必须传入版本，并在扫描结果前拒绝非正 Integer 及非当前版本。延迟动作因此会在新查询开始或结果更新后被拒绝，原有“结果已不可用”反馈保留。
-- 静态核查：动作入口唯一绑定到 EverythingHandleAction；FindResult 只有该调用点且无默认版本；页面菜单、双击和键盘动作都发送 resultsVersion；查询开始、空结果发布、普通结果发布使用一致的递增代次。未运行 AHK、程序、脚本或测试；WebView 消息时序、搜索期间页面反馈和实际文件动作仍未运行验证。
+- 修正共享 ES 后端的请求所有权：`EverythingRunQuery()` 传入当前 `requestId`；进程和 retry job 保存该代次；探测、回退、重试、超时/失败反馈及结果发布都同时校验 `QbarEsSeq`、当前 `EverythingQuerySeq` 和面板可见状态。取消查询会推进两个序号，使已排队的进程/回调失效。静态搜索确认该后端当前只有独立 Everything 页面一个调用方，因此直接发布到该页面，不保留未使用的 Qbar 结果上下文分支；保留查询上限加一项用于截断判断。
+- 静态核查：动作入口唯一绑定到 EverythingHandleAction；FindResult 只有该调用点且无默认版本；页面菜单、双击和键盘动作都发送 resultsVersion；查询开始、空结果发布、普通结果发布使用一致的递增代次。后端所有 `QbarEsRequestIsCurrent()` 调用均传入进程序号和页面查询序号。未运行 AHK、程序、脚本或测试；WebView 消息时序、搜索期间页面反馈和实际文件动作仍未运行验证。
+
+**最终复审补充（P1 回归，已修复）：** 通过 Qbar 执行内置 Everything 工具时，宿主先隐藏 Qbar；旧共享后端却无条件捕获 Qbar 查询上下文，独立 Everything 的正常搜索因此被拒绝，页面可能停留在 loading。最终修复移除了没有其他调用方的 Qbar 结果上下文分支，统一用 Everything 页面查询代次、ES job 序号与面板可见状态保护启动、探测、回退、重试、错误回执和结果发布。上述拒绝发生在代码检查边界，未被表述为运行时复现。
 
 ### 32 Everything pageReady 镜像——成立，P3 简化
 
@@ -693,13 +704,13 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 **具体位置与建议改法**
 
-- 位置：[pages/settings-page.js:1701](../pages/settings-page.js#L1701) renderAll（完整快照入口）；[1778](../pages/settings-page.js#L1778) applySettingsSaveReceipt；[660](../pages/settings-page.js#L660) shortcuts、[912](../pages/settings-page.js#L912) custom、[928](../pages/settings-page.js#L928) pairs、[1390](../pages/settings-page.js#L1390) plugins、[1435](../pages/settings-page.js#L1435) bindings；[1735](../pages/settings-page.js#L1735) 外部快照草稿保护。
-- `renderHotkeyEditor()`（1695）只刷新 scope/custom/shortcuts；全局/profile选择在 `createGlobalHotkeyRow()`（1498）和 `createHotkeyApplicationRow()`（1525）调用。profile启停只刷 scope/应用列表；删除只在当前范围改变时重绘；首次完整快照由 `receiveSnapshot()`（1734）调用 `renderAll()`。
-- 恢复继承在 `syncShortcutRestoreButton()`（637）只刷新相关快捷键区域。**再次复核补充：**原动作曾走全页 renderAll→renderShortcuts→applyShortcutFilter（588），将同范围手动展开组折叠；现仅局部重绘并在 `renderShortcuts()`（660）恢复展开状态。
-- 在同一范围重建前临时记录 open group ID；先完成过滤，再在无搜索词时恢复 open。搜索自动展开不被覆盖，范围切换仍重置展开状态；不新增全页持久 mounted/version/DOM diff 状态。
+- 位置：[pages/settings-page.js:1704](../pages/settings-page.js#L1704) renderAll（完整快照入口）；[1782](../pages/settings-page.js#L1782) applySettingsSaveReceipt；[589](../pages/settings-page.js#L589) applyShortcutFilter、[663](../pages/settings-page.js#L663) shortcuts、[915](../pages/settings-page.js#L915) custom、[931](../pages/settings-page.js#L931) pairs、[1393](../pages/settings-page.js#L1393) plugins、[1438](../pages/settings-page.js#L1438) bindings；[1737](../pages/settings-page.js#L1737) 外部快照草稿保护。
+- `renderHotkeyEditor()`（1698）只刷新 scope/custom/shortcuts；全局/profile选择在 `createGlobalHotkeyRow()`（1501）和 `createHotkeyApplicationRow()`（1528）调用。profile启停只刷 scope/应用列表；删除只在当前范围改变时重绘；首次完整快照由 `receiveSnapshot()`（1737）调用 `renderAll()`。
+- 恢复继承在 `syncShortcutRestoreButton()`（640）只刷新相关快捷键区域。同范围重建由 `renderShortcuts()`（663）记录/恢复分组状态，但自定义热键重绘也调用 `applyShortcutFilter()`（589）；原函数会先将分组关闭，保存回执同样可能在快捷键重绘之后触发此路径。
+- `applyShortcutFilter(updateShortcutGroups)` 仅在快捷键过滤入口更新快捷键组；`renderCustomHotkeys()` 传 `false`，只刷新自定义热键列表。无搜索时同范围重建继续保留手动展开组，范围切换仍重置；搜索自动展开规则不变。不增加全页持久 mounted/version/DOM diff 状态。
 - 保留draft/baseSections、dirtyFields/pluginsDirty/profilesDirty、快照保护、录制停止规则、过滤/overridesOnly和AppDialog。静态确认局部profile操作不刷新Tab/插件/绑定，首次snapshot仍完整，所有相关UI都被更新；实际焦点/过滤/收益待运行确认。
 
-**实施状态：已完成局部渲染，静态核查通过。** profile 选择、创建、删除、启停及恢复继承只更新相关快捷键区域；同范围重建快捷键时保留无搜索过滤下手动展开的分组。保存回执按提交域更新：只写回仍等于旧基线的表单字段；TabHotString、Keys、CustomHotkey、翻译模式、profile、插件和窗口绑定分别刷新相应列表或控件，不再因回执重建全部动态列表。草稿与新基线比较仍用于保留保存期间继续产生的编辑。`renderAll()` 保留给完整设置快照入口。未运行页面；实际焦点、展开状态和大量列表下的收益仍未验证。
+**实施状态：已完成局部渲染及同范围展开状态修复，静态核查通过。** profile 选择、创建、删除、启停及恢复继承只更新相关快捷键区域；自定义热键重绘不再重设快捷键分组状态，同范围无搜索重建保留手动展开分组，范围切换及搜索自动展开规则不变。保存回执按提交域更新：只写回仍等于旧基线的表单字段；TabHotString、Keys、CustomHotkey、翻译模式、profile、插件和窗口绑定分别刷新相应列表或控件，不再因回执重建全部动态列表。草稿与新基线比较仍用于保留保存期间继续产生的编辑。`renderAll()` 保留给完整设置快照入口。未运行页面；实际焦点、展开状态和大量列表下的收益仍未验证。
 
 ### 35 Everything 逐行事件监听——事实成立，P3 可选
 
@@ -754,3 +765,5 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 修复 `lib/shared/panelHost.ahk` 的 `cursorMove` JSON 比较字符串，使它通过 AHK 语法验证。
 - `Initialize()` 将一次性错误提示变量限制在局部；`ReloadSettings()` 使用独立的 `loadedUserDocument` 名称。
 - `QbarShow()` / `QbarHide()` 明确重置全局 `QbarCurrentQueryText`，避免旧查询文本残留；`QbarStoreUseExistingTarget()` 将局部校验信息重命名为 `targetValidationMessage`，清除 AHK 同名遮蔽警告。
+- 用户提供的 `ClipboardHistoryJoin` 未赋值警告已按完整 include 入口复核：定义位于 `lib/features/clipboard/clipboard_formats.ahk`，入口在 `capslock_p2.ahk` 中先包含 store、再包含 formats；完整入口以 `#Warn All, StdOut` `/validate` 返回 `exit=0` 且无警告，因此没有增加重复 join helper。局部文件分析仍可能无法解析跨 `#Include` 函数。
+- 对当前 `capslock_p2.ahk` 的全部 include 重新执行 AutoHotkey `/validate` 并开启 `#Warn All, StdOut`，结果 `exit=0`、无警告；只做语法验证，未启动应用或运行项目脚本/测试。

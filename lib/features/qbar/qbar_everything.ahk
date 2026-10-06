@@ -7,53 +7,53 @@ QbarEsAlias(token) {
     return aliases.Has(StrLower(token))
 }
 
-QbarEsResolveBackend(arg, seq) {
+QbarEsResolveBackend(arg, seq, querySeq) {
     global QbarEsUseBundled
-    if !QbarEsCaptureResultContext(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return false
     exe := QbarEsExe()
     if exe = "" {
-        QbarEsHint(QbarText("es.exe is missing from the resources directory.", "资源目录中缺少 es.exe。"))
+        QbarEsHint(QbarText("es.exe is missing from the resources directory.", "资源目录中缺少 es.exe。"), seq, querySeq)
         return false
     }
     if QbarEsUseBundled = -1
-        return QbarEsStartSearch(arg, -1, seq)
+        return QbarEsStartSearch(arg, -1, seq, querySeq)
     if QbarEsUseBundled = 1
-        return QbarEsEnsureBundled(arg, seq)
+        return QbarEsEnsureBundled(arg, seq, querySeq)
     if ProcessExist("Everything.exe")
-        return QbarEsStartProbe("default", seq, arg)
+        return QbarEsStartProbe("default", seq, arg, querySeq)
     QbarEsUseBundled := 1
-    return QbarEsEnsureBundled(arg, seq)
+    return QbarEsEnsureBundled(arg, seq, querySeq)
 }
 
 ; Starts the bundled copy under its own instance name with its own config and
 ; database. A probe is always attempted first, so shutdown only exits a server
 ; this session actually launched.
 
-QbarEsEnsureBundled(arg, seq) {
+QbarEsEnsureBundled(arg, seq, querySeq) {
     global QbarEsBundledState, QbarEsBundledFailed
     if QbarEsBundledFailed || QbarEsBundledState = "failed" {
-        QbarEsHint(QbarText("No Everything backend is available.", "没有可用的 Everything 后端。"))
+        QbarEsHint(QbarText("No Everything backend is available.", "没有可用的 Everything 后端。"), seq, querySeq)
         return false
     }
     if QbarEsBundledState = "reachable"
-        return QbarEsStartSearch(arg, 1, seq)
+        return QbarEsStartSearch(arg, 1, seq, querySeq)
     if QbarEsBundledState = "starting"
-        return QbarEsScheduleRetry(seq, arg, 250)
+        return QbarEsScheduleRetry(seq, arg, 250, querySeq)
     if QbarEsEverythingExe() = "" {
         QbarEsBundledState := "failed"
         QbarEsBundledFailed := true
-        QbarEsHint(QbarText("No Everything available for file search.", "没有可用的 Everything，文件搜索不可用。"))
+        QbarEsHint(QbarText("No Everything available for file search.", "没有可用的 Everything，文件搜索不可用。"), seq, querySeq)
         return false
     }
-    return QbarEsStartProbe("bundled", seq, arg)
+    return QbarEsStartProbe("bundled", seq, arg, querySeq)
 }
 
-QbarEsLaunchBundled(seq, arg) {
+QbarEsLaunchBundled(seq, arg, querySeq) {
     global QbarEsBundledStarted, QbarEsBundledState, QbarEsWarmupDeadline, QbarEsBundledFailed
     exe := QbarEsEverythingExe()
     if exe = "" {
-        QbarEsHint(QbarText("No Everything available for file search.", "没有可用的 Everything，文件搜索不可用。"))
+        QbarEsHint(QbarText("No Everything available for file search.", "没有可用的 Everything，文件搜索不可用。"), seq, querySeq)
         QbarEsBundledFailed := true
         QbarEsBundledState := "failed"
         return false
@@ -66,7 +66,7 @@ QbarEsLaunchBundled(seq, arg) {
     try Run("*RunAs " . command)
     catch {
         DebugLog("Bundled Everything start declined")
-        QbarEsHint(QbarText("File search needs admin rights to build the index.", "文件搜索需要管理员权限来建立索引。"))
+        QbarEsHint(QbarText("File search needs admin rights to build the index.", "文件搜索需要管理员权限来建立索引。"), seq, querySeq)
         QbarEsBundledFailed := true
         QbarEsBundledState := "failed"
         return false
@@ -75,45 +75,45 @@ QbarEsLaunchBundled(seq, arg) {
     QbarEsBundledState := "starting"
     QbarEsWarmupDeadline := A_TickCount + 15000
     DebugLog("Bundled Everything starting instance=" . QbarEsInstanceName())
-    return QbarEsScheduleRetry(seq, arg, 250)
+    return QbarEsScheduleRetry(seq, arg, 250, querySeq)
 }
 
-QbarEsStartProbe(kind, seq, arg := "") {
+QbarEsStartProbe(kind, seq, arg, querySeq) {
     global QbarEsUseBundled
-    if !QbarEsCaptureResultContext(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return false
     useBundled := kind = "bundled" ? 1 : -1
-    if QbarEsStartProcess("probe-" . kind, arg, useBundled, seq, 3000)
+    if QbarEsStartProcess("probe-" . kind, arg, useBundled, seq, 3000, querySeq)
         return true
-    if !QbarEsRequestIsCurrent(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return false
     if kind = "default" {
         QbarEsUseBundled := 1
-        return QbarEsEnsureBundled(arg, seq)
+        return QbarEsEnsureBundled(arg, seq, querySeq)
     }
-    return QbarEsLaunchBundled(seq, arg)
+    return QbarEsLaunchBundled(seq, arg, querySeq)
 }
 
-QbarEsStartSearch(arg, useBundled, seq) {
+QbarEsStartSearch(arg, useBundled, seq, querySeq) {
     global QbarEsUseBundled, QbarEsBundledState, QbarEsWarmupDeadline
-    if !QbarEsCaptureResultContext(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return false
-    if QbarEsStartProcess("search", arg, useBundled, seq, 5000)
+    if QbarEsStartProcess("search", arg, useBundled, seq, 5000, querySeq)
         return true
-    if !QbarEsRequestIsCurrent(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return false
     if useBundled = -1 {
         QbarEsUseBundled := 1
-        return QbarEsEnsureBundled(arg, seq)
+        return QbarEsEnsureBundled(arg, seq, querySeq)
     }
     if QbarEsBundledState = "starting" && A_TickCount < QbarEsWarmupDeadline
-        return QbarEsScheduleRetry(seq, arg, 750)
-    QbarEsHint(QbarText("Unable to start Everything search.", "无法启动 Everything 搜索。"))
+        return QbarEsScheduleRetry(seq, arg, 750, querySeq)
+    QbarEsHint(QbarText("Unable to start Everything search.", "无法启动 Everything 搜索。"), seq, querySeq)
     return false
 }
 
-QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
-    global QbarEsJob, QbarEsJobId, EverythingEsMode
+QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
+    global QbarEsJob, QbarEsJobId
     exe := QbarEsExe()
     if exe = ""
         return false
@@ -123,8 +123,7 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
     tmp := QbarEsTempPath(seq, jobId)
     instance := useBundled = 1 ? " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) : ""
     limit := SubStr(kind, 1, 6) = "probe-"
-        ? 1
-        : (EverythingEsMode ? Min(501, QbarEsMaxResults() + 1) : QbarEsMaxResults())
+        ? 1 : Min(501, QbarEsMaxResults() + 1)
     query := SubStr(kind, 1, 6) = "probe-" ? "1" : arg
     command := QbarEsQuoteArg(exe) . instance . " -csv -no-header -n " . limit
         . " -full-path-and-name -export-csv " . QbarEsQuoteArg(tmp)
@@ -147,6 +146,7 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
         "startedAt", A_TickCount,
         "deadline", A_TickCount + timeoutMs,
         "useBundled", useBundled,
+        "querySeq", querySeq,
         "arg", arg,
         "owner", "qbar-es-client")
     SetTimer(QbarEsPollJob, -50)
@@ -155,7 +155,7 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs) {
     return true
 }
 
-QbarEsScheduleRetry(seq, arg, delayMs) {
+QbarEsScheduleRetry(seq, arg, delayMs, querySeq) {
     global QbarEsJob, QbarEsJobId, QbarEsWarmupDeadline
     QbarEsClearJob(true)
     QbarEsJobId += 1
@@ -170,6 +170,7 @@ QbarEsScheduleRetry(seq, arg, delayMs) {
         "deadline", QbarEsWarmupDeadline,
         "nextAttempt", A_TickCount + delayMs,
         "useBundled", 1,
+        "querySeq", querySeq,
         "arg", arg,
         "owner", "qbar-timer")
     SetTimer(QbarEsPollJob, -50)
@@ -190,16 +191,17 @@ QbarEsPollJob(*) {
             QbarEsClearJob(false)
             QbarEsBundledState := "unknown"
             QbarEsUseBundled := 0
-            QbarEsHint(QbarText("Everything is still building its index.", "Everything 仍在建立索引。"))
+            QbarEsHint(QbarText("Everything is still building its index.", "Everything 仍在建立索引。"),
+                job["seq"], job["querySeq"])
             return
         }
         if A_TickCount < job["nextAttempt"] {
             SetTimer(QbarEsPollJob, -100)
             return
         }
-        seq := job["seq"], arg := job["arg"]
+        seq := job["seq"], arg := job["arg"], querySeq := job["querySeq"]
         QbarEsClearJob(false)
-        QbarEsStartSearch(arg, 1, seq)
+        QbarEsStartSearch(arg, 1, seq, querySeq)
         return
     }
 
@@ -225,22 +227,23 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
     if !QbarEsSameJob(job)
         return
     kind := job["kind"], seq := job["seq"], arg := job["arg"]
+    querySeq := job["querySeq"]
     useBundled := job["useBundled"]
     results := (!timedOut && exitCode = 0 && kind = "search")
         ? QbarParseEsCsv(job["tmpPath"])
         : []
     QbarEsClearJob(timedOut)
-    if !QbarEsRequestIsCurrent(seq)
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return
 
     if kind = "probe-default" {
         if !timedOut && exitCode = 0 {
             QbarEsUseBundled := -1
             DebugLog("Es backend=default")
-            QbarEsStartSearch(arg, -1, seq)
+            QbarEsStartSearch(arg, -1, seq, querySeq)
         } else {
             QbarEsUseBundled := 1
-            QbarEsEnsureBundled(arg, seq)
+            QbarEsEnsureBundled(arg, seq, querySeq)
         }
         return
     }
@@ -249,26 +252,27 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
             QbarEsUseBundled := 1
             QbarEsBundledState := "reachable"
             DebugLog("Es backend=bundled-existing")
-            QbarEsStartSearch(arg, 1, seq)
+            QbarEsStartSearch(arg, 1, seq, querySeq)
         } else
-            QbarEsLaunchBundled(seq, arg)
+            QbarEsLaunchBundled(seq, arg, querySeq)
         return
     }
 
     if useBundled = -1 && (timedOut || exitCode != 0) {
         DebugLog("Es default backend unavailable; switching to bundled")
         QbarEsUseBundled := 1
-        QbarEsEnsureBundled(arg, seq)
+        QbarEsEnsureBundled(arg, seq, querySeq)
         return
     }
     if useBundled = 1 && (timedOut || exitCode != 0) {
         if QbarEsBundledState = "starting" && A_TickCount < QbarEsWarmupDeadline {
-            QbarEsScheduleRetry(seq, arg, 750)
+            QbarEsScheduleRetry(seq, arg, 750, querySeq)
             return
         }
         QbarEsBundledState := "unknown"
         QbarEsUseBundled := 0
-        QbarEsHint(QbarText("Everything search did not respond.", "Everything 搜索未响应。"))
+        QbarEsHint(QbarText("Everything search did not respond.", "Everything 搜索未响应。"),
+            seq, querySeq)
         return
     }
     if useBundled = 1 {
@@ -276,56 +280,18 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
         QbarEsWarmupDeadline := 0
     }
     DebugLog("Es search results=" . results.Length)
-    QbarEsPublishResults(results, seq)
+    QbarEsPublishResults(results, seq, querySeq)
 }
 
-QbarEsPublishResults(results, seq) {
-    global EverythingEsMode, QbarEsResultContext
-    if !QbarEsRequestIsCurrent(seq)
+QbarEsPublishResults(results, seq, querySeq) {
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return
-    context := QbarEsResultContext
-    if Type(context) != "Map" || context["seq"] != seq
-        return
-    if !QbarQueryContextCurrent(context["registryGeneration"],
-        context["queryId"], context["querySeq"], context["sessionId"])
-        return
-    if EverythingEsMode
-        EverythingPublishResults(results, seq)
-    else {
-        provider := QbarRegistryDynamicProviderByHandler("builtin.open-path")
-        if QbarRegistryDynamicProviderUnavailable("builtin.open-path")
-            return
-        rows := []
-        for item in results
-            rows.Push(QbarIndexAttachDynamicProvider(item, provider, "builtin.open-path"))
-        QbarSendResults(rows, false, "", "normal", context["queryId"],
-            context["querySeq"], context["query"])
-    }
-}
-
-QbarEsCaptureResultContext(seq) {
-    global QbarEsResultContext, QbarSessionId, QbarPageQueryId, QbarQuerySeq
-    global QbarCurrentQueryText
-    if Type(QbarEsResultContext) = "Map" && QbarEsResultContext["seq"] = seq
-        return true
-    registryGeneration := QbarRegistryGeneration()
-    if !QbarQueryContextCurrent(registryGeneration, QbarPageQueryId,
-        QbarQuerySeq, QbarSessionId)
-        return false
-    QbarEsResultContext := Map(
-        "seq", seq,
-        "sessionId", QbarSessionId,
-        "queryId", QbarPageQueryId,
-        "querySeq", QbarQuerySeq,
-        "query", QbarCurrentQueryText,
-        "registryGeneration", registryGeneration)
-    return true
+    EverythingPublishResults(results, seq, querySeq)
 }
 
 QbarEsCancelJob(reason := "") {
-    global QbarEsSeq, QbarEsResultContext
+    global QbarEsSeq
     QbarEsSeq += 1
-    QbarEsResultContext := 0
     QbarEsClearJob(true)
     if reason != ""
         DebugLog("Es job cancelled")
@@ -361,14 +327,13 @@ QbarEsSameJob(job) {
 }
 
 QbarEsJobIsCurrent(job) {
-    return QbarEsSameJob(job) && QbarEsRequestIsCurrent(job["seq"])
+    return QbarEsSameJob(job)
+        && QbarEsRequestIsCurrent(job["seq"], job["querySeq"])
 }
 
-QbarEsRequestIsCurrent(seq) {
-    global QbarEsSeq, EverythingEsMode, EverythingVisible
-    if seq != QbarEsSeq
-        return false
-    return EverythingEsMode && EverythingVisible
+QbarEsRequestIsCurrent(seq, querySeq) {
+    global QbarEsSeq, EverythingVisible, EverythingQuerySeq
+    return seq = QbarEsSeq && querySeq = EverythingQuerySeq && EverythingVisible
 }
 
 QbarEsExitCode(job) {
@@ -543,13 +508,8 @@ QbarEsMaxResults() {
     return SettingInteger("Qbar", "esMaxResults", 50, 1, 500)
 }
 
-; One hint per panel show, so a missing prerequisite does not pop a message on
-; every keystroke.
-
-QbarEsHint(text) {
-    global EverythingEsHintShown
-    if EverythingEsHintShown
+QbarEsHint(text, seq, querySeq) {
+    if !QbarEsRequestIsCurrent(seq, querySeq)
         return
-    EverythingEsHintShown := true
     EverythingSetError(text)
 }

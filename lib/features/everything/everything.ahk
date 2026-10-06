@@ -17,8 +17,6 @@ global EverythingIconSent := Map()
 global EverythingIconQueue := []
 global EverythingIconQueued := Map()
 global EverythingIconTimer := false
-global EverythingEsMode := false
-global EverythingEsHintShown := false
 global EverythingQueryCallback := 0
 
 global EverythingPanelWidth := 960
@@ -83,8 +81,6 @@ EverythingBuildQuery(text, category := "all") {
 EverythingShow(query := "", explicitQuery := false) {
     global EverythingVisible, EverythingPendingText, EverythingPendingOpen
     global EverythingOpenSerial, EverythingWindowInitialized, EverythingCategory, EverythingQueryText
-    global EverythingEsHintShown
-
     if explicitQuery && EverythingVisible
         EverythingCancelSearch("new open query")
     if explicitQuery {
@@ -98,8 +94,6 @@ EverythingShow(query := "", explicitQuery := false) {
         EverythingPendingOpen := true
         EverythingOpenSerial += 1
     }
-    EverythingEsHintShown := false
-
     if !EverythingEnsureWebView() {
         EverythingVisible := false
         return false
@@ -159,7 +153,7 @@ EverythingStartInitialQuery(text, category, serial, *) {
 
 EverythingBeginQuery(text, category := "all", immediate := false) {
     global EverythingQueryCallback, EverythingQuerySeq, EverythingQueryText, EverythingCategory
-    global EverythingVisible, EverythingEsMode, EverythingResults, EverythingResultsVersion
+    global EverythingVisible, EverythingResults, EverythingResultsVersion
     if !EverythingVisible
         return
     if !EverythingCategoryValid(category)
@@ -169,7 +163,6 @@ EverythingBeginQuery(text, category := "all", immediate := false) {
     EverythingQueryCallback := 0
     ; Invalidate the old backend immediately, before the new debounce window;
     ; otherwise a very fast old process could publish under the new request.
-    EverythingEsMode := false
     QbarEsCancelJob("everything query changed")
     EverythingCancelIconQueue()
     ; Invalidate actions against the previous result set as soon as a new
@@ -196,26 +189,25 @@ EverythingBeginQuery(text, category := "all", immediate := false) {
     }
     EverythingExec("window.setSearchState(" . JSON.stringify(Map(
         "state", "loading", "requestId", requestId, "message", EverythingText("Searching…", "搜索中…")), 0) . ");")
-    EverythingQueryCallback := EverythingRunQuery.Bind(EverythingQueryText, EverythingCategory, requestId)
+    EverythingQueryCallback := EverythingRunQuery.Bind(
+        EverythingQueryText, EverythingCategory, requestId)
     SetTimer(EverythingQueryCallback, immediate ? -1 : -100)
 }
 
 EverythingRunQuery(text, category, requestId, *) {
-    global EverythingVisible, EverythingQuerySeq, EverythingEsMode, EverythingEsHintShown
+    global EverythingVisible, EverythingQuerySeq
     global QbarEsSeq
     if !EverythingVisible || requestId != EverythingQuerySeq
         return
-    EverythingEsMode := true
-    EverythingEsHintShown := false
     query := EverythingBuildQuery(text, category)
     DebugLog("Everything query category=" . category)
     DebugLogPrivate("Everything query", query)
-    QbarEsResolveBackend(query, QbarEsSeq)
+    QbarEsResolveBackend(query, QbarEsSeq, requestId)
 }
 
-EverythingPublishResults(results, seq) {
+EverythingPublishResults(results, seq, requestId) {
     global EverythingVisible, EverythingResults, EverythingResultsVersion, EverythingQuerySeq
-    if !EverythingVisible || !QbarEsRequestIsCurrent(seq)
+    if !QbarEsRequestIsCurrent(seq, requestId)
         return
     limit := QbarEsMaxResults()
     truncated := results.Length > limit

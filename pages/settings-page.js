@@ -3,6 +3,7 @@ const state = {
   draft: null, baseSections: null, baseProfiles: [], basePlugins: [],
   page: 'general', dirty: false, pluginsDirty: false,
   dirtyFields: new Set(), windowPickerDialog: null,
+  saveSequence: 0, latestAppliedSaveId: 0, pendingSaveSections: new Map(),
   qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
   qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
   qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
@@ -585,34 +586,36 @@ function shortcutCategory(key, action) {
   if (/(^|_)mousespeed/.test(name)) return 'mouse';
   return 'other';
 }
-function applyShortcutFilter() {
+function applyShortcutFilter(updateShortcutGroups = true) {
   const query = ($('#shortcutFilter')?.value || '').trim().toLowerCase();
   const onlyOverrides = !!hotkeyProfile() && state.overridesOnly;
   let visibleShortcutCount = 0;
-  $$('.shortcut-group').forEach(group => {
-    let matchCount = 0;
-    $$('.shortcut-row', group).forEach(row => {
-      const matched = (!query || row.dataset.label.includes(query))
-        && (!onlyOverrides || row.dataset.overridden === 'true');
-      row.hidden = !matched;
-      if (matched) matchCount++, visibleShortcutCount++;
-    });
-    group.hidden = matchCount === 0;
-    group.open = !!query && matchCount > 0;
-    const count = $('.shortcut-group-count', group);
-    if (count) count.textContent = String(matchCount) + ' 项';
-  });
   const shortcutRoot = $('#shortcutList');
-  let shortcutEmpty = $('.shortcut-empty', shortcutRoot);
-  if (!visibleShortcutCount) {
-    if (!shortcutEmpty) {
-      shortcutEmpty = document.createElement('div');
-      shortcutEmpty.className = 'shortcut-empty';
-      shortcutRoot.append(shortcutEmpty);
-    }
-    shortcutEmpty.textContent = query ? '没有匹配的快捷键'
-      : onlyOverrides ? '此应用没有修改过的快捷键' : '没有可用的快捷键';
-  } else if (shortcutEmpty) shortcutEmpty.remove();
+  if (updateShortcutGroups) {
+    $$('.shortcut-group', shortcutRoot).forEach(group => {
+      let matchCount = 0;
+      $$('.shortcut-row', group).forEach(row => {
+        const matched = (!query || row.dataset.label.includes(query))
+          && (!onlyOverrides || row.dataset.overridden === 'true');
+        row.hidden = !matched;
+        if (matched) matchCount++, visibleShortcutCount++;
+      });
+      group.hidden = matchCount === 0;
+      group.open = !!query && matchCount > 0;
+      const count = $('.shortcut-group-count', group);
+      if (count) count.textContent = String(matchCount) + ' 项';
+    });
+    let shortcutEmpty = $('.shortcut-empty', shortcutRoot);
+    if (!visibleShortcutCount) {
+      if (!shortcutEmpty) {
+        shortcutEmpty = document.createElement('div');
+        shortcutEmpty.className = 'shortcut-empty';
+        shortcutRoot.append(shortcutEmpty);
+      }
+      shortcutEmpty.textContent = query ? '没有匹配的快捷键'
+        : onlyOverrides ? '此应用没有修改过的快捷键' : '没有可用的快捷键';
+    } else if (shortcutEmpty) shortcutEmpty.remove();
+  }
 
   const customRoot = $('#customHotkeyList');
   const customRows = $$('.custom-hotkey-row', customRoot);
@@ -919,11 +922,11 @@ function renderCustomHotkeys() {
     empty.className = 'custom-hotkey-empty';
     empty.textContent = '尚未添加自定义快捷键';
     root.append(empty);
-    applyShortcutFilter();
+    applyShortcutFilter(false);
     return;
   }
   entries.forEach(([trigger, send]) => addCustomHotkeyRow(root, trigger, send));
-  applyShortcutFilter();
+  applyShortcutFilter(false);
 }
 function renderPairs(sectionName, rootId, multiline = false) {
   const root = $('#' + rootId);
@@ -1736,6 +1739,7 @@ function receiveSnapshot(snapshot) {
     setStatus('外部配置已变化；请保存当前修改或取消后重新载入', true);
     return;
   }
+  state.pendingSaveSections.clear();
   if (!setTranslationLanguageCatalog(snapshot && snapshot.languageCatalog)) {
     setSettingsLoaded(false);
     setStatus('语言选项加载失败，请重新打开设置。', true);
@@ -1775,7 +1779,7 @@ function receiveSnapshot(snapshot) {
   if (snapshot.toast) showToast(snapshot.toast);
 }
 
-function applySettingsSaveReceipt(receipt) {
+function applySettingsSaveReceipt(receipt, submittedSections = undefined) {
   if (!receipt || typeof receipt !== 'object' || !state.draft) return;
   let baselineChanged = false;
   let profilesChanged = false;
@@ -1824,7 +1828,10 @@ function applySettingsSaveReceipt(receipt) {
           else if (sectionName === 'CustomHotkey') customHotkeysChanged = true;
           else if (sectionName === 'TTranslate' && key === 'mode') translateModeChanged = true;
         }
-        if (String(current[key] ?? '') !== oldValue) return;
+        const submitted = submittedSections && submittedSections[sectionName];
+        if (submitted && Object.hasOwn(submitted, key)) {
+          if (String(current[key] ?? '') !== String(submitted[key] ?? '')) return;
+        } else if (String(current[key] ?? '') !== oldValue) return;
         if (Object.hasOwn(committed, key)) current[key] = committed[key];
         else delete current[key];
         controlsToRefresh.add(sectionName + '\u0000' + key);
@@ -1925,8 +1932,12 @@ function saveDraft() {
     return;
   }
   setStatus('保存中…');
+  const saveId = ++state.saveSequence;
+  state.pendingSaveSections.set(saveId, clone(changes));
+  while (state.pendingSaveSections.size > 8)
+    state.pendingSaveSections.delete(state.pendingSaveSections.keys().next().value);
   const payload = {
-    type: 'saveSettings', page: state.page, sections: changes,
+    type: 'saveSettings', page: state.page, sections: changes, saveId,
     base: clone(state.baseSections || {}),
     profiles: clone((state.draft && state.draft.profiles) || []),
     profilesDirty: state.profilesDirty,
@@ -1936,8 +1947,18 @@ function saveDraft() {
   post(payload);
 }
 window.receiveSnapshot = receiveSnapshot;
-window.settingsSaved = function (ok, text, receipt) {
-  if (receipt) applySettingsSaveReceipt(receipt);
+window.settingsSaved = function (ok, text, receipt, saveId) {
+  const parsedSaveId = Number(saveId);
+  const hasSaveId = Number.isSafeInteger(parsedSaveId) && parsedSaveId > 0;
+  const hasSubmittedSnapshot = hasSaveId && state.pendingSaveSections.has(parsedSaveId);
+  const submittedSections = hasSaveId
+    ? state.pendingSaveSections.get(parsedSaveId) : undefined;
+  if (hasSaveId) state.pendingSaveSections.delete(parsedSaveId);
+  if (receipt && hasSaveId && hasSubmittedSnapshot
+    && parsedSaveId > state.latestAppliedSaveId) {
+    state.latestAppliedSaveId = parsedSaveId;
+    applySettingsSaveReceipt(receipt, submittedSections);
+  }
   const message = text || (ok ? '已保存' : '保存失败');
   setStatus(ok && state.dirty ? message + '；保存期间的新修改仍未保存' : message, !ok);
 };

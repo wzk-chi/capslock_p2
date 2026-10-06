@@ -308,7 +308,6 @@ SettingsApplyQbarPlugin(message) {
 }
 
 SettingsDeleteQbarPlugin(message) {
-    global QbarPluginHostError
     msg := LLMMessageParse(message)
     pluginId := Trim(LLMMsgField(msg, "pluginId"))
     if pluginId = "" {
@@ -321,8 +320,10 @@ SettingsDeleteQbarPlugin(message) {
         SetTimer(SettingsPushSnapshot, -1)
         return
     }
-    errorText := QbarPluginHostError != "" ? QbarPluginHostError : "删除工具失败。"
-    SettingsSendQbarPluginDeleted(false, errorText, pluginId)
+    DebugLog("Settings Qbar plugin delete failed plugin=" . pluginId)
+    SettingsSendQbarPluginDeleted(false, LLMText(
+        "Unable to delete this tool. Please try again.",
+        "无法删除此工具，请重试。"), pluginId, 0)
 }
 
 SettingsPageIsAllowed(page) {
@@ -481,6 +482,10 @@ SettingsApplyDraft(message) {
         sections := msg["draft"]["sections"]
     if !IsObject(sections)
         return
+    saveIdValid := false
+    saveId := LLMMsgNumber(msg, "saveId", &saveIdValid, 0, true)
+    if !saveIdValid || saveId < 1
+        saveId := 0
     if msg.Has("page")
         SettingsSetPendingPage(LLMMsgField(msg, "page"))
     savePhase := "collect settings"
@@ -502,19 +507,26 @@ SettingsApplyDraft(message) {
             if conflict != "" {
                 SettingsSendSaved(false, LLMText(
                     "The setting changed outside the settings page: " . conflict,
-                    "设置页外部已修改该字段：" . conflict))
+                    "设置页外部已修改该字段：" . conflict), 0, saveId)
                 return
             }
         }
         savePhase := "validate translation settings"
         if !SettingsValidateTranslationChanges(changes, &translationError) {
-            SettingsSendSaved(false, translationError)
+            SettingsSendSaved(false, translationError, 0, saveId)
             return
         }
 
         savePhase := "read application profile changes"
         profilesDirty := msg.Has("profilesDirty") && AppProfileBoolean(msg["profilesDirty"], false)
-        profiles := msg.Has("profiles") && Type(msg["profiles"]) = "Array" ? msg["profiles"] : []
+        profiles := []
+        if profilesDirty {
+            if !msg.Has("profiles") || Type(msg["profiles"]) != "Array" {
+                SettingsSendSaved(false, "应用配置数据无效。", 0, saveId)
+                return
+            }
+            profiles := msg["profiles"]
+        }
         DebugLog("Settings save request sections=" . changes.Count
             . " profilesDirty=" . profilesDirty . " profileCount=" . profiles.Length)
         if profilesDirty {
@@ -524,7 +536,7 @@ SettingsApplyDraft(message) {
             ; intact if the following complete reload cannot read the file.
             profilesChanged := false
             if !AppProfilesLoad(&profilesChanged, false) {
-                SettingsSendSaved(false, "无法读取应用配置文件，请检查后重试。")
+                SettingsSendSaved(false, "无法读取应用配置文件，请检查后重试。", 0, saveId)
                 return
             }
             baseProfileStamp := msg.Has("baseProfileStamp") ? String(msg["baseProfileStamp"]) : ""
@@ -535,15 +547,17 @@ SettingsApplyDraft(message) {
                 ReloadSettings(false, true, &loadSucceeded)
                 if !loadSucceeded {
                     SettingsSendSaved(false,
-                        "外部配置已变化，但当前配置文件无法完整读取。请检查文件后重试。")
+                        "外部配置已变化，但当前配置文件无法完整读取。请检查文件后重试。",
+                        0, saveId)
                     return
                 }
-                SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。")
+                SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。",
+                    0, saveId)
                 return
             }
             savePhase := "normalize application profiles"
             if !AppProfilesNormalizeDraft(profiles, &normalizedProfiles, &profileError) {
-                SettingsSendSaved(false, profileError)
+                SettingsSendSaved(false, profileError, 0, saveId)
                 return
             }
         }
@@ -553,7 +567,7 @@ SettingsApplyDraft(message) {
             if !QbarPluginHostPreparePluginChanges(msg["plugins"],
                 &preparedPlugins, &pluginValidationError) {
                 SettingsSendSaved(false, LLMText(
-                    "Plugin settings are invalid.", pluginValidationError))
+                    "Plugin settings are invalid.", pluginValidationError), 0, saveId)
                 return
             }
             msg["plugins"] := preparedPlugins
@@ -569,14 +583,14 @@ SettingsApplyDraft(message) {
         if invalidChange != "" {
             SettingsSendSaved(false, LLMText(
                 "Invalid setting value: " . invalidChange,
-                "设置值无效：" . invalidChange))
+                "设置值无效：" . invalidChange), 0, saveId)
             return
         }
         if profilesDirty {
             savePhase := "prepare application profiles"
             if !AppProfilePrepareDraftContent(normalizedProfiles, candidateContent,
                 &candidateContent, &profileError) {
-                SettingsSendSaved(false, profileError)
+                SettingsSendSaved(false, profileError, 0, saveId)
                 return
             }
         }
@@ -600,7 +614,7 @@ SettingsApplyDraft(message) {
                     : "设置无法应用。请检查应用配置文件后重试。"
                 receipt := SettingsBuildSaveReceipt(false, false, false,
                     settingsFileWritten, false)
-                SettingsSendSaved(false, errorText, receipt)
+                SettingsSendSaved(false, errorText, receipt, saveId)
                 return
             }
             runtimeApplied := true
@@ -611,7 +625,8 @@ SettingsApplyDraft(message) {
                 receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
                     profilesDirty, false, settingsFileWritten, loadSucceeded)
                 SettingsSendSaved(false,
-                    "应用配置已保存，但工具设置未保存。请重试保存工具设置。", receipt)
+                    "应用配置已保存，但工具设置未保存。请重试保存工具设置。",
+                    receipt, saveId)
                 return
             }
             pluginsCommitted := true
@@ -626,7 +641,7 @@ SettingsApplyDraft(message) {
         }
         receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
             profilesDirty, pluginsCommitted, settingsFileWritten, loadSucceeded)
-        SettingsSendSaved(true, text, receipt)
+        SettingsSendSaved(true, text, receipt, saveId)
         ; The save receipt updates committed baselines without replacing edits
         ; the user may have made while this request was in flight.
     } catch as saveError {
@@ -639,20 +654,22 @@ SettingsApplyDraft(message) {
             text := pluginsSubmitted && !pluginsCommitted
                 ? "设置已写入但未应用，工具设置也未保存。请检查配置文件并重新载入设置。"
                 : "设置已写入，但尚未应用。请检查配置文件并重新载入设置。"
-            SettingsSendSaved(false, text, receipt)
+            SettingsSendSaved(false, text, receipt, saveId)
         } else if configCommitted && pluginsSubmitted && !pluginsCommitted {
             receipt := SettingsBuildSaveReceipt(sectionsSubmitted,
                 profilesDirty, false, settingsFileWritten, runtimeApplied)
             SettingsSendSaved(false,
-                "应用配置已保存，但工具设置未保存。请重试保存工具设置。", receipt)
+                "应用配置已保存，但工具设置未保存。请重试保存工具设置。",
+                receipt, saveId)
         } else if (configCommitted || pluginsCommitted) {
             receipt := SettingsBuildSaveReceipt(sectionsSubmitted && runtimeApplied,
                 profilesDirty && runtimeApplied, pluginsCommitted,
                 settingsFileWritten, runtimeApplied)
             SettingsSendSaved(true,
-                "设置已保存，但页面状态未能立即刷新。请重新打开设置页。", receipt)
+                "设置已保存，但页面状态未能立即刷新。请重新打开设置页。",
+                receipt, saveId)
         } else {
-            SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
+            SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"), 0, saveId)
         }
     }
 }
@@ -696,11 +713,13 @@ SettingsFindDraftConflict(changes, base) {
     return ""
 }
 
-SettingsSendSaved(ok, text, receipt := 0) {
+SettingsSendSaved(ok, text, receipt := 0, requestId := 0) {
     global SettingsHost
     receiptJson := IsObject(receipt) ? JSON.stringify(receipt, 0) : "null"
+    requestIdJson := requestId > 0 && requestId = Floor(requestId)
+        ? String(Integer(requestId)) : "null"
     script := "window.settingsSaved(" . (ok ? "true" : "false") . ","
-        . LLMJsonQuote(text) . "," . receiptJson . ");"
+        . LLMJsonQuote(text) . "," . receiptJson . "," . requestIdJson . ");"
     PanelHostExecute(SettingsHost, script)
 }
 
