@@ -1,312 +1,177 @@
 # capslock_p2
 
-按住 **CapsLock**，整个键盘变成一层高效按键：光标移动、文本选择、删改编辑、窗口管理随手可及，
-松开即恢复打字。另带 qbar 启动器、翻译/本地词典、AI 问答、独立剪贴板等工具。
+按住 **CapsLock**，就能移动光标、选择和编辑文字、切换窗口；松开后照常打字。
+还可以快速打开程序、找文件、记笔记、翻译、问 AI，以及找回复制过的内容。
 
-本项目脱胎于 [Capslock+](https://github.com/capslox/capslock-plus)（AHK v1 原版，GPL v2），
-用 **AutoHotkey v2 重写并加以改进**：UI 面板改用 WebView2、新增翻译引擎注册表（LLM / 有道 / 火山）、
-Everything 文件搜索、屏幕自适应等。
-开发者请翻阅 [`docs/architecture.md`](docs/architecture.md)。
+本项目基于 [Capslock+](https://github.com/capslox/capslock-plus)，使用 AutoHotkey v2 重写，以 GPL v2 许可开源。
 
-## 功能总览
+## 开始使用
 
-| 功能 | 入口 |
+- **安装版**：运行 `capslock_p2-setup.exe`，安装后打开程序，无需另装 AutoHotkey。
+- **源码版**：安装 [AutoHotkey v2](https://www.autohotkey.com/)，双击 `capslock_p2.ahk`。
+- 工具面板需要 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)，Windows 11 通常已安装。文件搜索所需的 Everything 已内置。
+
+默认安装位置是 `%LocalAppData%\capslock_p2\`。可以换目录，请选择你有写入权限的位置。
+托盘出现程序图标后即可使用；首次全新启动会打开使用介绍，之后按 **CapsLock+F1** 可再看。
+
+按 **CapsLock+F12** 打开设置，也可右键托盘图标选择「设置」。
+开启自启动、调整按键和配置翻译服务都在这里完成，改完记得点「保存」。
+程序默认以管理员身份运行；可在「通用」中关闭，重启后生效。
+
+## CapsLock 怎么按
+
+- **组合键**：按住 CapsLock，再按另一个键，例如 CapsLock+Q 打开 qbar。
+- **单独短按**：默认切换大小写，也可以在「快捷键」中改成切换输入法等动作。
+
+下面列的是默认按键和命令；修改过的话，以你的设置为准。
+
+## 功能入口
+
+| 想做什么 | 默认入口 |
 |---|---|
-| CapsLock 键层（移动 / 选择 / 编辑 / 翻页 / 删行） | 按住 CapsLock + 字母区 |
-| qbar 启动器（搜索、启动、路径浏览） | CapsLock+Q |
-| Everything 独立文件搜索页 | CapsLock+Q → `e` / `everything` / `find` / `f` |
-| 文本替换（热串） | CapsLock+Tab |
-| 翻译面板（LLM / 有道 / 火山） | CapsLock+T 或 CapsLock+F3 |
-| 本地词典卡片（选中英文单词） | CapsLock+T / F3，单词命中本地词库时自动展示 |
-| AI 问答聊天（支持追问） | CapsLock+Q → 显式输入 `ai`/`q` |
-| QBar 笔记 | CapsLock+Q → `n` / `note` / `w` / `write` |
-| 独立剪贴板（3 组） | CapsLock+C/X/V、CapsLock+LAlt+C/X/V；切换键可自定义 |
-| 窗口绑定（winbind） | CapsLock+数字、CapsLock+LAlt+数字 |
-| 窗口半透明 / 置顶 | CapsLock+F4 / CapsLock+F6 |
-| 鼠标速度临时调节 | CapsLock+LAlt+滚轮 |
-| 媒体 / 音量控制 | 绑定 `keyFunc_media*` / `keyFunc_volume*` 使用 |
+| 打开程序、搜索网页、浏览路径 | CapsLock+Q |
+| 搜索电脑里的文件 | qbar 输入 `e` / `everything` / `find` / `f` |
+| 查单词、翻译选中文字 | CapsLock+T 或 CapsLock+F3 |
+| 问 AI | qbar 输入 `ai` / `q`，后面可直接跟问题 |
+| 记笔记、搜索笔记 | qbar 输入 `n` / `note` / `w` / `write` |
+| 找回复制过的内容 | CapsLock+Z，或 qbar 输入 `cv` |
+| 展开常用文字 | CapsLock+Tab |
+| 编辑选中文字 | CapsLock+F8 |
+| 管理设置 | CapsLock+F12，或 qbar 输入 `cl set` / `cl settings` |
 
-## 快速开始
+## 常用快捷键
 
-**环境**：Windows 10 / 11，安装 [AutoHotkey v2](https://www.autohotkey.com/)（开发版本 2.0.13）
-与 WebView2 Runtime（Windows 11 自带；Windows 10 需安装 Microsoft Edge WebView2 运行时）。
-Everything 为可选（`resources/` 已内置一份，首次运行会自动建立 NTFS 索引）。
-
-1. 双击 `capslock_p2.ahk`，托盘出现图标即已运行。
-2. 开机自启：右键托盘菜单「开机自启动」切换；或编辑 `capslock_p2.ini` 的 `[Global] autostart=1`
-   （保存后程序自动重读）。
-3. 默认值在 `capslock_p2-default.ini`，用户修改写入 `capslock_p2.ini`，只有有效变化才触发对应运行时更新，无需重启。
-   完整说明和示例见 `capslock_p2-settingsDemo.ini`（只读参考，程序不加载它）。
-
-发布版是**单文件安装包** `capslock_p2-setup.exe`（也常按版本命名如 `capslock_p2-setup-0.2.0.exe`）。
-运行后自动释放主程序、WebView2 页面、词典、SQLite、Everything 和配置模板，默认安装到
-`%LocalAppData%\capslock_p2\`。安装向导允许改目录（推荐用户有写权限的位置，程序会在安装目录旁
-保存配置、日志和窗口绑定记录）。**重新安装或升级会保留已有的 `capslock_p2.ini`**，API 配置不丢。
-Everything 索引数据在 `%LocalAppData%\capslock_p2\Everything\`。构建与发布细节见
-[`docs/packaging.md`](docs/packaging.md)。
-
-### CapsLock 的两种用法
-
-- **按住 CapsLock**：进入键层，字母键变成功能键（如 CapsLock+J/K/L/I = 左/下/右/上选择）。松开即恢复打字。
-- **点按 CapsLock**：触发 `press_caps` 动作。默认 `keyFunc_toggleCapsLock`（切换大小写），
-  示例配置改成了 `keyFunc_send(^{Space})`（发送 Ctrl+Space，常用于切换输入法）。
-
-## 默认按键布局（capslox 方案）
-
-完整布局见示例 ini 的 `[Keys]` 段，这里列出常用部分：
+LAlt 是键盘左边的 Alt。更多默认按键见 [capslock_p2-default.ini](capslock_p2-default.ini)。
 
 | 按键 | 功能 | 按键 | 功能 |
 |---|---|---|---|
-| CapsLock+S/F | ← / → | CapsLock+A/G | 按词 ← / → |
-| CapsLock+E/D | ↑ / ↓ | CapsLock+P/; | Home / End |
-| CapsLock+J/K/L/I | 选择 ←↓→↑ | CapsLock+H/N/M/O | 选词← / 选10行↓ / 选当前词 / 选到行尾 |
-| CapsLock+W/R | 退格 / 删除 | CapsLock+Backspace | 删整行 |
-| CapsLock+[ / ] | 删到行首 / （自定义） | CapsLock+/ | 删到行尾 |
-| CapsLock+C/X/V | 复制 / 剪切 / 粘贴（剪贴板 1） | CapsLock+LAlt+C/X/V | 同上（剪贴板 2） |
-| CapsLock+U | 选到行首 | CapsLock+空格 | 回车 |
-| CapsLock+- / = | PgUp / PgDn | CapsLock+Enter | 回车 |
-| CapsLock+Q | qbar 启动器 | CapsLock+T / F3 | 翻译 / 词典 |
-| CapsLock+Tab | 热串替换 | CapsLock+F1 | 打开使用介绍 |
-| CapsLock+F4 | 窗口透明切换 | CapsLock+F5 | 重载脚本（含配置） |
-| CapsLock+F6 | 窗口置顶切换 | CapsLock+1~0 | 激活绑定的窗口 1~10 |
-| CapsLock+LAlt+1~0 | 单击/双击/三击绑定窗口、窗口组、应用 | CapsLock+LAlt+滚轮 | 调节鼠标速度 |
-| CapsLock+F12 | 打开设置中心 |  |  |
+| CapsLock+S / F | 左 / 右 | CapsLock+E / D | 上 / 下 |
+| CapsLock+A / G | 向左 / 右移动一个词 | CapsLock+P / ; | 行首 / 行尾 |
+| CapsLock+J / L | 向左 / 右选择 | CapsLock+I / K | 向上 / 下选择 |
+| CapsLock+U / O | 选到行首 / 行尾 | CapsLock+H / . | 向左 / 右选一个词 |
+| CapsLock+, | 选当前词 | CapsLock+LAlt+, | 选当前行 |
+| CapsLock+Y / N | 向上 / 下选择 10 行 | CapsLock+W / R | 退格 / 删除 |
+| CapsLock+Backspace | 删除整行文字 | CapsLock+[ | 删到行首 |
+| CapsLock+/ | 删到行尾 | CapsLock+F8 | 编辑选中文字 |
+| CapsLock+- / = | 上 / 下翻页 | CapsLock+空格 | 回车 |
+| CapsLock+Enter | 移到行尾后换行 | CapsLock+F5 | 重启程序并重读设置 |
+| CapsLock+C / X / V | 第一组独立剪贴板 | CapsLock+LAlt+C / X / V | 第二组独立剪贴板 |
+| CapsLock+F4 | 短按切换半透明；按住并滚轮调节 | CapsLock+F6 | 切换窗口置顶 |
+| CapsLock+1～0 | 激活对应的绑定窗口 | CapsLock+LAlt+1～0 | 绑定窗口 |
+| CapsLock+LAlt+滚轮 | 临时调整鼠标速度，松开恢复 | CapsLock+F1 | 打开使用介绍 |
 
-所有键都可在 `[Keys]` 里改，值为 `keyFunc_` 开头的函数（可带参数，如
-`keyFunc_moveDown(10)`），完整函数清单见 `lib/input/keys.ahk`。
-全局自定义快捷键写在 `[CustomHotkey]` 中，格式为「触发键=发送键」，例如
-`!c=^c` 表示按 `Alt+C` 发送 `Ctrl+C`；设置中心的快捷键页可以直接录制。
-设置中心的快捷键页也支持点「录制」直接录入组合键，例如 Ctrl+Space 会保存为
-`keyFunc_send(^{Space})`。
+## 按自己的习惯改
 
-面板窗口（翻译 / 词典 / AI 问答）尺寸会随屏幕自动缩放，在你当前屏幕上不用手动调。
+在设置的「快捷键」中选择「全局」，或添加某个应用的专用设置。
+专用设置只在该应用处于前台时生效，没改过的按键继续使用全局设置。
 
-## CapsLock+Tab：文本替换（热串）
+自定义快捷键可以录制触发键，选择「发送按键」「自带功能」「保留原功能」或「禁用快捷键」。
+例如，把 Alt+C 改成复制，或让某个应用保留自己的 Ctrl+V。
+CapsLock 组合键和单独短按 CapsLock 的动作也可在这里调整。
 
-光标右侧无选中时作用于当前行，有选中时作用于选中文字。只做热串替换，未命中时不改变原文。
+## qbar：启动和搜索
 
-### 热串替换
+按 CapsLock+Q 打开，输入名称，用 ↑/↓ 选择，回车执行，Esc 或点击窗口外关闭。
+选中文字后打开 qbar，会自动带入选中的文字；输入为空时显示最近 10 条记录。
 
-```ini
-[TabHotString]
-clp=capslock-plus
-addr=example@example.com
-sig=——张三\n13800000000
-```
+- 中文应用支持拼音首字母和全拼前缀，例如 `wyy` 找“网易云音乐”；英文应用支持单词首字母，例如 `vs` 找 Visual Studio Code。
+- 输入 `bing 天气` 搜索网页；直接输入网址会打开浏览器。
+- 输入 `D:\docs\` 浏览文件夹，Tab 补全选中项，`\` 或 `/` 可补全并进入文件夹。
+- 搜索网站、快捷命令和工具别名可在设置的「qbar」中管理。同一个别名对应多个工具时，会保留全部候选供你选择。
 
-输入 `clp` 按 CapsLock+Tab → 替换成 `capslock-plus`。
+### 文件搜索
 
-- 尾部匹配：光标左边的文字以键结尾即可命中，键前面的文字原样保留。
-- 键的来源是 `[TabHotString]`。
-- `[TabHotString]` 的值支持两个转义（C 风格）：`\n` → 真实换行，`\\` → 一个 `\`
-  （所以字面的 `\n` 写成 `\\n`）；其余反斜杠组合原样保留，路径如 `D:\docs` 无需转义。
+输入 `e 报告` 直接搜索“报告”，也可输入 `e` 打开搜索页后再输入。
+左侧可按文件类型筛选，搜索框支持 `*.pdf`、`ext:pdf`、`size:>100mb` 等 Everything 写法。
+双击或回车打开结果，Ctrl+回车在文件夹中显示；右键可复制文件或路径。
 
-## qbar 启动器（CapsLock+Q）
+程序优先使用已运行的 Everything，否则启动内置版本，建立索引可能需要管理员确认。
+搜索窗口默认离开后收起；点「固定」可保持显示并置顶，点「独立窗口」可使用系统标题栏和任务栏按钮。
+不带关键词重新打开时保留上次输入和分类；带关键词打开时从「全部」分类重新搜索。
 
-弹出一个输入框面板，输入即过滤，↑/↓ 选择，回车执行，Esc 或点击面板外关闭。
-选中文本唤出时会**自动预填到输入框**。文件、文件夹和程序行显示真实的 shell 图标
-（与资源管理器一致）；搜索、网址等非文件行用类型字形。
+### 笔记
 
-输入为空时显示最近执行的历史记录，最多保留并展示 10 条。历史记录、使用频率和插件设置存放在
-`{安装目录}\data\qbar\qbar.db`；重复执行会移到最前。回车或点击可重新执行，
-Tab 会把完整输入带回 qbar 供修改。更换安装目录时复制整个 `data\qbar` 目录。
+输入 `n` 打开，`n 关键词` 搜索笔记。可按标签筛选，右下角按钮新增，点击标题编辑。
+编辑器支持标题、列表、表格、代码和图片；图片可粘贴或拖入。Ctrl+S 或 Ctrl+Enter 保存。
 
-升级时，如果新位置尚无数据库而旧位置 `%AppData%\capslock_p2\qbar.db` 存在，程序会校验后迁移数据并保留旧文件；
-两处数据库同时存在时，程序先校验安装目录中的数据库；有效时优先使用它，不合并也不删除旧文件。目标库无效时会停止 Qbar 初始化并提示两处路径，
-不会覆盖或合并数据库。迁移或写入失败时会提示检查安装目录权限后重试，不会悄悄建立空数据库或切回旧位置。
+单击文字预览复制，双击粘贴到之前的窗口；代码块和表格会复制完整内容，图片预览可复制图片。
+卡片右键可复制、粘贴、修改、置顶、删除或进入多选。笔记和插入的图片保存在本机。
 
-### 条目类型与配置
+## 查词、翻译和 AI
 
-- 搜索和运行命令由 Qbar 插件管理器维护，设置保存在 `{安装目录}\data\qbar\qbar.db`。
-- 每个命令可以拥有多个别名；别名冲突会同时显示候选，候选按使用频率排序。
-- 直接输入网址或域名仍会打开浏览器。
-- 不带触发词直接回车：像路径就打开，像网址就开浏览器；只有带触发词才算搜索。
+选中文字后按 CapsLock+T 或 CapsLock+F3：本地词典收录的英文单词会显示释义，其他文字进入翻译。
+没选文字时打开翻译输入框；尚未配置在线服务时会先打开设置。
 
-### 路径浏览
+词典无需联网，可听发音、查词形，并在搜索框中继续查词。
+在线翻译需在设置中填写服务信息，支持 LLM、有道和火山引擎。
+默认自动选择已配置的服务，优先 LLM；也可手动指定。翻译可选固定目标语言，或设定两种语言互译，在面板中交换方向。
 
-输入 `e:\` 或 `e:\abc\` 列出目录内容，继续输入继续过滤。补全按键：
+qbar 输入 `ai` 或 `q` 打开聊天，`ai 问题` 可直接提问。普通输入不会自动交给 AI。
+聊天支持追问，可从侧栏继续历史会话，也可重命名、置顶或删除。
+关闭后重新打开进入新对话，已有会话仍保留；切换到其他窗口时聊天不会自动收起。
 
-- **Tab**：把高亮行补进输入框（目录浏览时只替换最后一段路径）；列表隐藏时按 Tab 恢复显示。
-- **\ 或 /**：同上补全，且补出来是文件夹就再补一个 `\` 直接进入该目录；无可补全时按键原样输入。
+翻译和 AI 共用设置中「LLM」的服务地址、密钥和模型。
+「翻译」页选择翻译服务和语言，「AI 问答」页调整回答要求。没有服务信息时会引导你填写，服务商可能收费。
+有道可在 [控制台](https://ai.youdao.com/console/#/) 申请，火山翻译可在 [控制台](https://console.volcengine.com/translate) 开通。
 
-### 文件搜索（Everything)
+## 两组独立剪贴板
 
-在 qbar 输入 `e`、`everything`、`find` 或 `f`，回车打开独立 Everything 页面。四个别名完全等价；
-输入 `<别名> 关键词` 会把关键词带入页面并立即搜索。页面输入框支持 Everything 原生查询语法：
-`*.pdf`、`ext:pdf`、`size:>100mb`、`dm:today`、多关键词空格相与等，输入变化会以 100ms 防抖查询。
+- **第一组**：CapsLock+C / X / V 复制、剪切、粘贴。
+- **第二组**：同时多按住左 Alt，即 CapsLock+LAlt+C / X / V。
+- **系统剪贴板**：平常的 Ctrl+V；自定义快捷键或应用设置可覆盖它。
 
-页面左侧可以按全部、文件夹、EXCEL、WORD、PPT、PDF、图片、视频、音频和压缩文件筛选；结果支持
-双击/回车打开，Ctrl+回车在文件夹中显示。右键提供“文件夹中显示”“复制”“复制路径”“复制所在路径”。
-窗口使用原生标题栏，进入时自动聚焦输入框，失去焦点后自动隐藏；再次打开时保留输入和分类。
+两组内容互不覆盖，退出程序后不保留；要找以前复制的内容，请用剪贴板历史。
+设置「通用」中的「独立剪贴板」可关闭这两组功能；关闭后请用普通的 Ctrl+C / X / V 复制、剪切和粘贴。
 
-后端自动选择：本机 Everything 在运行就直接用它；没在运行则自动启动 `resources/` 里的内置实例
-（首次需要一次管理员确认建立 NTFS 索引，之后随程序启停）。二者都没有时给出提示。
+## 剪贴板历史
 
-可选配置（`[Qbar]`）：
+按 CapsLock+Z 打开，或在 qbar 输入 `cv`；`cv 关键词` 可直接搜索。
+默认记录复制过的文本、图片和文件列表，可按类型、日期和收藏筛选，也可添加备注、置顶或批量删除。
 
-```ini
-[Qbar]
-; esMaxResults=50    最多返回条数
-```
+单击或按 Enter 复制，双击或 Ctrl+Enter 粘贴到之前的窗口。
+在设置「qbar」中打开「剪贴板历史」，可关闭记录或调整数量、保存天数和单次大小。
+默认普通历史最多 500 条、保存 30 天；收藏和置顶不会自动清理，点「清空」会保留收藏。
+历史记录开关与独立剪贴板开关分别设置。文件记录只记原路径，不会备份原文件。
 
-`es.exe`、内置 Everything 和实例名由安装包资源策略管理，设置中心不提供路径覆盖；旧配置中的路径字段不再生效。配置层会为提示词和 Tab 替换处理单行 INI 存储编码，日志不写入 API Key、请求正文、剪贴板或用户输入。
+## 窗口绑定
 
-### 内置命令
+先打开窗口，短按 CapsLock+LAlt+数字绑定，再按 CapsLock+同一数字返回。
+设置的「窗口绑定」支持三种方式：
 
-| 输入 | 作用 |
+- **窗口**：绑定一个窗口，窗口重开后尝试找回，程序没运行时尝试启动。
+- **窗口组**：选择多个窗口，按数字键依次切换。
+- **应用**：绑定一个应用，自动切换它的窗口，没运行时尝试启动。
+
+CapsLock+LAlt+数字单击、双击、三击，分别绑定窗口、窗口组、应用；连续点击间隔需在半秒内。
+
+## 设置与数据保存
+
+设置保存在安装文件夹中的 `capslock_p2.ini`，同目录升级或重装会保留。
+一般设置保存后立即生效；手动修改配置文件后也会自动读取，以管理员身份运行的选项需重启。
+
+聊天、笔记和剪贴板历史保存在安装文件夹的 `data` 中，升级和卸载会保留。
+换目录或换电脑时，先退出程序，复制以下内容：
+
+| 内容 | 要复制的文件或文件夹 |
 |---|---|
-| `ai` / `q` | 打开空白 AI 聊天面板；追加问题可直接提问（使用共用 `[LLM]` 配置） |
-| `cl set` | 打开设置中心 |
-| `*RunAs 触发词 参数` | 以管理员身份执行运行插件命令 |
+| 个人设置和应用快捷键 | `capslock_p2.ini` |
+| 窗口绑定 | `capslock_p2-winsInfosRecorder.ini` |
+| qbar 设置与使用记录 | `data\qbar` |
+| 笔记和图片 | `data\qbar-notes` |
+| AI 会话 | `data\ai-chat` |
+| 剪贴板历史 | `data\clipboard-history` |
 
-**AI 问答需要显式触发**：在 qbar 输入 `ai` 或 `q` 打开空白聊天，输入 `ai 问题` 或 `q 问题` 直接提问。普通未匹配文本不会自动交给 AI。
+可以直接复制整个 `data` 文件夹。独立剪贴板的两组临时内容不在其中。
 
-### QBar 笔记
+需要手动配置时，默认值见 [capslock_p2-default.ini](capslock_p2-default.ini)，参考示例见
+[capslock_p2-settingsDemo.ini](capslock_p2-settingsDemo.ini)。只在个人配置中填写需要修改的项目，注释请单独成行。
 
-在 qbar 输入 `n`、`note`、`w` 或 `write` 打开笔记页，后面跟文字时会直接搜索笔记。顶部只保留搜索框和搜索按钮；左侧按标签筛选，中间显示标题和正文预览。预览会渲染 Markdown：标题按级别放大、图片显示缩略图、代码块保留等宽原文，列表和引用带标记；预览有行数上限，超出部分不渲染。单击预览行复制该行、双击预览行粘贴该行，复制和粘贴都只取纯文本（`# 一级标题` 复制为「一级标题」，代码块复制不带围栏），点击标题直接进入编辑。新增使用右下角圆形悬浮按钮，复制、粘贴、修改、删除、多选和置顶通过笔记卡片右键菜单操作；新增和修改共用页面内编辑态，不使用弹窗，保存或返回后直接回到列表。
+## 遇到问题
 
-**编辑器是 Vditor 的所见即所得模式**（`wysiwyg`，输入即渲染）：输入 `# ` 回车即变标题、输入 ``` 即变代码块，工具栏由编辑器自带（撤销重做、标题、加粗斜体、列表、引用、代码、表格、链接、上传图片、切换编辑模式、分屏预览、大纲、全屏）。**光标放进表格会弹出浮动面板**，可插入/删除行列、设置对齐，并可用「行」「列」两个数字框直接改行列数。工具栏的「编辑模式」可在**所见即所得**与 **`sv`（左源码右预览）**之间切换。图片可直接**粘贴或拖入**编辑区，走的是和以前一样的落盘流程（写入 `data\qbar-notes\media`），正文里仍然保存为 `asset:<id>` 引用，所以笔记文件不依赖任何绝对路径。**退出代码块：光标在最后一行时按 `↓`（或在内容末尾按 `→`）**，Vditor 会在代码块之后插入一个空段落；在第一行按 `↑`（或开头按 `←` / `Backspace`）则在前面插入。回车在代码块内只是换行，不是退出。另外 `Alt+Enter` 编辑代码块的语言，`Escape` 收起代码块预览。**编辑器内 `Ctrl+S` 或 `Ctrl+Enter` 即保存**，等价于右下角的保存按钮（保存成功后回到列表并提示「已保存」）。
+快捷键没反应时，先确认托盘图标存在，并一直按住 CapsLock；部分笔记本还需同时按 Fn。
+在聊天、翻译、词典、文件搜索和笔记窗口中，CapsLock+Q / Z 不会打开其他面板，切回原来的窗口再使用。
 
-编辑器依赖内置的 `vendor\vditor\`（MIT，约 4.2 MB，其中 4 MB 是它的 Markdown 引擎 lute）。它**完全离线运行**，不会访问网络：Vditor 默认会从 jsDelivr 动态加载 lute、工具栏图标、界面语言和内容主题，本项目把这些文件一并内置并把 `cdn` 指向本地副本。
+可在「通用」中开启「调试日志」，复现后查看安装文件夹中的 `capslock_p2-debug.log`。
+英文设置尚未覆盖全部页面，设置中心等页面仍有中文；使用介绍可在页面顶部单独切换语言。
 
-笔记标题、Markdown 正文、标签和置顶状态明文保存在安装目录下的
-`data\qbar-notes\qbar-notes.db`；图片以原始文件保存在 `data\qbar-notes\media`。该目录不随安装包分发，更新或同目录重装不会覆盖；如果更换安装目录，需要手动复制整个 `data\qbar-notes` 目录。程序不会自动回退到其他路径。
-
-## 翻译与本地词典（CapsLock+T / CapsLock+F3）
-
-选中文字后按 CapsLock+T 弹出 **翻译面板**（WebView2）。面板优先使用 **LLM**（OpenAI 兼容
-chat completions 接口，流式显示）；未配置 LLM 时自动改用已配置的其他引擎——**有道智云**
-或**火山引擎**（均一次性返回，有道附带词典释义）。全部未配置时弹出设置窗口引导填写。
-**多段文本会保留原文的换行结构**：LLM 按提示词要求保持原文分段；有道按行翻译（换行原样
-提交、结果按行拼回）；火山把每行作为独立 TextList 条目翻译后按序拼回。
-
-各引擎配置：
-
-```ini
-[LLM]                      ; 翻译与 AI 问答共用的 LLM API
-endpoint=https://api.openai.com/v1/chat/completions
-apiKey=sk-xxx
-apiKeyHeader=Authorization
-apiKeyPrefix=Bearer
-model=deepseek-flash
-thinking=0
-temperature=0.2
-timeout=30000
-maxInputTokens=200000  翻译与 AI 共用的输入 token 估算上限
-
-[LLMTranslate]             ; LLM 翻译专用提示词
-systemPrompt=You are a precise translation engine. Translate the user's message into {{targetLanguage}}. Preserve meaning, tone, formatting, names and code. Keep the source text's line breaks and paragraph structure. Return only the translation, nothing else.
-
-[TTranslate]               ; 所有翻译引擎共用配置
-mode=fixed                 ; fixed 固定目标 / bidirectional 两种语言互译
-languageA=zh-CN            ; 互译模式的第一种语言
-languageB=en               ; 互译模式的第二种语言
-targetLanguage=system      ; fixed 模式目标：跟随系统语言，也可选 zh-CN / zh-TW / en / ja / ko 等代码
-engine=auto                ; auto（默认，优先 LLM，未配置时按已配置引擎回退）/ llm / youdao / volcengine
-
-[TYoudao]                  ; 有道智云收费版翻译 API
-appPaidID=
-appPaidKey=
-
-[TVolcengine]              ; 火山引擎机器翻译 API
-accessKey=
-secretKey=
-region=cn-north-1
-```
-
-系统提示词支持简单模板变量：翻译中的 `{{targetLanguage}}` 会替换为翻译目标语言，AI 问答中的
-`{{uiLanguage}}` 会替换为当前界面语言。未识别的变量会原样保留，便于发现拼写错误。
-翻译设置支持固定目标和两种语言互译。固定模式在设置页选择一个目标语言；互译模式在设置页选择语言 A/B，
-翻译面板再选择“原语言”和“目标语言”，点击交换按钮可交换当前方向。语言选项以各自语言的文字显示，
-配置中保存为语言代码；自动识别无法确定来源时会以语言 A 为默认目标，并在面板说明回退结果，用户仍可手动调整方向。
-
-设置中心分为「LLM」「翻译」「AI 问答」三个区域。LLM 区域只配置一套共用的 API、模型和采样参数；
-翻译区域配置共用的翻译引擎、翻译方式和语言，以及有道和火山各自的 API 凭据；AI 问答区域只配置问答专用系统提示词。
-有道应用在
-<https://ai.youdao.com/console/#/> 申请（新账号有试用额度）；火山翻译在
-<https://console.volcengine.com/translate> 开通。
-
-### 本地词典卡片
-
-用 CapsLock+T 触发翻译时，如果选中的是**单个英文单词**且存在于本地词库
-`resources\dictionary.db`（ECDICT 格式，约 4.9 万高频词及其常见词形），弹出的不是翻译面板，
-而是**词典卡片**：
-
-- 展示词库里的全部字段：音标、柯林斯星级、牛津3000、考试标签（中考/高考/四六级/考研/托福/雅思/GRE）、
-  词性分布、BNC / 当代语料库词频、中文释义、英文释义
-- 词形变化（过去式 / 复数 / 比较级…）是可点击的词条，直接查该词；顶栏搜索框可继续查别的词，
-  输入即联想：**前缀 → 包含 → 模糊**（子序列，`helo` → `hello`）三级匹配、按词频排序，
-  ↑/↓ 选择、回车或点击查词，Esc 关闭联想
-- 🔊 按钮本地发音（Windows 语音）
-- 词库没有的词、多词选择或句子照旧走翻译面板
-
-## AI 问答聊天（ai / q）
-
-qbar 里输入「ai」或「q」可打开空白聊天面板；输入「ai 问题」或「q 问题」打开独立的
-**AI 聊天面板**：气泡式对话，支持追问和多会话。历史保存在本机 `{安装目录}\data\ai-chat\ai-chat.db`；重新打开面板或点「新会话」会进入空白对话，已有会话仍可在侧栏切换继续，也可重命名、置顶或删除。
-回答通过 OpenAI 兼容接口流式返回，模型自行判断输入是要回答的问题还是要解释的文本；回复中包含的 Markdown 图片会从原网站加载。
-AI 窗口是普通可调整大小、可最小化和最大化的 WebView2 窗口，失去焦点后仍保持显示。
-聊天或翻译面板处于活动窗口时 CapsLock 键层自动挂起（打大写字母不会误触图层动作）。
-未配置 `[LLM]` API 时自动弹出设置窗口，保存后自动发出等待中的问题。
-
-会话历史按页读取；模型上下文只取最近 50 个已完成轮次，再按 `[LLM]` 的 `maxInputTokens` 估算预算
-裁剪最旧轮次，单条超长消息只送尾部。这些限制只影响本次模型请求，不删除本机历史；token 数是本地估算，
-服务端仍可能因模型上下文上限或输入格式拒绝请求。数据库随安装目录迁移时，请复制整个 `data\ai-chat` 目录；
-覆盖更新和卸载会保留该用户数据。
-
-托盘「设置」打开设置中心，翻译和 AI 面板内也共用同一套 API 配置。翻译和 AI 问答都使用 `[LLM]` 中的同一套 API、模型和采样配置；
-翻译共用的方式、语言和引擎选择保存在 `[TTranslate]`，LLM 翻译提示词保存在 `[LLMTranslate]`，AI 问答只在 `[QAI]` 中保留专用系统提示词。输入 token 估算上限统一配置在 `[LLM]`：
-
-```ini
-[QAI]
-systemPrompt=You are the assistant built into the capslock_p2 launcher. The user's message is either a question to answer or a text to explain; decide which one it is. If it is a question, answer it directly and completely. If it is a text (a word, sentence, paragraph, error message, log entry, code snippet or URL), explain what it means. Reply in the language of the user's message; if the message is not in Chinese or English, reply in {{uiLanguage}}. Be concise.
-```
-
-## 独立剪贴板
-
-系统剪贴板之外另有两组独立槽位，复制粘贴互不覆盖：
-
-- CapsLock+C / X / V：剪贴板 1 的复制 / 剪切 / 粘贴
-- CapsLock+LAlt+C / X / V：剪贴板 2
-- 可将任意键绑定为 `keyFunc_switchClipboard`，循环切换「粘贴来源」槽位（系统 / 1 / 2）
-- `[Global] allowClipboard=0` 可整体关闭（独立剪贴板失效，回到系统行为）
-
-## 窗口功能
-
-- **winbind**：CapsLock+数字激活对应编号的窗口；设置中心支持「窗口」「窗口组」「应用」三种模式。
-  - **窗口**：绑定一个选定窗口；窗口重启后会按程序信息尝试找回，找不到时尝试启动原路径。
-  - **窗口组**：手动添加已打开窗口；CapsLock+数字按保存顺序循环切换，当前窗口不在组内时回到第一个窗口。
-  - **应用**：选择已打开应用或其他应用，自动维护该应用的全部窗口；应用未运行时会尝试启动。
-  - 默认 CapsLock+LAlt+数字在 500ms 内单击、双击、三击，分别绑定窗口、窗口组、应用。
-  绑定关系保存在 `capslock_p2-winsInfosRecorder.ini`。
-- **CapsLock+F4**：窗口透明度循环切换；**CapsLock+F6**：置顶切换。
-- **CapsLock+LAlt+鼠标滚轮**：临时调鼠标速度（`[Global] mouseSpeed` 为默认值，1~20），松开后恢复。
-
-## 配置说明
-
-- 配置文件分为三份：`capslock_p2-default.ini` 是完整默认配置，`capslock_p2-settingsDemo.ini` 是带详细说明的参考示例，`capslock_p2.ini` 是用户覆盖配置。程序先加载 default，再用用户配置覆盖；默认值不会写回用户文件。
-- 用户配置文件：**`capslock_p2.ini`**（UTF-8）。只需写需要修改的项目；保存后 0.5 秒内自动重读，只有实际变化才应用；CapsLock+F5 可手动重载（它重载的是整个脚本，配置也一并重读，所以改完代码按它一次即可生效）。外部修改与设置页未保存草稿冲突时，页面会提示重新载入。
-- 设置中心入口：CapsLock+F12、托盘菜单「设置」、qbar 命令 `cl set`；翻译和 AI 面板中的设置按钮会直接打开对应的设置页。
-- 段：`Global`、`TabHotString`、`Keys`、`CustomHotkey`、`LLM`、`LLMTranslate`、`TTranslate`、`TYoudao`、`TVolcengine`、`QAI`、`Qbar`。
-- `[Global]` 常用项：
-
-  | 键 | 默认 | 说明 |
-  |---|---|---|
-  | `autostart` | 0 | 开机启动：也可从托盘菜单切换；启用/关闭会同步当前用户启动文件夹的快捷方式 |
-  | `debug` | 0 | 1 时写 `capslock_p2-debug.log`（不记录剪贴板内容和 API Key） |
-  | `mouseSpeed` | 3 | CapsLock+LAlt+滚轮的基准速度 |
-  | `allowClipboard` | 1 | 独立剪贴板开关 |
-  | `loadingAnimation` | 1 | 启动动画：也可从托盘菜单切换；默认显示现代简约启动卡片 |
-  | `language` | 1 | 界面语言：0 自动（Windows 显示语言），1 简体中文，2 英文；翻译/词典/AI 面板及设置界面跟随此设置，与翻译目标语言无关 |
-  | `runAsAdmin` | 1 | 以管理员身份运行：1 开启，0 关闭；修改后重启程序生效，启动时会弹出 UAC |
-
-## 调试
-
-`[Global] debug=1` 后，根目录生成 `capslock_p2-debug.log`，记录设置加载、热键注册、qbar 请求、
-翻译请求等关键链路的事件、计数、状态码和耗时（**不含用户输入、选区、剪贴板内容、API Key 或 endpoint 查询串**）。
-日志文件达到 1 MiB 后会自动删除最前约三分之一的旧内容，只保留较新的日志并继续写入；不会生成额外备份文件，因此日志存储占用保持在约 1 MiB 内。遇到行为不符时先看日志。
-
-## 开发者
-
-- 代码地图、翻译引擎注册表、屏幕/DPI 自适应等架构说明见 [`docs/architecture.md`](docs/architecture.md)。
-- 构建与发布流程见 [`docs/packaging.md`](docs/packaging.md)。
+开发说明见 [架构文档](docs/architecture.md)，构建与发布见 [打包文档](docs/packaging.md)。
