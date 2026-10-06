@@ -15,8 +15,6 @@
 /* Keep these values in sync with lib/features/qbar/qbar.ahk. The card radius
    also matches the host window's rounded region. */
 :root {
-  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-
   /* Geometry shared with the native qbar host. */
   --card-radius: 12px;
   --radius: max(0px, calc(var(--card-radius) - 3px));
@@ -29,7 +27,7 @@
   --input-font-size: 14px;
   --list-font-size: 13px;
   --list-bg: transparent;
-  --list-color: var(--text);
+  --list-color: var(--ui-text);
 }
 
 * { box-sizing: border-box; }
@@ -38,8 +36,8 @@ html, body { height: 100%; }
 body {
   margin: 0;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--ui-bg);
+  color: var(--ui-text);
   user-select: none;
 }
 
@@ -53,14 +51,14 @@ body {
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--card-radius);
-  background: var(--surface);
+  background: var(--ui-surface);
 }
 
 #panel::before {
   content: "";
   position: absolute;
   inset: 1px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-line-strong);
   border-radius: max(0px, calc(var(--card-radius) - 1px));
   pointer-events: none;
 }
@@ -71,19 +69,19 @@ body {
   flex: 0 0 auto;
   width: 100%;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-line-strong);
   border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--ui-surface);
+  color: var(--ui-text);
   font: var(--input-font-size)/1.5 Consolas, "Microsoft YaHei", monospace;
   outline: none;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 10%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text) 10%, transparent);
   user-select: text;
 }
 
-#input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+#input:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
 #input:disabled { opacity: .72; cursor: wait; }
-#input::placeholder { color: var(--muted); }
+#input::placeholder { color: var(--ui-muted); }
 
 /* Loading state ---------------------------------------------------------- */
 .loading {
@@ -94,7 +92,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  color: var(--muted);
+  color: var(--ui-muted);
   font-size: var(--list-font-size);
 }
 
@@ -103,8 +101,8 @@ body {
 .loading .spinner {
   width: 13px;
   height: 13px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border: 2px solid var(--ui-line-strong);
+  border-top-color: var(--ui-accent);
   border-radius: 50%;
   animation: qbar-spin .8s linear infinite;
 }
@@ -144,11 +142,11 @@ body {
 .row .glyph img { width: 16px; height: 16px; display: block; margin: 0 auto; }
 .row .glyph .lucide { width: 15px; height: 15px; }
 .row .text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.row.selected { background: var(--accent-soft); color: var(--accent); }
+.row.selected { background: var(--ui-accent-soft); color: var(--ui-accent); }
 .row.selected .glyph { opacity: 1; }
-.row:hover { background: var(--accent-quiet); color: var(--accent-strong); }
+.row:hover { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .row:hover .glyph { opacity: 1; }
-.row.selected:hover { background: var(--accent-soft); color: var(--accent); }
+.row.selected:hover { background: var(--ui-accent-soft); color: var(--ui-accent); }
 .row.pinned .text { font-weight: 650; }
 .row.unavailable { opacity: .48; }
 
@@ -157,13 +155,13 @@ body {
   display: flex;
   align-items: center;
   padding: 0 10px;
-  color: var(--muted);
+  color: var(--ui-muted);
   font-size: var(--list-font-size);
 }
 
 /* Keep the scrollbar quiet so it does not compete with the result rows. */
 ::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--ui-line-strong); border-radius: 4px; }
 </style>
 </head>
 <body>

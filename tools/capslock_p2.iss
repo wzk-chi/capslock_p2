@@ -59,6 +59,9 @@ Source: "{#ProjectRoot}\pages\qbar-search.js"; DestDir: "{app}\pages"; Flags: ig
 Source: "{#ProjectRoot}\pages\icons.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\windowbar.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\panel.js"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\settings-page.js"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\clipboard-history.js"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\chat.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 ; Turns Vditor's rendered Markdown into the note card's copyable rows.
 Source: "{#ProjectRoot}\pages\notes-preview.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 

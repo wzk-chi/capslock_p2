@@ -17,7 +17,7 @@
 <style>
   html { scroll-behavior: smooth; }
   html[lang="en"] [lang="zh-CN"], html[lang="zh-CN"] [lang="en"] { display: none; }
-  body { margin: 0; background: var(--ui-bg); color: var(--ui-text); font: 15px/1.8 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  body { margin: 0; background: var(--ui-bg); color: var(--ui-text); font: 15px/1.8 var(--ui-font-family); }
   a { color: var(--ui-accent); text-underline-offset: 4px; }
   p { margin: 0 0 16px; }
   h1, h2, h3 { line-height: 1.35; text-wrap: balance; }
@@ -31,7 +31,7 @@
   nav { display: flex; flex-wrap: wrap; gap: 16px; margin-left: auto; font-size: 14px; }
   nav a { text-decoration: none; }
   .language { display: flex; gap: 7px; align-items: center; font-size: 13px; }
-  select { max-width: 100%; background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-line-strong); border-radius: 8px; padding: 7px; }
+  select { max-width: 100%; background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); padding: 7px; }
   main, footer { max-width: 960px; margin: auto; padding: 0 24px; }
   section { margin-top: 64px; scroll-margin-top: 130px; }
   .hero { margin-top: 0; padding: 64px 0 0; }
@@ -60,7 +60,7 @@
   .key-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 24px; padding: 12px 0; border-top: 1px solid var(--ui-line); }
   .key-row > div { min-width: 0; overflow-wrap: anywhere; }
   .key-row > div:last-child { color: var(--ui-muted); }
-  details { border: 1px solid var(--ui-line); border-radius: 12px; padding: 16px 20px; margin: 12px 0; }
+  details { border: 1px solid var(--ui-line); border-radius: var(--ui-radius-card); padding: 16px 20px; margin: 12px 0; }
   summary { cursor: pointer; font-weight: 600; }
   details p { margin: 12px 0 0; color: var(--ui-muted); }
   footer { margin-top: 64px; padding-top: 24px; padding-bottom: 40px; border-top: 1px solid var(--ui-line); color: var(--ui-muted); font-size: 13px; }

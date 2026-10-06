@@ -19,7 +19,6 @@
 <script src="../vendor/vditor/dist/index.min.js"></script>
 <script src="notes-preview.js"></script>
 <style>
-:root { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); }
@@ -28,11 +27,11 @@ button { color: inherit; cursor: default; }
 .app { height: 100%; display: flex; flex-direction: column; }
 .topbar { height: 62px; flex: 0 0 62px; display: flex; align-items: center; justify-content: center; padding: 0 18px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface); }
 .search-group { width: min(760px, 100%); display: flex; align-items: center; gap: 8px; }
-.search { min-width: 0; flex: 1; height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface-soft); color: var(--ui-muted); }
+.search { min-width: 0; flex: 1; height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-muted); }
 .search > .lucide { width: 15px; height: 15px; }
 .search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ui-text); font-size: 12px; }
 .search input::placeholder { color: var(--ui-subtle); }
-.search-button { flex: 0 0 37px; width: 37px; height: 35px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: 8px; background: var(--ui-button-bg); color: var(--ui-button-text); font-size: 16px; }
+.search-button { flex: 0 0 37px; width: 37px; height: 35px; display: grid; place-items: center; border: 1px solid var(--ui-button-bg); border-radius: var(--ui-radius-control); background: var(--ui-button-bg); color: var(--ui-button-text); font-size: 16px; }
 .search-button:hover, .search-button:focus-visible { filter: brightness(1.06); }
 .date-filter, .page-size { height: 35px; padding: 0 8px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-muted); font-size: 11px; }
 .date-filter { flex: 0 0 118px; }
@@ -94,7 +93,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .page-size { height: 28px; }
 .editor-page { min-width: 0; min-height: 0; height: 100%; display: flex; overflow: auto; padding: 0 clamp(18px, 3vw, 34px); background: var(--ui-bg); }
 .editor-page .editor { width: min(900px, 100%); height: 100%; min-height: 0; margin: 0 auto; border: 0; border-radius: 0; box-shadow: none; background: var(--ui-bg); }
-.editor { width: min(900px, 100%); height: min(670px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-line-strong); border-radius: 12px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.editor { width: min(900px, 100%); height: min(670px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-card); background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .editor-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px 10px; border-bottom: 1px solid var(--ui-line); }
 .editor-back { width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
 .editor-back .lucide { width: 13px; height: 13px; }
@@ -129,7 +128,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 .multi-button.danger { color: var(--ui-danger); }
 .multi-button:disabled { opacity: .45; }
 .note-check { display: none; }.multi-mode .note-check { display: inline-block; accent-color: var(--ui-accent); }
-.context-menu { position: fixed; z-index: 50; min-width: 148px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: 8px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.context-menu { position: fixed; z-index: 50; min-width: 148px; padding: 4px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface); box-shadow: var(--ui-shadow); }
 .context-menu.hidden { display: none; }
 .context-menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ui-muted); text-align: left; font-size: 11px; }
 .context-menu button .lucide { width: 14px; height: 14px; }

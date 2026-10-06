@@ -495,9 +495,10 @@ ConfigDefaultRead(section, key, defaultValue := "") {
     return defaultValue
 }
 
-ConfigParseIni(filePath, &loaded := false, &exists := false) {
+ConfigParseIni(filePath, &loaded := false, &exists := false, &content := "") {
     loaded := true
     exists := FileExist(filePath) != ""
+    content := ""
     sections := Map()
     if !exists
         return sections

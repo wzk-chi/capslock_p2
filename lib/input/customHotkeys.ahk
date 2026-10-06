@@ -1,9 +1,10 @@
 ; User-defined global and per-application shortcut remapping.
 
 global CustomHotkeyBindings := []
+global CustomHotkeyIndex := Map("globalActions", Map(), "profilesByPath", Map())
 
 RegisterCustomHotkeys() {
-    global CustomHotkeyBindings
+    global CustomHotkeyBindings, CustomHotkeyIndex
     registrationErrors := []
     for binding in CustomHotkeyBindings {
         try {
@@ -15,20 +16,23 @@ RegisterCustomHotkeys() {
     CustomHotkeyBindings := []
 
     triggers := Map()
-    for trigger, action in ConfigSection("CustomHotkey") {
-        normalizedTrigger := ConfigNormalizeCustomHotkeyTrigger(trigger)
-        if normalizedTrigger != ""
-            triggers[normalizedTrigger] := true
-    }
+    globalActions := CustomHotkeyBuildActionMap(ConfigSection("CustomHotkey"))
+    CustomHotkeyCollectTriggers(triggers, globalActions)
+    profilesByPath := Map()
     for profileId, profile in AppProfiles {
-        if !profile["sections"].Has("CustomHotkey")
+        profileActions := CustomHotkeyBuildActionMap(
+            profile["sections"].Has("CustomHotkey")
+                ? profile["sections"]["CustomHotkey"] : Map())
+        CustomHotkeyCollectTriggers(triggers, profileActions)
+        if profile["enabled"] != "1"
             continue
-        for trigger, action in profile["sections"]["CustomHotkey"] {
-            normalizedTrigger := ConfigNormalizeCustomHotkeyTrigger(trigger)
-            if normalizedTrigger != ""
-                triggers[normalizedTrigger] := true
-        }
+        profilePath := AppProfileNormalizePath(profile["exePath"])
+        if profilePath != "" && !profilesByPath.Has(profilePath)
+            profilesByPath[profilePath] := profileActions
     }
+    CustomHotkeyIndex := Map(
+        "globalActions", globalActions,
+        "profilesByPath", profilesByPath)
     ; Ctrl+V has an existing built-in action and is part of the same ownership
     ; table so an application profile can override or release it.
     triggers["^v"] := true
@@ -51,6 +55,37 @@ RegisterCustomHotkeys() {
     return registrationErrors
 }
 
+CustomHotkeyBuildActionMap(values) {
+    actions := Map()
+    for trigger, action in values {
+        normalizedTrigger := ConfigNormalizeCustomHotkeyTrigger(trigger)
+        if normalizedTrigger = ""
+            continue
+        canonical := StrLower(Trim(String(trigger))) = normalizedTrigger
+        normalizedAction := Trim(String(action))
+        if !actions.Has(normalizedTrigger) {
+            actions[normalizedTrigger] := Map(
+                "action", normalizedAction, "canonical", canonical)
+            continue
+        }
+        current := actions[normalizedTrigger]
+        if current["canonical"]
+            continue
+        if canonical {
+            actions[normalizedTrigger] := Map(
+                "action", normalizedAction, "canonical", true)
+        } else {
+            current["action"] := normalizedAction
+        }
+    }
+    return actions
+}
+
+CustomHotkeyCollectTriggers(triggers, actions) {
+    for trigger, action in actions
+        triggers[trigger] := true
+}
+
 CustomHotkeyActive(trigger, *) {
     global SettingsShortcutHook
     if CapsLockLayerActive()
@@ -65,33 +100,25 @@ MakeCustomHotkeyHandler(trigger) {
     return (*) => CustomHotkeySend(trigger)
 }
 
+; `trigger` is canonical because callers are bound only from the registered map.
+; Resolve the active executable on every check/send; never reuse HotIf's result.
 CustomHotkeyResolve(trigger) {
-    normalizedTrigger := ConfigNormalizeCustomHotkeyTrigger(trigger)
-    profile := AppProfileActive()
-    if IsObject(profile) && profile["sections"].Has("CustomHotkey") {
-        profileAction := CustomHotkeyLookup(profile["sections"]["CustomHotkey"], normalizedTrigger, &found)
-        if found
-            return Trim(String(profileAction))
-    }
-    globalAction := CustomHotkeyLookup(ConfigSection("CustomHotkey"), normalizedTrigger, &found)
-    action := found ? Trim(String(globalAction)) : ""
-    if action = "" && normalizedTrigger = "^v"
-        return "@builtin_pasteSystem"
-    return action
-}
-
-CustomHotkeyLookup(values, normalizedTrigger, &found := false) {
-    found := false
-    fallback := ""
-    for trigger, action in values {
-        if ConfigNormalizeCustomHotkeyTrigger(trigger) = normalizedTrigger {
-            found := true
-            fallback := action
-            if StrLower(Trim(String(trigger))) = normalizedTrigger
-                return action
+    global CustomHotkeyIndex
+    active := GetActiveWindowInfo()
+    if active {
+        profilePath := AppProfileNormalizePath(active.path)
+        profilesByPath := CustomHotkeyIndex["profilesByPath"]
+        if profilePath != "" && profilesByPath.Has(profilePath) {
+            profileActions := profilesByPath[profilePath]
+            if profileActions.Has(trigger)
+                return profileActions[trigger]["action"]
         }
     }
-    return fallback
+    globalActions := CustomHotkeyIndex["globalActions"]
+    action := globalActions.Has(trigger) ? globalActions[trigger]["action"] : ""
+    if action = "" && trigger = "^v"
+        return "@builtin_pasteSystem"
+    return action
 }
 
 CustomHotkeySend(trigger, *) {

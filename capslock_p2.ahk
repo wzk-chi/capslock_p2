@@ -17,6 +17,7 @@ A_HotkeyInterval := 2000
 
 #Include lib\app\config.ahk
 #Include lib\app\core.ahk
+#Include lib\shared\selection.ahk
 #Include lib\features\windows.ahk
 #Include lib\input\appProfiles.ahk
 #Include lib\vendor\WebView2.ahk
@@ -34,6 +35,8 @@ A_HotkeyInterval := 2000
 #Include lib\shared\llm.ahk
 #Include lib\features\translate\llmTranslate.ahk
 #Include lib\features\settings.ahk
+#Include lib\features\settings\settings_capture.ahk
+#Include lib\features\settings\settings_picker.ahk
 #Include lib\features\translate\youdaoTranslate.ahk
 #Include lib\features\translate\volcengineTranslate.ahk
 #Include lib\features\dictionary.ahk

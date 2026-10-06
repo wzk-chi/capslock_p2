@@ -76,7 +76,8 @@ QbarToggle(*) {
 }
 
 QbarShow() {
-    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows, QbarTargetHwnd
+    global QbarHost, QbarVisible, QbarOpen, QbarPendingText, QbarCurrentRows
+    global QbarCurrentQueryText, QbarTargetHwnd
     global QbarTargetPid, QbarTargetSessionId
     global QbarSessionSerial, QbarSessionId
     if QbarOpen
@@ -139,7 +140,7 @@ QbarShow() {
 
 QbarHide(*) {
     global QbarHost, QbarVisible, QbarOpen, QbarFolderDir, QbarFolderItems, QbarFutureStack
-    global QbarIndexLoading, QbarQuerySeq, QbarPageQueryId, QbarSearchState
+    global QbarIndexLoading, QbarQuerySeq, QbarPageQueryId, QbarSearchState, QbarCurrentQueryText
     QbarVisible := false
     QbarOpen := false
     QbarFolderDir := ""

@@ -351,9 +351,12 @@ keyFunc_pageMoveLineDown(count := 1) {
     SendRepeatedKey("Down", count, "^")
 }
 
-keyFunc_getJSEvalString(*) {
+keyFunc_editSelectedText(*) {
     selectedText := GetSelectedText()
-    inputResult := InputBox("Edit the selected expression or text:", "capslock_p2 Tab", "w600 h180", selectedText)
+    inputResult := InputBox(
+        LLMText("Edit selected text:", "编辑选中文字："),
+        LLMText("Edit selected text", "编辑选中文字"),
+        "w600 h180", selectedText)
     if inputResult.Result = "OK"
         SetClipboardText(inputResult.Value)
 }

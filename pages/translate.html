@@ -5,7 +5,7 @@
 <meta name="color-scheme" content="light dark">
 <title>capslock_p2 Translate</title>
 <style>
-:root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--ui-surface); color: var(--ui-text); }
@@ -33,7 +33,7 @@ main > .windowbar { margin: 0 -14px; }
 textarea { width: 100%; flex: 1; min-height: 0; padding: 11px 12px; border: 1px solid var(--ui-line-strong); border-radius: 9px; background: var(--ui-surface-soft); color: var(--ui-text); font: 14px/1.6 Consolas, "Microsoft YaHei", monospace; outline: none; resize: none; }
 textarea:focus { border-color: var(--ui-accent); background: var(--ui-surface); box-shadow: 0 0 0 3px var(--ui-ring); }
 #result { background: var(--ui-surface-soft); }
-button { border: 0; border-radius: 8px; padding: 8px 16px; background: var(--ui-button-bg); color: var(--ui-button-text); cursor: pointer; font-weight: 600; }
+button { border: 0; border-radius: var(--ui-radius-control); padding: 8px 16px; background: var(--ui-button-bg); color: var(--ui-button-text); cursor: pointer; font-weight: 600; }
 button:hover { background: var(--ui-button-hover); }
 button:disabled { background: var(--ui-surface-muted); color: var(--ui-subtle); cursor: default; }
 button.secondary { background: transparent; color: var(--ui-accent); border: 1px solid var(--ui-line-strong); font-weight: 500; }

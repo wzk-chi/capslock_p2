@@ -4,7 +4,7 @@
 复核日期：2026-10-05
 细化及再次复核日期：2026-10-05
 
-状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改进行中：截至 2026-10-06，第 02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、17、18、19、20、21、29、30、32 项已完成代码修改及静态核查；第 35 项按复核结论保留现实现；其余逐项跟进。编号对应初审条目。未按项目约束运行程序、脚本或测试。
+状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改进行中：截至 2026-10-06，第 01、02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、17、18、19、20、21、22、23、24、27、28、29、30、32、33、34、36 项已完成代码修改及静态核查；第 35 项按复核结论保留现实现；第 25、26、31 项待可用的性能度量。入口及全部 AHK include 已用 AutoHotkey `/validate` 校验，exit=0 且无警告；未启动应用或执行脚本/测试。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -44,11 +44,13 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/app/core.ahk:121](../lib/app/core.ahk#L121) 的 ClipboardSuspend 管理器（121–162 行）、[lib/app/core.ahk:520](../lib/app/core.ahk#L520) 的热串/动作解析（520–673 行）、[lib/app/core.ahk:674](../lib/app/core.ahk#L674) 的选区/UIA（674–911 行）、[lib/app/core.ahk:912](../lib/app/core.ahk#L912) 的剪贴板序号/槽位（912–1075 行）及 [lib/app/core.ahk:1142](../lib/app/core.ahk#L1142) 的 SetClipboardText()；入口包含表在 [capslock_p2.ahk:18](../capslock_p2.ahk#L18)。
-- 首个可独立拆分单元建议为选区服务：将 GetSelectedText、NormalizeSelectedText 和完整 UIA helper 组移到拟新增的 lib/shared/selection.ahk；保留函数名和 strict/multiline/any 参数语义。不要只移动主函数而把 UIA 缓存/初始化留成难定位的跨文件状态。
+- 位置：[lib/app/core.ahk:140](../lib/app/core.ahk#L140) 的 ClipboardSuspend、[576](../lib/app/core.ahk#L576) 的热串 pattern、[635](../lib/app/core.ahk#L635) 的动作解析、[722](../lib/app/core.ahk#L722) 的共享剪贴板序号及 [775](../lib/app/core.ahk#L775) 起的剪贴板槽服务；[952](../lib/app/core.ahk#L952) 是 SetClipboardText()。选区服务位于 [lib/shared/selection.ahk:17](../lib/shared/selection.ahk#L17)，包含 GetSelectedText() 与完整 UIA provider；入口在 [capslock_p2.ahk:19](../capslock_p2.ahk#L19) 和 [20](../capslock_p2.ahk#L20)。
+- 首个独立拆分已完成：GetSelectedText、NormalizeSelectedText 和完整 UIA helper 组移至 lib/shared/selection.ahk；保留函数名及 strict/multiline/any 参数语义。ClipboardSequenceNumber()/WaitClipboardSequenceChange() 因槽位、历史和其他功能共用而留在 core。
 - 后续确需整理时，再将 ClipboardSuspend、序号判断及临时写入放入一个共享剪贴板服务；槽位采集/恢复归同一所有者。热串规则与动作解析可以随输入层整理移动，core 保留 Initialize/Shutdown/ApplyConfigChanges 的调度，不为每个 helper 单独建文件。
 - 同步入口 #Include 顺序和 [docs/architecture.md:25](architecture.md#L25) 的职责表。所有新文件仍在 Initialize() 执行前完成包含，global 初始化只保留一份；keyFunc_* 的配置 API 和 userAHK 的加载位置不能因文件迁移消失。
 - 静态确认：移动的每个符号只有一处定义，ClipboardSuspend 的 try/finally 和“仅恢复本次拥有的剪贴板序号”判断完整保留。此项没有明确瓶颈，建议跟随相关功能修改实施。
+
+**实施状态：已完成首个独立服务拆分，静态核查通过。** `GetSelectedText()`、文本规范化、UIA COM provider 初始化/缓存、Chromium 无障碍激活及选择范围读取已整体移至 `lib/shared/selection.ahk`；`ClipboardSequenceNumber()` 和共享的序号等待仍留在 core。入口在 core 后立即包含 selection，使键盘层、热串、Qbar 和 userAHK 继续调用同名 API。初始化、剪贴板槽、ClipboardSuspend 所有权和调度未拆散。AHK `/validate` 已通过；COM/UIA 实际调用未运行验证。
 
 ### 02 配置读取失败被接受为空覆盖层——成立，P2 条件缺陷
 
@@ -58,9 +60,9 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/app/config.ahk:11](../lib/app/config.ahk#L11) ConfigLoad()、[lib/app/config.ahk:490](../lib/app/config.ahk#L490) ConfigParseIni()；调用端为 [lib/app/core.ahk:46](../lib/app/core.ahk#L46) Initialize()、[lib/app/core.ahk:183](../lib/app/core.ahk#L183) ReloadSettings()、[lib/app/core.ahk:315](../lib/app/core.ahk#L315) MonitorSettings()。profile 候选位于 [lib/input/appProfiles.ahk:12](../lib/input/appProfiles.ahk#L12)。保存调用为 [lib/features/settings.ahk:160](../lib/features/settings.ahk#L160) SettingsApplyQbarPlugin() 和 [lib/features/settings.ahk:617](../lib/features/settings.ahk#L617) SettingsApplyDraft()。
+- 位置：[lib/app/config.ahk:11](../lib/app/config.ahk#L11) ConfigLoad()、[lib/app/config.ahk:498](../lib/app/config.ahk#L498) ConfigParseIni()；调用端为 [lib/app/core.ahk:35](../lib/app/core.ahk#L35) Initialize()、[lib/app/core.ahk:183](../lib/app/core.ahk#L183) ReloadSettings()、[lib/app/core.ahk:315](../lib/app/core.ahk#L315) MonitorSettings()。profile 候选位于 [lib/input/appProfiles.ahk:15](../lib/input/appProfiles.ahk#L15)。保存调用为 [lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) SettingsApplyQbarPlugin() 和 [lib/features/settings.ahk:473](../lib/features/settings.ahk#L473) SettingsApplyDraft()。
 - ConfigLoad() 先在局部变量中读默认模板和用户文档，接收每次读取的 loaded 标志。默认 raw 文档只读一次并保留原副本；分别解码原 default 与“default 副本叠加 user raw”的候选，完成后才赋 ConfigDefaults/Config。不要混合已解码默认值和仍带存储编码的用户值，也不要原地 Overlay 污染默认副本。用户文件不存在仍是合法空覆盖，默认模板不存在必须单独识别。
-- ConfigLoad(&errorCode) 返回成功与否；ConfigParseIni() 保留可选 loaded 接口并增加 exists 输出。ReloadSettings() 失败立即返回且不 ApplyConfigChanges、不重建快捷键、不推送默认回退快照；它保留 registrationErrors 数组，并新增可选加载结果输出供 [lib/features/settings.ahk:720](../lib/features/settings.ahk#L720) 区分“已写盘但未能应用”。
+- ConfigLoad(&errorCode) 返回成功与否；ConfigParseIni() 保留可选 loaded 接口并增加 exists/raw content 输出。ReloadSettings() 失败立即返回且不 ApplyConfigChanges、不重建快捷键、不推送默认回退快照；它保留 registrationErrors 数组，并新增可选加载结果输出供 [lib/features/settings.ahk:699](../lib/features/settings.ahk#L699) 区分“已写盘但未能应用”。
 - MonitorSettings() 不提前接受新修改时间，只有完整配置加载成功才更新 SettingsModifyTime；失败版本由后续 500ms 调度重试。Initialize() 检查首次读取结果，无有效初始配置时提示并退出，不能继续注册不完整配置的热键。
 - 保留现有 codec、默认覆盖和未知段保存规则；本条不新增整份 INI 的严格 schema 拒绝策略。与第 24 项结合时可共享一次成功读取的文档，避免 Config 与 profile 在两个读时刻分别取到不同版本。
 
@@ -68,9 +70,11 @@
 
 [lib/input/appProfiles.ahk](../lib/input/appProfiles.ahk) 的 `AppProfilesLoad()` 改为先构造 profile 候选，可按调用选择暂不发布；初始化/重载会复用 ConfigLoad 已读取的用户 Map，避免二次读取到另一个文件版本。[lib/app/core.ahk](../lib/app/core.ahk) 的 `Initialize()` 检查配置和 profile 首次解析结果；失败时显示错误并退出，不注册不完整配置的热键。`ReloadSettings()` 增加可选 `loadSucceeded` 输出；配置或 profile 候选读取失败均不应用差异、不重建快捷键、不推送设置快照，profile 解析失败时同时恢复旧配置 Map 和已接受时间戳。`MonitorSettings()` 不再预先接受新时间戳；profile 检查只读候选，任一读取失败都会设置重试标志，每 500ms 继续尝试，直到一次完整加载成功并更新接受时间。
 
-[lib/features/settings.ahk](../lib/features/settings.ahk) 的保存调用检查 reload 结果：若 INI 已写入但读取/应用失败，会明确提示“已写入但未应用”，保留失败态，并在普通设置保存失败分支提前返回，避免随后推送旧配置快照。设置页的 profile 冲突检查也只比较未发布候选；只有完整重载成功才替换运行态。写入 helper 和 profile 保存路径不再抢先更新 `SettingsModifyTime`，使监视器保留重试机会。**第 03 项仍需继续处理：** 本次只添加配置未应用时的必要状态提示和快照保护；完整跨存储回执、插件部分提交后的草稿基线/重试行为仍未实现。
+AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明为局部变量，并将 `ReloadSettings()` 的临时文档重命名为 `loadedUserDocument`，避免同名全局遮蔽。
 
-**静态核查：** 已检索并检查 `ConfigLoad()`、`ReloadSettings()`、`MonitorSettings()` 及全部显式 reload 调用点；缺失用户 INI 与读取失败走不同路径，重载失败最终保留旧配置/profile 运行态，不应用差异或推送设置快照；初始读取失败会退出初始化。未运行程序、脚本或测试；AHK 语法和文件监视重试的运行时行为未验证。
+[lib/features/settings.ahk](../lib/features/settings.ahk) 的保存调用检查 reload 结果：若 INI 已写入但读取/应用失败，会明确提示“已写入但未应用”，保留失败态，并在普通设置保存失败分支提前返回，避免随后推送旧配置快照。设置页的 profile 冲突检查也只比较未发布候选；只有完整重载成功才替换运行态。写入 helper 和 profile 保存路径不再抢先更新 `SettingsModifyTime`，使监视器保留重试机会。**第 03 项的剩余跨存储回执和部分提交重试已在本轮完成，见下节。**
+
+**静态核查：** 已检索并检查 `ConfigLoad()`、`ReloadSettings()`、`MonitorSettings()` 及全部显式 reload 调用点；缺失用户 INI 与读取失败走不同路径，重载失败最终保留旧配置/profile 运行态，不应用差异或推送设置快照；初始读取失败会退出初始化。AHK `/validate` 通过；文件监视重试的运行时行为未验证。
 
 ### 03 设置保存跨存储部分提交——成立，P2
 
@@ -80,11 +84,11 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) `SettingsApplyQbarPlugin()`（172–306，先准备并写入 `esMaxResults`、重载，再提交插件事务）、[lib/features/settings.ahk:642](../lib/features/settings.ahk#L642) `SettingsApplyDraft()`（642–824，准备 INI/profile 候选并按域提交）；回执构建/发送在 [lib/features/settings.ahk:592](../lib/features/settings.ahk#L592) 与 [lib/features/settings.ahk:877](../lib/features/settings.ahk#L877)。页面接收保存回执在 [pages/settings.html:2124](../pages/settings.html#L2124)、普通结果处理在 [pages/settings.html:2247](../pages/settings.html#L2247)、独立工具保存及基线更新在 [pages/settings.html:1545](../pages/settings.html#L1545)；普通外部快照仍由 [pages/settings.html:2086](../pages/settings.html#L2086) 的 dirty 守卫保护。
-- 先做第 15 项的插件 patch 校验，再调用 ConfigPrepareUserOverrides() 准备 INI 候选；当前 profilesDirty=false 分支第 681 行直接写盘，建议也先 prepare，使所有输入错误发生在首次落盘前。INI 与 profile 已合并成同一文件，应维持一次 ConfigAtomicWrite()。
+- 位置：[lib/features/settings.ahk:172](../lib/features/settings.ahk#L172) `SettingsApplyQbarPlugin()`、[lib/features/settings.ahk:473](../lib/features/settings.ahk#L473) `SettingsApplyDraft()`、[423](../lib/features/settings.ahk#L423) 回执构建及 [699](../lib/features/settings.ahk#L699) 普通回执发送。页面在 [pages/settings-page.js:1778](../pages/settings-page.js#L1778) 合并保存回执、[1939](../pages/settings-page.js#L1939) 处理普通结果、[1325](../pages/settings-page.js#L1325) 提交独立工具保存及 [1735](../pages/settings-page.js#L1735) 拒收带草稿的外部快照。
+- 先做第 15 项的插件 patch 校验，再调用 ConfigPrepareUserOverrides() 准备 INI 候选；现 `SettingsApplyDraft()` 已对普通配置和 profile 统一使用候选内容，并维持最多一次 ConfigAtomicWrite()，任何字段校验失败都发生在写盘前。
 - 若保留两存储，回执必须表达实际提交结果，不能只发送 ok/text。建议附带 iniCommitted、pluginsCommitted、runtimeApplied，以及已提交字段的实际值/基线；提交成功后的 registry/UI 刷新问题与第 12 项共同处理。不要在失败时把旧 INI 全文件回写覆盖外部编辑。
-- 页面 settingsSaved() 只清理已确认提交的 dirtyFields/profiles/plugins 标记，更新相应 baseSections/baseProfileStamp，重新比较仍未保存的 draft。**再次复核补充：**仅调用 SettingsPushSnapshot() 不够，因为 receiveSnapshot() 第 2073–2076 行会拒绝带草稿的快照；需要专门的保存回执更新基线，同时保留保存期间用户继续编辑的新值。
-- 独立 Everything 工具弹窗也需更新 qbarPluginSaved() 和 [pages/settings.html:1540](../pages/settings.html#L1540) applySavedQbarPluginToDraft()：INI 已提交而别名失败时说明已保存部分并保留弹窗重试，不能关闭并清空全部编辑。若后续将 esMaxResults 归到插件 store 的同一事务，须同步 QbarEsMaxResults() 读取和设置快照，不能只改表单。
+- 页面 `settingsSaved()` 只清理已确认提交的 dirtyFields/profiles/plugins 标记，更新相应 baseSections/baseProfileStamp，重新比较仍未保存的 draft。**再次复核补充：**仅调用 SettingsPushSnapshot() 不够，因为 [pages/settings-page.js:1735](../pages/settings-page.js#L1735) 的 `receiveSnapshot()` 会拒绝带草稿的快照；因此使用独立保存回执更新基线，同时保留保存期间用户继续编辑的新值。
+- 独立 Everything 工具弹窗也需更新 `qbarPluginSaved()` 和 [pages/settings-page.js:1181](../pages/settings-page.js#L1181) `applySavedQbarPluginToDraft()`：INI 已提交而插件事务失败时说明已保存部分并保留弹窗重试，不能关闭并清空全部编辑。若后续将 `esMaxResults` 归到插件 store 的同一事务，须同步 QbarEsMaxResults() 读取和设置快照，不能只改表单。
 - 静态确认：任何“保存失败/部分保存”分支与实际提交标志一致；取消、失败和普通外部快照均不会抹掉未提交草稿。不需要跨文件/SQLite 通用事务框架。
 
 **实施状态：已完成代码修改并静态复核。** `SettingsApplyDraft()` 先校验插件 patch、全局配置和应用 profile，再用 `ConfigPrepareUserOverrides()` 构造 INI 候选；若有 profile 修改，会合并到同一候选文件，全部校验完成后最多原子写入一次。配置写入后才进行运行态重载，再提交独立的插件数据库事务；未引入通用跨存储事务。
@@ -103,16 +107,16 @@
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/settings.ahk:846](../lib/features/settings.ahk#L846) `SettingsRunTest()`、[903](../lib/features/settings.ahk#L903) operation/回执、[76](../lib/features/settings.ahk#L76) 导航完成以及 [1158](../lib/features/settings.ahk#L1158) Hide / [1168](../lib/features/settings.ahk#L1168) Shutdown；[lib/shared/llm.ahk:393](../lib/shared/llm.ahk#L393) 请求构建、[463](../lib/shared/llm.ahk#L463) 非流式异步完成、[516](../lib/shared/llm.ahk#L516) 共用异步 HTTP transport、[743](../lib/shared/llm.ahk#L743) WinHTTP event sink、[828](../lib/shared/llm.ahk#L828) 事件连接、[900](../lib/shared/llm.ahk#L900) 队列调度、[1016](../lib/shared/llm.ahk#L1016) 非 SSE 完成及 [1207](../lib/shared/llm.ahk#L1207) 释放；页面 [pages/settings.html:2056](../pages/settings.html#L2056) 的 payload、2201–2207 回执、2228/2231/2232 三个测试按钮。
+- 位置：[lib/features/settings.ahk:739](../lib/features/settings.ahk#L739) `SettingsStartTest()`、[750](../lib/features/settings.ahk#L750) `SettingsRunTest()`、[807](../lib/features/settings.ahk#L807) 完成/回执、[74](../lib/features/settings.ahk#L74) 导航完成、[879](../lib/features/settings.ahk#L879) Hide 和 [889](../lib/features/settings.ahk#L889) Shutdown；[lib/shared/llm.ahk:393](../lib/shared/llm.ahk#L393) 请求构建、[463](../lib/shared/llm.ahk#L463) 非流式异步完成、[516](../lib/shared/llm.ahk#L516) 共用异步 HTTP transport、[743](../lib/shared/llm.ahk#L743) WinHTTP event sink、[828](../lib/shared/llm.ahk#L828) 事件连接、[900](../lib/shared/llm.ahk#L900) 队列调度、[1016](../lib/shared/llm.ahk#L1016) 非 SSE 完成及 [1207](../lib/shared/llm.ahk#L1207) 释放；页面 payload 在 [pages/settings-page.js:1718](../pages/settings-page.js#L1718)，结果在 [2003](../pages/settings-page.js#L2003)，三个按钮位于 [pages/settings.html:298](../pages/settings.html#L298)、[332](../pages/settings.html#L332)、[336](../pages/settings.html#L336)。
 - `LLMChatCompleteAsync(messages, onFinished, overrides, structuredOn) -> operation` 已接入 [lib/shared/llm.ahk:463](../lib/shared/llm.ahk#L463)。operation 有幂等 `Cancel()`，`onFinished(responseText, success, errorText)` 保留响应契约；请求使用 `LLMBuildRequest(stream=false)`，不发 SSE Accept、不解析 delta。
 - [lib/shared/llm.ahk:743](../lib/shared/llm.ahk#L743) 的共用 WinHTTP sink、[828](../lib/shared/llm.ahk#L828) 事件连接、[900](../lib/shared/llm.ahk#L900) 队列调度及 [1207](../lib/shared/llm.ahk#L1207) 释放由 SSE 与普通 HTTP 共用，响应消费者分开；未复制 COM vtable。finish/error/cancel 经一次终态门，取消先使请求状态失效再 Abort，并释放事件连接与闭包。
 - Settings 使用当前测试代次与 owner operation：新测试先递增代次、清空并取消旧 owner；完成回调同时核对代次、窗口可见和页面就绪。Hide、Shutdown、页面加载/导航都会增加代次并取消。验证失败同样通过 `SetTimer` 回调，owner 在启动 child 前发布并通过 `SetCancel()` 接入 child，避免完成或取消后被后续返回值覆盖。
 - `provider.test(msg,onFinished) -> operation` 已统一供 Settings 调用。有道/火山都保留草稿 overrides、Hello 请求、成功提示和既有 `settingsTestResult` 回执；最新代次唯一有效，旧完成不能操作新页面。
 - 静态调用点检查确认设置测试不再同步调用 `LLMChatComplete()`；因全仓已无调用点，旧的 `LLMChatComplete()`、`LLMSendChatBody()` 和 `LLMResponseText()` 同步实现已移除。设置测试不存在同步等待、轮询或 SSE 降级；取消和释放覆盖新测试、隐藏、关闭与重新导航。网络阶段 timeout 和端到端截止时间仍明确区分，实际响应改善仍待后续允许运行确认。
 
-**实施状态：代码已完成，静态核查通过；未运行程序、脚本或测试。** `lib/shared/llm.ahk` 新增 `LLMChatCompleteAsync()`，以 `LLMBuildRequest(..., stream=false)` 发送普通 JSON 请求，并复用现有 WinHTTP event sink、事件连接点、队列调度和释放函数；完整响应体按 UTF-8 字节累积后交回现有 HTTP/API 错误解析，不发 SSE Accept、不解析 delta。`lib/features/settings.ahk` 的测试消息现在先增加最新测试代次、清空并取消旧 operation，之后异步启动 LLM 或 provider 测试；完成回调要求代次一致、设置窗口可见且页面就绪。Hide、Shutdown 和页面加载失败均先使代次失效再取消 operation。草稿 overrides、Hello 正文、“连接正常”与现有 `settingsTestResult` 回执均保留。全仓没有 `LLMChatComplete()` 的其他调用点，旧同步请求函数已删除，避免保留第二条阻塞传输实现。
+**实施状态：代码已完成，静态核查通过；未运行应用、脚本或测试。** `lib/shared/llm.ahk` 新增 `LLMChatCompleteAsync()`，以 `LLMBuildRequest(..., stream=false)` 发送普通 JSON 请求，并复用现有 WinHTTP event sink、事件连接点、队列调度和释放函数；完整响应体按 UTF-8 字节累积后交回现有 HTTP/API 错误解析，不发 SSE Accept、不解析 delta。`lib/features/settings.ahk` 的测试消息现在先增加最新测试代次、清空并取消旧 operation，之后异步启动 LLM 或 provider 测试；完成回调要求代次一致、设置窗口可见且页面就绪。Hide、Shutdown 和页面加载失败均先使代次失效再取消 operation。草稿 overrides、Hello 正文、“连接正常”与现有 `settingsTestResult` 回执均保留。全仓没有 `LLMChatComplete()` 的其他调用点，旧同步请求函数已删除，避免保留第二条阻塞传输实现。AHK `/validate` 已通过。
 
-**静态核查与未运行边界：**检查了 `SettingsRunTest()`、唯一 `test` 分发点、operation 父子取消绑定、Hide/Shutdown/NavigationCompleted 失效路径和 `LLMChatCompleteAsync()` 完成路径；无同步等待、轮询或 SSE 降级，取消/完成只接受一次终态。此次遵循项目约束，未运行 AHK 语法验证、应用、脚本或测试；实际 COM 事件顺序、取消竞态、网络响应时间及页面重新导航时序仍未运行确认。超时仍是 WinHTTP 网络阶段 timeout，没有新增端到端截止时间。
+**静态核查与未运行边界：**检查了 `SettingsRunTest()`、唯一 `test` 分发点、operation 父子取消绑定、Hide/Shutdown/NavigationCompleted 失效路径和 `LLMChatCompleteAsync()` 完成路径；无同步等待、轮询或 SSE 降级，取消/完成只接受一次终态。AHK `/validate` exit=0 且无警告；未运行应用、脚本或测试，实际 COM 事件顺序、取消竞态、网络响应时间及页面重新导航时序仍未运行确认。超时仍是 WinHTTP 网络阶段 timeout，没有新增端到端截止时间。
 
 ### 05 用户提示直接展示内部错误——成立，P2
 
@@ -122,7 +126,7 @@
 
 **具体位置与建议改法**
 
-- 首批位置：[lib/app/core.ahk:348](../lib/app/core.ahk#L348) `ConfigSet()`、[lib/app/core.ahk:635](../lib/app/core.ahk#L635) `RunConfiguredAction()`；[lib/features/settings.ahk:39](../lib/features/settings.ahk#L39) `SettingsEnsureWebView()`、[82](../lib/features/settings.ahk#L82) 导航回执、[524](../lib/features/settings.ahk#L524) 文件选择器、[1045](../lib/features/settings.ahk#L1045) 窗口选择器及 [1065–1085](../lib/features/settings.ahk#L1065) 应用选择器；[lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) `SaveWindowBinding()`。
+- 首批位置：[lib/app/core.ahk:348](../lib/app/core.ahk#L348) `ConfigSet()`、[lib/app/core.ahk:635](../lib/app/core.ahk#L635) `RunConfiguredAction()`；[lib/features/settings.ahk:31](../lib/features/settings.ahk#L31) `SettingsEnsureWebView()`、[74](../lib/features/settings.ahk#L74) 导航回执、picker 入口位于 [lib/features/settings/settings_picker.ahk:9](../lib/features/settings/settings_picker.ahk#L9)、[73](../lib/features/settings/settings_picker.ahk#L73)、[113](../lib/features/settings/settings_picker.ahk#L113)；[lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) `SaveWindowBinding()`。
 - 逐个 catch 把“原始 Message 直接拼 UI”的语句改成按功能生成的两语言说明。例如设置写入失败说明“请确认安装目录可写后重试”，面板初始化失败说明“无法打开此面板，请重试或重新启动”，动作配置错误引导到快捷键设置，而不是把内部函数名当正文。
 - 复用当前语言判断/文本 helper（[lib/shared/llm.ahk:14](../lib/shared/llm.ahk#L14) LLMUiLanguage()/LLMText()、core 的 IsChineseLanguage()）；不另外维护一套语言配置。用户主动配置的可读参数错误继续显示，不把所有验证提示变成空泛的“失败”。
 - 同一 catch 记录功能、阶段、错误类别和脱敏诊断；不要 dump 传入配置 Map、API 凭据、完整 endpoint/用户正文。core 第 618–619 行当前已经记录底层动作错误，须一起审查敏感字段，避免 UI 修复后将原文无条件搬进日志。
@@ -156,11 +160,13 @@
 
 **具体位置与建议改法**
 
-- 拆分锚点：[lib/features/settings.ahk:331](../lib/features/settings.ahk#L331) 的录制主函数（331–344、358–472）及 globals 8–9；[lib/features/settings.ahk:520](../lib/features/settings.ahk#L520) 的应用选择（520–568）和 [lib/features/settings.ahk:844](../lib/features/settings.ahk#L844) 的窗口/应用 picker（844–1025），globals 10–14。346–356 的页面允许列表不属于录制模块，不应整块误搬。
-- 若需要拆文件，先抽拟新增的 lib/features/settings/settings_capture.ahk，保留 SettingsStart/StopShortcutCapture、输入钩子回调和发送捕获结果；再抽 picker 文件，集中 WindowPicker 状态和全部取消/恢复流程。函数可保持现名字，唯一消息路由仍在 SettingsWebMessageReceived()（81–141）。
+- 拆分锚点：录制状态与函数在 [lib/features/settings/settings_capture.ahk:3](../lib/features/settings/settings_capture.ahk#L3)；picker 状态、应用选择回传及完整 picker 生命周期在 [lib/features/settings/settings_picker.ahk:3](../lib/features/settings/settings_picker.ahk#L3)。唯一页面路由在 [lib/features/settings.ahk:85](../lib/features/settings.ahk#L85)；页面允许列表和设置生命周期仍在 facade。
+- 两个边界模块已抽出：capture 保留 SettingsStart/StopShortcutCapture、输入钩子回调和结果回传；picker 集中 WindowPicker 状态和取消/恢复。路由不拆成多套服务；全局设置 draft 与插件保存仍由 facade 协调。
 - 全局设置 draft 的 607–729 行与插件修改 143–329 行可在第 03/15 项统一边界后再拆，避免同时搬代码又改变两套保存协议。schema/配置验证不在新模块复制。
-- [lib/features/settings.ahk:1050](../lib/features/settings.ahk#L1050) SettingsHide()/Shutdown() 仍负责调用 StopCapture 与 ClosePicker，PanelHost 创建/销毁留在 facade；[capslock_p2.ahk:36](../capslock_p2.ahk#L36) 同步新增 include，[docs/architecture.md:25](architecture.md#L25) 更新模块职责。第 1–2 行“placeholder”旧注释也应随整理改成实际职责。
+- [lib/features/settings.ahk:887](../lib/features/settings.ahk#L887) SettingsHide() 与 [897](../lib/features/settings.ahk#L897) Shutdown() 仍负责调用 StopCapture 与 ClosePicker，PanelHost 创建/销毁留在 facade；[capslock_p2.ahk:37](../capslock_p2.ahk#L37) 起包含三个设置模块，[docs/architecture.md:66](architecture.md#L66) 更新职责表。文件头已改成实际职责说明。
 - 静态确认输入钩子、picker 和宿主各只有一个所有者，关闭/隐藏/取消路径都可清理；不为单个消息建立新服务文件。
+
+**实施状态：已完成录制与 picker 生命周期拆分，静态核查通过。** `settings_capture.ahk` 独占 InputHook 状态、录制/停止、按键归一化和捕获结果回传；`settings_picker.ahk` 独占 picker 状态、应用/窗口列表、选择、取消及恢复路径。宿主现在校验 picker 行号在当前列表范围内，快捷键应用路径必须属于当前 picker 快照。`settings.ahk` 保留唯一 WebMessage 路由、Settings 面板生命周期和配置保存协调，`SettingsHide()` / `SettingsShutdown()` 仍集中清理这两个模块。入口 include 与架构职责表已更新，旧 placeholder 注释已改为实际职责。AHK `/validate` 已通过；输入钩子和 picker 关闭时序未运行验证。
 
 ## Qbar
 
@@ -187,6 +193,8 @@
 candidateId 为空时是独立的原始文本路径：宿主采用快照中的原始查询，按当前 registry 重新解析；忽略页面发送的 text、selected、selectedType、commandId。新 query 在入口处立即失效旧快照；显示/隐藏、页面成功或失败导航、关闭、shutdown 及 registry 发布也会清空它。Everything 结果发布还携带并复核启动时的 session/query/generation 上下文。
 
 静态核查确认页面不再发送 selected/commandId 作为执行授权，generic execute 的唯一入口是带完整上下文的 `QbarExecute()`；候选执行只查快照，原始文本只使用宿主快照文本，注册命令仍在 `QbarExecuteRegistered()` 检查当前命令启用状态和 handler 白名单。历史重放仍经既有 displayed-history ID 路径，独立于普通候选执行。按项目约束未运行 AHK、WebView、程序、脚本或测试；快速输入、重开、registry 更新与菜单/文件真实动作时序仍待允许运行时验证。
+
+AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` 的赋值原本落在同名局部变量上；两处现已显式声明全局，确保显示/隐藏时确实清空宿主当前查询文本。
 
 ### 11 删除或禁用工具后旧历史仍能重放——成立，P2 功能缺陷
 
@@ -267,7 +275,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[lib/features/qbar/qbar_plugin_host.ahk:155](../lib/features/qbar/qbar_plugin_host.ahk#L155) apply（155–269）、[275](../lib/features/qbar/qbar_plugin_host.ahk#L275) 严格布尔、[333](../lib/features/qbar/qbar_plugin_host.ahk#L333) settings normalizer、[438](../lib/features/qbar/qbar_plugin_host.ahk#L438) patch/身份校验及 [595](../lib/features/qbar/qbar_plugin_host.ahk#L595) user-plugin create；catalog 的 search/run schema 在 [lib/features/qbar/qbar_plugin_catalog.ahk:162](../lib/features/qbar/qbar_plugin_catalog.ahk#L162)。入口为 [lib/features/settings.ahk:147](../lib/features/settings.ahk#L147) create、[172](../lib/features/settings.ahk#L172) 独立保存及 [642](../lib/features/settings.ahk#L642) 整体保存；页面为 [pages/settings.html:1522](../pages/settings.html#L1522) 创建提交、[1565](../pages/settings.html#L1565) schema 编辑与 [1689](../pages/settings.html#L1689) 独立保存。
+- 位置：[lib/features/qbar/qbar_plugin_host.ahk:155](../lib/features/qbar/qbar_plugin_host.ahk#L155) apply（155–269）、[275](../lib/features/qbar/qbar_plugin_host.ahk#L275) 严格布尔、[333](../lib/features/qbar/qbar_plugin_host.ahk#L333) settings normalizer、[438](../lib/features/qbar/qbar_plugin_host.ahk#L438) patch/身份校验及 [595](../lib/features/qbar/qbar_plugin_host.ahk#L595) user-plugin create；catalog 的 search/run schema 在 [lib/features/qbar/qbar_plugin_catalog.ahk:162](../lib/features/qbar/qbar_plugin_catalog.ahk#L162)。入口为 [lib/features/settings.ahk:147](../lib/features/settings.ahk#L147) create、[172](../lib/features/settings.ahk#L172) 独立保存及 [473](../lib/features/settings.ahk#L473) 整体保存；页面创建在 [pages/settings-page.js:1076](../pages/settings-page.js#L1076)、schema 编辑在 [1243](../pages/settings-page.js#L1243)、独立保存在 [1325](../pages/settings-page.js#L1325)。
 - 建议新增 PreparePluginChanges(raw,&patches,&error) 与 NormalizePluginSettings(definition,raw,&settings,&error)，先提取可写 patch、全批次验证后才 BEGIN。可写项限 pluginId、enabled、displayName、settings、commandId/aliases；definition/handler/schema 只取 catalog/registry 的真实记录，页面展示字段不写库。
 - 插件和命令均须存在且未退休，command 真正 pluginId 与请求对象一致，不以命名空间前缀替代归属检查。布尔使用严格解析，非法值不默认转 false；复用 alias 归一化/冲突保留，不禁止不同命令别名相同。
 - 统一必填字符串、{q} template、非空 command、enum/bool/整数范围规则，复用现 clipboard 严格规则并覆盖整体保存入口。独立工具须在 settings 第 194 行写 INI 之前验证；整体保存须在第 681/698 行写盘之前验证，与第 03 项接线。
@@ -343,7 +351,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 `translate.ahk` 已明确 provider `translate(text,onDelta,onFinished,overrides) -> operation` 与 `test(msg,onFinished) -> operation` 的异步契约。`llmTranslate.ahk` 改为保存取消 operation；InvalidateRequest 先递增请求身份、清空当前 operation，再取消旧请求。新翻译回执仍校验请求身份，旧回调不会写入新翻译或已关闭页面。`settings.ahk` 的 provider 测试同样通过设置测试代次与取消句柄管理新旧测试。
 
-**静态核查与未运行边界：**检索并检查了 provider 所有调用点，确认设置测试不再同步等待，非流式有道/火山不走 SSE；请求使用异步 `Open(..., true)` 和共享回调释放路径，没有 `WaitForResponse` 或轮询。复核了有道签名/form/source/字节校验及火山签名字段、批次推进、首错停止和换行重建。火山单条超 4500 字符的 segment 未拆分，真实 API 对其上限的响应仍需确认。按项目约束，未运行 AHK 语法验证、应用、脚本或测试；COM 事件真实时序、Cancel 与响应同时到达、真实 API 签名/响应、批次耗时和页面生命周期仍需后续获准运行时核实。各阶段仍为 20 秒网络 timeout，没有新设总截止时间。
+**静态核查与未运行边界：**检索并检查了 provider 所有调用点，确认设置测试不再同步等待，非流式有道/火山不走 SSE；请求使用异步 `Open(..., true)` 和共享回调释放路径，没有 `WaitForResponse` 或轮询。复核了有道签名/form/source/字节校验及火山签名字段、批次推进、首错停止和换行重建。火山单条超 4500 字符的 segment 未拆分，真实 API 对其上限的响应仍需确认。AHK `/validate` 已通过；按项目约束，未运行应用、脚本或测试。COM 事件真实时序、Cancel 与响应同时到达、真实 API 签名/响应、批次耗时和页面生命周期仍需后续获准运行时核实。各阶段仍为 20 秒网络 timeout，没有新设总截止时间。
 
 ### 19 翻译语言目录多处维护——成立，已整改，P3 一致性建议
 
@@ -359,7 +367,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - [pages/translate.html](../pages/translate.html) 和 [pages/settings.html](../pages/settings.html) 删除重复语言代码、标签与别名表，按宿主目录生成选项。设置页在完整目录快照到达前禁用配置控件和保存，避免空目录将语言值覆盖为默认值；选项顺序和现有标签保留。
 - `system` 仍只用于固定目标语言。Youdao、Volcengine 的服务端 code 映射与 provider 能力校验保持在各 provider 文件中。
 
-**静态核查与未运行边界：**检索确认配置枚举及两个页面不再单独列语言清单/alias map，schema 与面板都消费翻译目录；检查 `system` 只出现在固定目标选择，provider 映射未改。未运行程序、AHK 语法验证、脚本或测试，运行时 WebView 消息时序未验证。
+**静态核查与未运行边界：**检索确认配置枚举及两个页面不再单独列语言清单/alias map，schema 与面板都消费翻译目录；检查 `system` 只出现在固定目标选择，provider 映射未改。AHK `/validate` 已通过；未运行程序或脚本，运行时 WebView 消息时序未验证。
 
 ### 30 词典联想 SQL 没有处理单引号——成立，已修复，P2 功能缺陷
 
@@ -418,9 +426,9 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - [lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) 先在内存中生成整个绑定段，删除目标编号旧 section 后写回完整内容，通过 ConfigAtomicWrite() 替换；目标段的旧 id/class/exe/path 一并清除，其他 section 内容保留。保存函数返回成功/失败并将技术错误写日志，界面只提示保存失败。
 - [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372)、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411)、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) 的单窗口、窗口组、应用绑定现在先保存成功再发布到 WinBindings 并提示成功；自动恢复保存结果在 [lib/features/windows.ahk:535](../lib/features/windows.ahk#L535) 和 [lib/features/windows.ahk:549](../lib/features/windows.ahk#L549) 检查并记录失败，不撤销已完成的窗口激活。
 - 静态核查：代码调用链和引用位置已重新检索；针对源码的 git diff --check -- lib/features/windows.ahk 无空白错误。本项实际修改文件为 lib/features/windows.ahk 和本节文档。
-- 运行边界：依照 AGENTS.md 禁止启动或运行程序、脚本和测试，因此尚未验证 AHK 语法、实际 INI 原子替换、损坏文件恢复、窗口组/应用启动与失效 HWND 的运行行为。
+- 运行边界：AHK `/validate` 已通过；依照 AGENTS.md 未启动应用、运行脚本或测试，因此实际 INI 原子替换、损坏文件恢复、窗口组/应用启动与失效 HWND 的运行行为仍未验证。
 
-### 22 快捷键条件与 handler 重复解析——部分成立，P3
+### 22 快捷键条件与 handler 重复解析——部分成立，已整改，P3
 
 - 依据：[customHotkeys.ahk](../lib/input/customHotkeys.ahk) 的 HotIf 条件和执行 handler 都解析活动 profile，并遍历/归一化映射。
 - 复核意见：重复解析属实，实际延迟未测量。HotIf 判断不是稳定的“同一事件”缓存边界，前台窗口和配置可能变化；原缓存建议可能发送错误应用动作。
@@ -428,11 +436,15 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[lib/input/customHotkeys.ahk:5](../lib/input/customHotkeys.ahk#L5) RegisterCustomHotkeys()（17–34 已遍历全部配置）、[lib/input/customHotkeys.ahk:54](../lib/input/customHotkeys.ahk#L54) 条件/Resolve/Lookup/Send（54–108）；profile 查找在 [lib/input/appProfiles.ahk:165](../lib/input/appProfiles.ahk#L165)。
-- 注册前构造规范化的 global action Map 和每个 profile 的 action Map，把当前 CustomHotkeyLookup() 第 86–93 行的逐项归一化移出 HotIf 热路径。条件和 handler 都只做 Map 查询，并在执行时重新读取当前活动 profile。
+- 位置：[lib/input/customHotkeys.ahk:6](../lib/input/customHotkeys.ahk#L6) `RegisterCustomHotkeys()`、[58](../lib/input/customHotkeys.ahk#L58) `CustomHotkeyBuildActionMap()`、[89](../lib/input/customHotkeys.ahk#L89) `CustomHotkeyActive()`、[105](../lib/input/customHotkeys.ahk#L105) `CustomHotkeyResolve()` 和 [124](../lib/input/customHotkeys.ahk#L124) `CustomHotkeySend()`；profile 路径解析在 [lib/input/appProfiles.ahk:217](../lib/input/appProfiles.ahk#L217)。
+- 注册前构造规范化的 global action Map 和每个 profile 的 action Map，逐项归一化已从 HotIf 热路径移除。条件和 handler 只做 Map 查询，并在执行时重新读取当前活动 profile。
 - 构造时保留现有冲突取值规则：规范化后的原键若本身就是规范形式优先，否则维持当前枚举回退顺序。保留“未找到”和“显式空/特殊动作”的区别，不能用 Map 的默认空值把所有情况合并。
 - @native 释放原键、@block 吞掉动作、^v 无覆盖时回退 @builtin_pasteSystem 均保持；注册变更仍按当前绑定 condition 关闭旧 Hotkey，录制期间不启用自定义键。AppProfiles 的加载变化和 CustomHotkey 配置变化各自只重建一次映射。
 - profile 路径索引若另行采用，需要保持外部重复路径时“首个有效启用配置”的现有语义；不缓存 HotIf 的动作给 handler。静态确认条件/handler 不再扫描原始配置，而执行前的前台应用检查仍在。
+
+**实施状态：已完成映射预构建，静态核查通过。** `RegisterCustomHotkeys()` 现在在注册边界构建全局动作 Map、按可执行路径索引的启用 profile 动作 Map，以及规范化触发键集合。别名冲突仍优先使用原键本身已是规范形式的项；没有规范项时保留当前枚举顺序下最后一个别名值。显式空动作仍可与未命中区分，`@native`、`@block` 和 `^v` 的系统粘贴回退语义保留。
+
+`CustomHotkeyActive()` 与 handler 每次都调用 `CustomHotkeyResolve()`；该函数重新获取前台窗口并按路径查 profile Map，不复用 HotIf 的动作结果。禁用 profile 不进入路径索引；同一路径取首个启用 profile，保持 `AppProfileActiveForPath()` 的原有顺序语义。`RegisterCustomHotkeys()` 仍在初始化、CustomHotkey 配置变化及 profile 内容变化时重建索引，录制期间和旧绑定关闭流程不变。未运行程序或测试，性能收益及真实热键时序未验证。
 
 ### 23 应用 profile 验证与规范化重复——成立，P3
 
@@ -442,13 +454,15 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[lib/input/appProfiles.ahk:200](../lib/input/appProfiles.ahk#L200) AppProfilesValidateDraft()（200–253）与 [lib/input/appProfiles.ahk:255](../lib/input/appProfiles.ahk#L255) PrepareDraftContent()（255–314 重做规范化，316–382 序列化）；调用在 [lib/features/settings.ahk:664](../lib/features/settings.ahk#L664) 和第 691 行。
+- 位置：[lib/input/appProfiles.ahk:252](../lib/input/appProfiles.ahk#L252) `AppProfilesNormalizeDraft()` 与 [328](../lib/input/appProfiles.ahk#L328) `AppProfilePrepareDraftContent()`；调用在 [lib/features/settings.ahk:545](../lib/features/settings.ahk#L545) 和 [576](../lib/features/settings.ahk#L576)。
 - 建议把严格验证和规范化提成 AppProfilesNormalizeDraft(profiles, &normalizedProfiles, &errorText)，在一次遍历里处理 ID/path 去重、缺省名称、enabled、Keys/CustomHotkey 标量和 @native 限制；非法用户输入报错，不 continue 丢项。
 - SettingsApplyDraft() 第 665 行接收 normalizedProfiles；第 691 行的序列化只消费它，去掉 PrepareDraftContent() 开头第二份规则。当前仅这一个严格 UI 调用链，可直接统一接口，不保留一套兼容包装来重复校验。
 - 316–382 行的未知 metadata、未知 key 与额外 KeyProfile 子段保留逻辑必须完整保留，缺省继承仍通过省略空 override 表达；序列化改造不能把它们当成脏数据清掉。
 - 静态确认：每条验证规则只在规范化边界有一份；严格草稿错误仍阻止全部 INI 写入；磁盘加载的容错路径与 UI 严格路径不要互相替代。
 
-### 24 每 500ms 重新解析 profile——成立，P3
+**实施状态：已完成规范化与序列化分层，静态核查通过。** `AppProfilesNormalizeDraft()` 一次遍历草稿，完成 profile ID/路径校验与去重、显示名缺省、enabled 规范化、`Keys`/`CustomHotkey` Map 类型及字段校验、`@native` 限制，并返回规范 profile 数据；错误类型或未知快捷键分组会拒绝整个草稿，不再静默跳过。`SettingsApplyDraft()` 只调用该严格入口一次；`AppProfilePrepareDraftContent()` 只序列化规范数据并保留原 INI 中的未知 metadata、未知键和额外 KeyProfile 子段。未运行程序或测试，运行时配置写入行为未验证。
+
+### 24 每 500ms 重新解析 profile——成立，已整改，P3
 
 - 依据：[core.ahk](../lib/app/core.ahk) 无文件时间变化仍调用 AppProfilesLoad()；[appProfiles.ahk](../lib/input/appProfiles.ahk) 每次重读 INI、重建 Map 并完整序列化比较。
 - 复核意见：持续重复工作属实，但不能没有耗时证据判为明显性能问题。文件长度不能检测同长度编辑；内容指纹也仍需读文件。
@@ -462,7 +476,9 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - 后续确有磁盘读取成本时才考虑更细粒度文件版本。与第 02 项共同调整后，ReloadSettings() 可把同一次已读取用户段传给 profile builder，避免立即再次读同一 INI。
 - 保留 500ms 外部修改响应、AppProfilesStamp 的规范化内容语义及设置页冲突检测；原始 INI/指纹都不写入日志。静态确认空闲路径不重做整个 profile 对象集，读取失败仍保留旧配置。
 
-### 36 F8 的旧动作名与现有语义不符——成立，P3
+**实施状态：已完成未变内容快路径，静态核查通过。** `ConfigParseIni()` 可将成功读取的原始 UTF-8 文本返回给调用方；`AppProfilesLoad()` 记录最近一次成功接受的文本及文件存在状态。轮询再次读取到相同文本时直接返回 `changed=false`，跳过 INI 解析、profile Map 重建和 JSON stamp 序列化。同秒同长度但内容不同的编辑仍由完整文本比较发现；配置读取失败不会更新缓存，保持后续重试。由 `ConfigLoad()` 提供已解析 Map 的发布会使原文缓存失效，后续探测只需重新建立一次基线。该改动减少解析和分配，不消除文件读取，也不宣称有实测性能收益。未运行程序或测试。
+
+### 36 F8 的旧动作名与现有语义不符——成立，已整改，P3
 
 - 依据：[keys.ahk](../lib/input/keys.ahk) 的 keyFunc_getJSEvalString 只编辑选中文本并复制；默认 INI、demo 和设置标签仍使用旧名/“表达式”文案。
 - 复核意见：这是活动配置 API，不能误删编辑能力。原“保留旧名、新增兼容别名”建议与当前不考虑兼容性约束冲突。
@@ -470,11 +486,13 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 实现 [lib/input/keys.ahk:354](../lib/input/keys.ahk#L354)（354–359）；默认绑定 [capslock_p2-default.ini:144](../capslock_p2-default.ini#L144)，demo [capslock_p2-settingsDemo.ini:164](../capslock_p2-settingsDemo.ini#L164)；设置标签 [pages/settings.html:833](../pages/settings.html#L833)，工具分类正则分别在第 885 与 954 行。
+- 实现 [lib/input/keys.ahk:354](../lib/input/keys.ahk#L354)（354–359）；默认绑定 [capslock_p2-default.ini:144](../capslock_p2-default.ini#L144)，demo [capslock_p2-settingsDemo.ini:164](../capslock_p2-settingsDemo.ini#L164)；设置标签在 [pages/settings-page.js:463](../pages/settings-page.js#L463)，动作分类位于 [507](../pages/settings-page.js#L507) 和 [576](../pages/settings-page.js#L576)。
 - 按当前不考虑兼容性的约定，将函数统一命名为 keyFunc_editSelectedText；同步两个 INI 的 caps_f8 以及页面标签/分类。两个分类规则要同时覆盖新名，不能只改展示名使该动作被分到错误类别。
 - InputBox 第 356 行同时改为“编辑选中文字”/“Edit selected text”，移除旧表达式暗示及不准确的 capslock_p2 Tab 标题，沿用当前 UI 语言判断。
 - 保留 GetSelectedText() 预填、取消时不改剪贴板、确定后通过 SetClipboardText() 写入的行为；原生 AHK InputBox 不是 WebView 弹窗，不需要为本项另外创建面板。
 - 静态确认活动代码/默认/demo/设置分类不再残留旧动作名；该编辑能力仍对用户可配置。自定义 INI 名称变更在发布说明中告知，不增加双入口别名。
+
+**实施状态：已完成动作重命名和文案修正，静态核查通过。** `keyFunc_getJSEvalString` 已改为 `keyFunc_editSelectedText`，默认配置、demo 和设置页动作标签及分类同步更新，不保留旧名别名。InputBox 改为中英文“编辑选中文字”，标题不再提及 Tab；原文预填、取消不改剪贴板、确认后复制的行为保持。未运行程序或测试。
 
 ## 剪贴板与 AI 持久化
 
@@ -509,13 +527,13 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 ### 09 Markdown 外部图片自动加载——事实成立，P3 产品策略
 
-- 依据：[chat.html](../pages/chat.html) 将 marked.parse() 经 DOMPurify 后渲染，未另行限制外部图片；普通 Markdown 图片仍可发起加载。
+- 依据：[chat.js](../pages/chat.js) 将 marked.parse() 经 DOMPurify 后渲染，未另行限制外部图片；普通 Markdown 图片仍可发起加载。
 - 复核意见：自动外连行为存在，但本轮未证实恶意外连或脚本注入；是否允许远程图片是产品策略，不能当成必须禁用的安全缺陷。
 - 修改意见：明确外部媒体是否自动加载及允许的 URL 类型。需要隐私控制时再提供简单的按需加载策略，避免无需求引入代理或复杂允许列表。
 
 **具体位置与建议改法**
 
-- 位置：[pages/chat.html:504](../pages/chat.html#L504) renderMarkdown()（504–514）；761–784历史/完成消息、791–800流式bubble、882–913完成渲染；1142–1148链接处理。
+- 位置：[pages/chat.js:304](../pages/chat.js#L304) `renderMarkdown()`；历史/完成/流式插入位于 [577](../pages/chat.js#L577) 与 [593](../pages/chat.js#L593)，回答链接处理在 [943](../pages/chat.js#L943)。
 - 当前自动加载若继续保留，只同步README的外部媒体说明，不必更改宿主/数据库。按需加载必须属于明确产品决定，不能当本次强制修复。
 
 **实施状态：已按当前行为补充用户说明。** `README.md` 现在说明 AI 回复中的 Markdown 图片会从原网站加载；保留现有自动加载策略，不增加代理、下载或媒体存储逻辑。页面渲染入口仍统一经过现有 `renderMarkdown()`。遵守项目约束，未运行程序、脚本或测试；真实外部请求时机没有运行时确认。
@@ -527,7 +545,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 ### 07 共享宿主缺少集中来源/导航策略——部分成立，P2 加固
 
-- 依据：[panelHost.ahk](../lib/shared/panelHost.ahk) 转发 CoreWebView2.WebMessageReceived 时未读取 args.Source，也未统一限制顶层导航。[chat.html](../pages/chat.html) 已拦截回答链接并由宿主在默认浏览器打开。
+- 依据：[panelHost.ahk](../lib/shared/panelHost.ahk) 转发 CoreWebView2.WebMessageReceived 时未读取 args.Source，也未统一限制顶层导航。[chat.js](../pages/chat.js) 已拦截回答链接并由宿主在默认浏览器打开。
 - 复核意见：当前没有 FrameCreated/Frame.WebMessageReceived 订阅，不能把 Core 和 Frame 事件混为一谈；撤回不可信 frame 直接调用桥接的断言。本轮没有找到正常流程进入外部顶层页面并发出高权限消息的证据，原 P1 缺乏触发依据。
 - 修改意见：共享入口只接受规范化后的预期面板 URL，按页面真实需求制定顶层导航策略。未来若接入 Frame 消息，为独立入口制定来源规则；不预先加入所有 frame 的监听或额外复杂授权层。
 
@@ -537,7 +555,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - PageUrl() 用 Windows 官方文件路径/URL 转换（如 UrlCreateFromPathW）生成编码正确的 file URL，避免安装目录中空格/中文/# 改变 URI 含义。共享判断仅接受该宿主的 file 页面，将 URI 还原/规范化路径后与 host.pagePath 比较；同文档 fragment 是否允许明确处理，不按字符串前缀放行整个目录。
 - WebMessageReceived() 在任何业务 callback 之前核对 args.Source；不附加 pageReady 前置条件，否则导航完成前发出的 ready/getSettings 会被误拒。业务 session/query/version 守卫仍由功能层负责。
 - Ensure() 注册 NavigationStarting 及成对 handler/token，非预期顶层文档 Cancel=true；仅允许导航才重置就绪/记录 NavigationId，完成时忽略被取消/过期导航。Detach/DestroyPage/失败清理同步注销新事件和清除导航状态，不新增 Frame 消息订阅。
-- [lib/features/qbar/qbar_notes.ahk:99](../lib/features/qbar/qbar_notes.ahk#L99) 的 qbar-notes.local 虚拟主机仅供图片子资源，不进入顶层页面来源允许列表，也不能被导航限制误禁图片。[pages/chat.html:1142](../pages/chat.html#L1142) 回答链接和宿主默认浏览器打开继续保留。
+- [lib/features/qbar/qbar_notes.ahk:99](../lib/features/qbar/qbar_notes.ahk#L99) 的 qbar-notes.local 虚拟主机仅供图片子资源，不进入顶层页面来源允许列表，也不能被导航限制误禁图片。[pages/chat.js:943](../pages/chat.js#L943) 回答链接和宿主默认浏览器打开继续保留。
 - 静态确认 source判断先于callback、事件注册解绑成对、只接受确切本宿主页且媒体映射分离。file URI 实际编码/fragment及取消导航完成事件顺序仍需后续运行确认；本条不补造 frame 攻击路径。
 
 **实施状态：代码已完成，静态核查通过；未运行程序、脚本或测试。** [lib/shared/panelHost.ahk](../lib/shared/panelHost.ahk) 现在用 `UrlCreateFromPathW` 生成编码后的面板 file URL；来源校验将 `file:` URI 还原成本机完整路径后与当前 host 的 `pagePath` 比较，并允许同文档 fragment、不接受 query 或其他顶层来源。`WebMessageReceived` 在业务回调及共享光标消息之前核对 `args.Source`，不要求 `pageReady`。新增 `NavigationStarting` handler/token，拒绝非本页导航；只记录允许的 NavigationId，完成回调忽略拒绝或过期 ID，释放时成对解绑。没有增加 Frame 事件。笔记虚拟主机仍只用于图片子资源；聊天链接继续交由默认浏览器打开。实际 WebView2 文件 URL 规范化、片段导航和取消事件时序仍待允许运行后确认。
@@ -550,14 +568,14 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 当前位置：[lib/app/core.ahk:1338](../lib/app/core.ahk#L1338) `ShowSystemCursor()`；[lib/shared/panelHost.ahk:224](../lib/shared/panelHost.ahk#L224) `PanelHostShow()`、[146](../lib/shared/panelHost.ahk#L146) 来源校验后消息分支。聊天原监听已删除；共享监听位于 [pages/panel.js:1](../pages/panel.js#L1)。面板专用路径分别在 [lib/features/qbar/qbar.ahk:120](../lib/features/qbar/qbar.ahk#L120)、[lib/features/clipboard/clipboard_panel.ahk:58](../lib/features/clipboard/clipboard_panel.ahk#L58) 和 [lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55)。
+- 当前位置：[lib/app/core.ahk:1097](../lib/app/core.ahk#L1097) `ShowSystemCursor()`；[lib/shared/panelHost.ahk:224](../lib/shared/panelHost.ahk#L224) `PanelHostShow()`、[146](../lib/shared/panelHost.ahk#L146) 来源校验后消息分支。聊天原监听已删除；共享监听位于 [pages/panel.js:1](../pages/panel.js#L1)。面板专用路径分别在 [lib/features/qbar/qbar.ahk:120](../lib/features/qbar/qbar.ahk#L120)、[lib/features/clipboard/clipboard_panel.ahk:58](../lib/features/clipboard/clipboard_panel.ahk#L58) 和 [lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55)。
 - 已新增窄职责 [pages/panel.js](../pages/panel.js)：只装一次 passive mousemove，`performance.now()` 约 80ms 节流，存在 `chrome.webview` 才发送 `cursorMove`。Qbar、笔记、聊天、翻译、词典、Everything、剪贴板和设置八个交互页各引用一次；聊天自己的监听与节流变量已移除。
 - 宿主已在第 07 项来源校验后集中消费 `cursorMove`，调用 `ShowSystemCursor()` 并返回；聊天重复分支已移除。`PanelHostShow()` 显示时恢复。
 - **不能只改共享 Show：** [lib/features/qbar/qbar.ahk:75](../lib/features/qbar/qbar.ahk#L75) `QbarShow()` 经 [lib/features/qbar/qbar_panel.ahk:246](../lib/features/qbar/qbar_panel.ahk#L246) 的直接 `Gui.Show` 显示；当前在激活后调用恢复。剪贴板复用分支及 [lib/shared/windowBar.ahk:55](../lib/shared/windowBar.ahk#L55) 原生模式切换重新激活也已覆盖。向外部应用粘贴的 WinActivate 不属于面板恢复入口。
 - 保留现恢复函数“计数恰为0不回减、已经可见时平衡”的逻辑，不更改Windows全局偏好，不加轮询。[tools/capslock_p2.iss:55](../tools/capslock_p2.iss#L55) 逐项清单及 [docs/packaging.md:56](packaging.md#L56) 增加共享JS；旧调查5–9行与旧页面审查61–65行标为历史试验，不抹掉过去用户反馈。
 - 静态确认八页只有一份监听、显示/复用/模式切换均覆盖、message确实恢复、新JS已列包。真实键入后指针可见状态仍待后续运行确认。
 
-**实施状态：代码与历史记录已更新，静态核查通过；未运行程序、脚本或测试。** 八个交互页各引入 `panel.js`，聊天专有监听已移除；共享页面每约 80ms 最多发送一次 `{type:"cursorMove"}`。来源通过共享 host 校验后才会触发恢复。`PanelHostShow()`、Qbar 自行 `Gui.Show` 后的激活、剪贴板已显示复用分支及原生窗口模式重新激活路径都调用 `ShowSystemCursor()`。脚本已加入 Inno Setup 显式清单、打包说明和架构资源表；旧调查及页面审查已标为历史试验，保留用户先前反馈。实际键入后指针状态仍待运行确认。
+**实施状态：代码与历史记录已更新，静态核查通过。** 八个交互页各引入 `panel.js`，聊天专有监听已移除；共享页面每约 80ms 最多发送一次 `{type:"cursorMove"}`。来源通过共享 host 校验后才会触发恢复。`PanelHostShow()`、Qbar 自行 `Gui.Show` 后的激活、剪贴板已显示复用分支及原生窗口模式重新激活路径都调用 `ShowSystemCursor()`。`/validate` 曾发现 `cursorMove` 比较字符串的转义写法不合法，现改用单引号 JSON 文本并通过验证。脚本已加入 Inno Setup 显式清单、打包说明和架构资源表；旧调查及页面审查已标为历史试验，保留用户先前反馈。实际键入后指针可见状态仍待运行确认。
 
 ### 20 Everything 动作缺失版本可通过——成立，P2 宿主契约缺口
 
@@ -603,13 +621,15 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[pages/settings.html:415](../pages/settings.html#L415) 内联脚本415–2255；[pages/clipboard-history.html:121](../pages/clipboard-history.html#L121) 内联121–730（569 focusHistoryRow、593 contextAction及594–727有长单行）；[pages/chat.html:198](../pages/chat.html#L198) 内联198–1260。
-- 先按语句恢复多行格式。首轮抽取可每页仅一个专属脚本：拟新增settings-page.js、clipboard-history.js、chat.js，HTML在原script位置用普通classic script src替换。settings-page.js避免与已退役旧settings.js混淆，不立即拆几十个模块/引入ESM。
+- 位置：[pages/settings.html:391](../pages/settings.html#L391) 引入 [pages/settings-page.js](../pages/settings-page.js)；[pages/clipboard-history.html:121](../pages/clipboard-history.html#L121) 引入 [pages/clipboard-history.js](../pages/clipboard-history.js)；[pages/chat.html:198](../pages/chat.html#L198) 引入 [pages/chat.js](../pages/chat.js)。
+- 业务状态与 DOM 事件仍分别由单个页面脚本持有，不立即拆几十个模块/引入 ESM。clipboard-history.js 的 state/timeText、focusHistoryRow、contextAction、筛选器及清空确认已恢复多行格式；CSS仍留在原页面以避免改变样式级联和加载顺序。
 - 完整保留window.*宿主API、DOM查询时机、WindowBar初始化与vendor顺序（聊天marked/purify先加载）；设置单一draft、剪贴板session/query/busy/图片observer清理、聊天viewGeneration/requestId/序号/requestAnimationFrame仍在同一个页面状态所有者内。
-- [tools/capslock_p2.iss:55](../tools/capslock_p2.iss#L55) 55–62是显式JS清单，三个新增文件必须逐项列入；抽CSS也需显式列入。同 [docs/packaging.md:56](packaging.md#L56) 与architecture页面资源表一起更新，不在本次审查重新打包。
+- [tools/capslock_p2.iss:62](../tools/capslock_p2.iss#L62) 起是显式 JS 清单，三个页面脚本已逐项列入；CSS仍留在页面，不需新增资源项。[docs/packaging.md:56](packaging.md#L56) 与 architecture 页面资源表已同步，不重新打包。
 - 静态确认原window入口数量/名字没有遗漏、脚本路径和清单相符、依赖顺序未变，没有多份state或file URL下新ESM依赖；加载时序和交互一致性仍待运行确认。
 
-### 28 共享主题的字体/圆角与旧变量——成立，P3 一致性整理
+**实施状态：已完成首轮页面脚本抽取，静态核查通过。** `settings-page.js`、`clipboard-history.js` 和 `chat.js` 分别承接原内联 classic script；原引用位置和相邻 vendor/shared script 顺序保留，聊天仍先加载 marked 与 DOMPurify。window 宿主回调及各页状态对象均仍只由一个脚本持有。三个文件已加入 Inno Setup 显式清单、打包文档和架构图。剪贴板脚本的状态对象、时间格式化、焦点移动、上下文操作、筛选和清空确认已恢复多行可读格式。遵守项目约束，未运行页面；页面加载和交互等价性未运行验证。
+
+### 28 共享主题的字体/圆角与旧变量——成立，已整改，P3 一致性整理
 
 - 依据：[theme.css](../pages/theme.css) 主要提供颜色/阴影；多个页面重复默认字体，部分页面沿用映射到新主题的旧别名。
 - 复核意见：当前默认字体实际上相同，配色也统一，未证明已有字体漂移。词典正文等合理字体差异应保留。
@@ -623,6 +643,10 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - Qbar --card-radius及派生内圆角需与 [lib/features/qbar/qbar.ahk:57](../lib/features/qbar/qbar.ahk#L57) QbarCardRadius、[lib/features/qbar/qbar_panel.ahk:265](../lib/features/qbar/qbar_panel.ahk#L265) 原生裁剪一致，不能只改页面公共数值造成边缘接缝。
 - 静态确认默认UI字体单一、内容字体保留、移除alias无消费者、Qbar宿主/页面半径相同，深浅色逻辑仍只在共享主题。视觉效果未运行确认。
 
+**实施状态：已集中通用字体/圆角并移除共享兼容别名，静态核查通过。** `pages/theme.css` 现在声明 `--ui-font-family`、`--ui-radius-control` 和 `--ui-radius-card`；产品页面移除重复根字体，字典控件和其余页面默认字体使用共享 token，字典词头/词性和代码等宽字体仍保留。重复的 8px 控件和 12px 卡片圆角改用对应 token，pill、圆形、零圆角和特定 6/7/9/10px 布局保持原值。
+
+字典、设置、qbar 已改为直接使用 `--ui-*` 色彩变量，`theme.css` 中已删除迁移用兼容别名；`--gold` 保留为独立颜色。`ui-preview.html` 的同名变量仅在预览容器内定义，用于其自带的演示配色，不再依赖已移除的共享别名。qbar 的 `--card-radius: 12px` 与 AHK `QbarCardRadius := 12` 仍一致。未运行页面，视觉效果未验证。
+
 ### 29 小型 bridge/窗口栏状态重复——需收窄，P3 可选
 
 - 依据：多页重复两行 post()；chat/translate 对 WindowBar 已更新的 class/aria-pressed 又重复更新。
@@ -631,10 +655,10 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[pages/windowbar.js:107](../pages/windowbar.js#L107) setPinned()（107–115）已处理class/aria-pressed；[pages/chat.html:406](../pages/chat.html#L406) applyPinnedState()（406–412）和 [pages/translate.html:293](../pages/translate.html#L293)（293–301）重复处理。
-- 最小修改移除chat第409–410与translate第295–296行的重复class/aria写入，保留WindowBar.setPinned()；页面继续更新本地化title、aria-label、data-label，translate pinned变量/dataset.i18n/语言切换也保留。
+- 位置：[pages/windowbar.js:107](../pages/windowbar.js#L107) setPinned()（107–115）已处理class/aria-pressed；[pages/chat.js:208](../pages/chat.js#L208) applyPinnedState() 与 [pages/translate.html:324](../pages/translate.html#L324) 都委托共享方法。
+- 最小修改已移除 chat 与 translate 的重复 class/aria 写入，保留 `WindowBar.setPinned()`；页面继续更新本地化 title、aria-label、data-label，translate pinned变量/dataset.i18n/语言切换也保留。
 - [pages/dictionary.html:379](../pages/dictionary.html#L379) 与 [pages/everything.html:363](../pages/everything.html#L363) 的标签处理符合页面职责，不为消除两行post新增通用bridge。第08共享光标脚本也不接管业务payload/session/路由。
-- 保留chat第1248–1250行宿主setPinned支持的参数格式、WindowBar.init幂等/拖动/窗口操作。静态确认class/aria所有者只有WindowBar而页面文字仍随语言更新，协议不变；屏幕阅读/置顶真实展示需运行确认。
+- 保留 [pages/chat.js:1043](../pages/chat.js#L1043) 宿主 `setPinned` 参数格式和 `WindowBar.init()` 的幂等/拖动/窗口操作。静态确认 class/aria 所有者只有 WindowBar，而页面文字仍随语言更新，协议不变；屏幕阅读/置顶真实展示需运行确认。
 
 **实施状态：已完成，静态核查通过。** `pages/chat.html` 与 `pages/translate.html` 的 `applyPinnedState()` 现在只调用 `WindowBar.setPinned()` 写 class/aria-pressed；页面仍更新自己的置顶/取消置顶文案与 title，消息协议不变。静态搜索确认 pin class 和 aria-pressed 只由 [pages/windowbar.js:107](../pages/windowbar.js#L107) 的共享方法写入。未运行页面；视觉及屏幕阅读器表现仍待运行确认。
 
@@ -646,11 +670,13 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 **具体位置与建议改法**
 
-- 位置：[pages/settings.html:2040](../pages/settings.html#L2040) renderAll（2040–2045）；786–789静态控件更新；1030–1116 shortcuts、1274–1288 custom、1290–1297 pairs、1740–1748 plugins、1785–1839 bindings；2072–2106外部快照草稿保护。
-- 建议窄职责renderHotkeyEditor()只刷新scope/custom/shortcuts；全局/profile选择1867–1871、1938–1941及新应用2024–2039调用它。profile启停1927–1933只刷scope/应用列表；删除1904–1921仅当前范围改变时重绘；首次完整快照2102行仍renderAll。
-- 恢复继承1021–1024只刷相关快捷键区域。**再次复核补充：**当前该动作renderAll→renderShortcuts创建新details（1047–1049）→applyShortcutFilter第971行在无搜索时设open=false，同范围手动展开组会重新折叠，是明确源码路径。
-- 若保留展开状态，在同一范围重建前临时记录open group ID；先完成过滤，再在无搜索词时恢复open。搜索自动展开不被覆盖，范围切换是否重置沿既有交互；不新增全页持久mounted/version/DOM diff状态。
+- 位置：[pages/settings-page.js:1701](../pages/settings-page.js#L1701) renderAll（完整快照入口）；[1778](../pages/settings-page.js#L1778) applySettingsSaveReceipt；[660](../pages/settings-page.js#L660) shortcuts、[912](../pages/settings-page.js#L912) custom、[928](../pages/settings-page.js#L928) pairs、[1390](../pages/settings-page.js#L1390) plugins、[1435](../pages/settings-page.js#L1435) bindings；[1735](../pages/settings-page.js#L1735) 外部快照草稿保护。
+- `renderHotkeyEditor()`（1695）只刷新 scope/custom/shortcuts；全局/profile选择在 `createGlobalHotkeyRow()`（1498）和 `createHotkeyApplicationRow()`（1525）调用。profile启停只刷 scope/应用列表；删除只在当前范围改变时重绘；首次完整快照由 `receiveSnapshot()`（1734）调用 `renderAll()`。
+- 恢复继承在 `syncShortcutRestoreButton()`（637）只刷新相关快捷键区域。**再次复核补充：**原动作曾走全页 renderAll→renderShortcuts→applyShortcutFilter（588），将同范围手动展开组折叠；现仅局部重绘并在 `renderShortcuts()`（660）恢复展开状态。
+- 在同一范围重建前临时记录 open group ID；先完成过滤，再在无搜索词时恢复 open。搜索自动展开不被覆盖，范围切换仍重置展开状态；不新增全页持久 mounted/version/DOM diff 状态。
 - 保留draft/baseSections、dirtyFields/pluginsDirty/profilesDirty、快照保护、录制停止规则、过滤/overridesOnly和AppDialog。静态确认局部profile操作不刷新Tab/插件/绑定，首次snapshot仍完整，所有相关UI都被更新；实际焦点/过滤/收益待运行确认。
+
+**实施状态：已完成局部渲染，静态核查通过。** profile 选择、创建、删除、启停及恢复继承只更新相关快捷键区域；同范围重建快捷键时保留无搜索过滤下手动展开的分组。保存回执按提交域更新：只写回仍等于旧基线的表单字段；TabHotString、Keys、CustomHotkey、翻译模式、profile、插件和窗口绑定分别刷新相应列表或控件，不再因回执重建全部动态列表。草稿与新基线比较仍用于保留保存期间继续产生的编辑。`renderAll()` 保留给完整设置快照入口。未运行页面；实际焦点、展开状态和大量列表下的收益仍未验证。
 
 ### 35 Everything 逐行事件监听——事实成立，P3 可选
 
@@ -672,7 +698,7 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 
 1. 第 02、03、10、11、12、15、20、21、30 项的配置、保存、执行身份及结果校验修改已完成并静态核查。
 2. 第 04、05、06、07、08、09、13、14、17、18、19、29、32 项的请求生命周期、提示、页面策略、数据落点与语言目录等修改已按各条记录完成；运行边界仍未验证。
-3. 后续可按需要整理第 01、22–24、27–28、33–34、36 项的结构/重复逻辑；第 35 项保留现实现。不得因文件长度或可见重复直接拆分，要保持状态所有权与现有交互。
+3. 第 01、27、34 项已按状态/所有权边界完成首轮拆分；第 22–24、28、33、36 项已完成，第 35 项保留现实现。不得因文件长度或可见重复直接拆分，要保持状态所有权与现有交互。
 4. 第 25、26、31 项依赖耗时证据；当前约束仍禁止运行程序/脚本及编写测试，性能测量只能在后续明确允许的工作中安排。未取得数据前维持“待度量”，不声称已有性能收益或退化。
 
 所有建议优先复用现有官方绑定、store、registry、PanelHost 和页面公共服务；不为推测风险引入平行系统，不默认加入兼容层、事务框架、工作线程或新数据表。
@@ -688,8 +714,8 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 | 设置部分提交反馈 | 03 | 跨存储提交回执与页面基线更新；已完成。 |
 | ES 参数与说明 | 14、06、17 | 已完成；文案按当前真实分页/回退语义同步，没有恢复已主动改变的旧规则。 |
 | 网络请求生命周期 | 04、18 | 非流式 HTTP、provider.test 和翻译 Cancel operation 已接线；LLM SSE/AI 的既有 ID 接口保留。 |
-| 共享面板与资源 | 07、08、27、28、32、33、35 | 来源事件注册/解绑已完成；页面拆分/局部整理按需要逐步实施；29 已完成，35 保留既有闭包。 |
-| 扩展及待度量整理 | 16、01、19、22–26、31、34、36 | 16、19 已完成；动态 adapter 依赖 10/11/12/15；性能项先有允许环境的耗时证据，结构项保留所有权和现有行为。 |
+| 共享面板与资源 | 07、08、27、28、32、33、35 | 来源事件注册/解绑、共享主题、设置局部渲染及三页脚本抽取已完成；29 已完成，35 保留既有闭包。 |
+| 扩展及待度量整理 | 16、01、19、22–26、31、34、36 | 16、19、22–24、36 已完成；01 已拆出选区服务，34 已拆出 capture/picker；动态 adapter 依赖 10/11/12/15。25、26、31 仍需独立性能证据后决定是否改动。 |
 
 每一批以文档中的“静态确认”作为代码审阅清单；它们是源码关系核对，不是新增测试。涉及网络、事件重入、窗口/指针或视觉的运行边界保持待确认，当前任务不实施这些验证。
 
@@ -698,4 +724,10 @@ candidateId 为空时是独立的原始文本路径：宿主采用快照中的�
 - 阅读了完整相关调用链、当前 AGENTS.md、原设计/整改/调查说明，并用 git log/show 核对关键后续行为变更。
 - 查看现有日志的相关事件/错误记录；未见容量聚合、checkpoint、profile 监视或词典分层查询的独立耗时证据，不能由事件间隔归因性能瓶颈。
 - ES 参数语义核对了仓内文件版本和同版本官方源码；SQLite BLOB 长度成本核对了官方说明。
-- 未启动项目、运行程序/脚本、编写或执行测试。已完成项按各条记录静态检查代码与调用链；条件故障和性能影响没有被表述为动态复现结论。
+- 按 `AGENTS.md` 未启动项目、运行程序/脚本、编写或执行测试；使用其指定的 AHK `/validate` 入口校验所有 include，exit=0 且 `#Warn All, StdOut` 无警告。已完成项按各条记录静态检查代码与调用链；条件故障和性能影响没有被表述为动态复现结论。
+
+### 最终代码复审补充修正
+
+- 修复 `lib/shared/panelHost.ahk` 的 `cursorMove` JSON 比较字符串，使它通过 AHK 语法验证。
+- `Initialize()` 将一次性错误提示变量限制在局部；`ReloadSettings()` 使用独立的 `loadedUserDocument` 名称。
+- `QbarShow()` / `QbarHide()` 明确重置全局 `QbarCurrentQueryText`，避免旧查询文本残留；`QbarStoreUseExistingTarget()` 将局部校验信息重命名为 `targetValidationMessage`，清除 AHK 同名遮蔽警告。

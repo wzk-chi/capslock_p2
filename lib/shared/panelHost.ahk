@@ -152,7 +152,7 @@ PanelHostWebMessageReceived(host, sender, args) {
     try message := args.TryGetWebMessageAsString()
     catch
         message := ""
-    if message = "{""type"":""cursorMove""}" {
+    if message = '{"type":"cursorMove"}' {
         ShowSystemCursor()
         return
     }

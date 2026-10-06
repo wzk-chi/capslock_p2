@@ -6,22 +6,35 @@
 global AppProfiles := Map()
 global AppProfilesStamp := ""
 global AppProfilesLastLoadFailure := ""
+global AppProfilesSourceContent := ""
+global AppProfilesSourceExists := false
+global AppProfilesSourceKnown := false
 
 ; Builds a profile candidate from a fresh read or a supplied INI snapshot.
 ; `changed` compares it to the published stamp; `publish` controls replacement.
 AppProfilesLoad(&changed := false, publish := true, source := 0) {
     global AppProfiles, AppProfilesStamp, SettingsFile, AppProfilesLastLoadFailure
+    global AppProfilesSourceContent, AppProfilesSourceExists, AppProfilesSourceKnown
     changed := false
     previousStamp := AppProfilesStamp
-    if IsObject(source) {
+    sourceProvided := IsObject(source)
+    sourceContent := ""
+    sourceExists := false
+    if sourceProvided {
         sections := source
     } else {
-        sections := ConfigParseIni(SettingsFile, &loaded)
+        sections := ConfigParseIni(SettingsFile, &loaded, &sourceExists, &sourceContent)
         if !loaded {
             if AppProfilesLastLoadFailure != "read"
                 DebugLog("Application profiles load failed stage=read")
             AppProfilesLastLoadFailure := "read"
             return false
+        }
+        if (AppProfilesSourceKnown
+            && sourceExists = AppProfilesSourceExists
+            && sourceContent == AppProfilesSourceContent) {
+            AppProfilesLastLoadFailure := ""
+            return true
         }
     }
     try {
@@ -78,6 +91,21 @@ AppProfilesLoad(&changed := false, publish := true, source := 0) {
     if publish {
         AppProfiles := candidateProfiles
         AppProfilesStamp := candidateStamp
+        if sourceProvided {
+            ; The supplied INI Map has no raw-text baseline. Force one content
+            ; read before later probes can take the unchanged fast path.
+            AppProfilesSourceKnown := false
+        } else {
+            AppProfilesSourceContent := sourceContent
+            AppProfilesSourceExists := sourceExists
+            AppProfilesSourceKnown := true
+        }
+    } else if !sourceProvided && candidateStamp = previousStamp {
+        ; A comment/format-only edit does not change published profiles, but
+        ; accepting its text avoids reparsing the same file on every probe.
+        AppProfilesSourceContent := sourceContent
+        AppProfilesSourceExists := sourceExists
+        AppProfilesSourceKnown := true
     }
     return true
 }
@@ -221,74 +249,17 @@ AppProfileResolveAction(sectionName, key, fallback, path := "") {
     return fallback
 }
 
-AppProfilesValidateDraft(profiles, &errorText := "") {
+AppProfilesNormalizeDraft(profiles, &normalizedProfiles := 0, &errorText := "") {
     errorText := ""
-    if Type(profiles) != "Array" {
-        errorText := "应用配置数据无效。"
-        return false
-    }
-    seenIds := Map()
-    seenPaths := Map()
-    for rawProfile in profiles {
-        if !IsObject(rawProfile) {
-            errorText := "应用配置数据无效。"
-            return false
-        }
-        profileId := rawProfile.Has("id") ? Trim(String(rawProfile["id"])) : ""
-        displayName := rawProfile.Has("displayName") ? Trim(String(rawProfile["displayName"])) : ""
-        exePath := rawProfile.Has("exePath") ? AppProfileNormalizePath(rawProfile["exePath"]) : ""
-        if (!AppProfileIsValidId(profileId) || exePath = ""
-            || RegExMatch(displayName, "[`r`n]") || RegExMatch(exePath, "[`r`n]")) {
-            errorText := "应用配置缺少有效的程序路径。"
-            return false
-        }
-        if displayName = ""
-            displayName := AppProfileDisplayName(exePath)
-        pathKey := exePath
-        if seenIds.Has(profileId) || seenPaths.Has(pathKey) {
-            errorText := "应用配置重复：" . displayName
-            return false
-        }
-        seenIds[profileId] := true
-        seenPaths[pathKey] := true
-        if !rawProfile.Has("sections") || !IsObject(rawProfile["sections"])
-            continue
-        for sectionName in ["Keys", "CustomHotkey"] {
-            if !rawProfile["sections"].Has(sectionName) || !IsObject(rawProfile["sections"][sectionName])
-                continue
-            for key, value in rawProfile["sections"][sectionName] {
-                normalized := ""
-                if !ConfigValidateKey(sectionName, key) {
-                    errorText := "应用快捷键触发键无效：" . displayName . "/" . key
-                    return false
-                }
-                if !ConfigValidateValue(sectionName, key, value, &normalized) {
-                    errorText := "应用快捷键值无效：" . displayName . "/" . key
-                    return false
-                }
-                if sectionName = "Keys" && String(normalized) = "@native" {
-                    errorText := "CapsLock 层不支持保留应用原键：" . displayName . "/" . key
-                    return false
-                }
-            }
-        }
-    }
-    return true
-}
-
-AppProfilePrepareDraftContent(profiles, baseContent, &outputContent := "", &errorText := "") {
-    errorText := ""
-    outputContent := ""
-    if Type(profiles) != "Array" {
-        errorText := "应用配置数据无效。"
-        return false
-    }
-
     normalizedProfiles := []
+    if Type(profiles) != "Array" {
+        errorText := "应用配置数据无效。"
+        return false
+    }
     seenIds := Map()
     seenPaths := Map()
     for rawProfile in profiles {
-        if !IsObject(rawProfile) {
+        if Type(rawProfile) != "Map" {
             errorText := "应用配置数据无效。"
             return false
         }
@@ -310,31 +281,57 @@ AppProfilePrepareDraftContent(profiles, baseContent, &outputContent := "", &erro
         }
         seenIds[profileId] := true
         seenPaths[pathKey] := true
+        sections := rawProfile.Has("sections") ? rawProfile["sections"] : Map()
+        if Type(sections) != "Map" {
+            errorText := "应用快捷键分组无效。"
+            return false
+        }
+        for sectionName, values in sections {
+            if (sectionName != "Keys" && sectionName != "CustomHotkey"
+                || Type(values) != "Map") {
+                errorText := "应用快捷键分组无效。"
+                return false
+            }
+        }
         normalizedProfile := Map(
             "id", profileId,
             "displayName", displayName,
             "exePath", exePath,
             "enabled", enabled ? "1" : "0",
             "sections", Map("Keys", Map(), "CustomHotkey", Map()))
-        if rawProfile.Has("sections") && IsObject(rawProfile["sections"]) {
-            for sectionName in ["Keys", "CustomHotkey"] {
-                if !rawProfile["sections"].Has(sectionName) || !IsObject(rawProfile["sections"][sectionName])
-                    continue
-                for key, value in rawProfile["sections"][sectionName] {
-                    normalized := ""
-                    if !ConfigValidateKey(sectionName, key)
-                        continue
-                    if !ConfigValidateValue(sectionName, key, value, &normalized)
-                        continue
-                    if sectionName = "Keys" && String(normalized) = "@native"
-                        continue
-                    if Trim(String(normalized)) = ""
-                        continue
-                    normalizedProfile["sections"][sectionName][String(key)] := String(normalized)
+        for sectionName in ["Keys", "CustomHotkey"] {
+            if !sections.Has(sectionName)
+                continue
+            for key, value in sections[sectionName] {
+                normalized := ""
+                if !ConfigValidateKey(sectionName, key) {
+                    errorText := "应用快捷键触发键无效：" . displayName . "/" . key
+                    return false
                 }
+                if !ConfigValidateValue(sectionName, key, value, &normalized) {
+                    errorText := "应用快捷键值无效：" . displayName . "/" . key
+                    return false
+                }
+                if sectionName = "Keys" && String(normalized) = "@native" {
+                    errorText := "CapsLock 层不支持保留应用原键：" . displayName . "/" . key
+                    return false
+                }
+                if Trim(String(normalized)) != ""
+                    normalizedProfile["sections"][sectionName][String(key)] := String(normalized)
             }
         }
         normalizedProfiles.Push(normalizedProfile)
+    }
+    return true
+}
+
+AppProfilePrepareDraftContent(normalizedProfiles, baseContent,
+    &outputContent := "", &errorText := "") {
+    errorText := ""
+    outputContent := ""
+    if Type(normalizedProfiles) != "Array" {
+        errorText := "应用配置数据无效。"
+        return false
     }
 
     original := StrReplace(String(baseContent), "`r`n", "`n")

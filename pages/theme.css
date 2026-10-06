@@ -1,7 +1,11 @@
 /* Shared visual tokens for every WebView2 page. Layout and behavior remain
-   page-local; this file is the single source for color, focus and surfaces. */
+   page-local; this file owns the common font, radius, color and surface tokens. */
 :root {
   color-scheme: light;
+  --ui-font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --ui-radius-control: 8px;
+  --ui-radius-card: 12px;
+  font-family: var(--ui-font-family);
 
   --ui-bg: #ffffff;
   --ui-surface: #ffffff;
@@ -33,36 +37,7 @@
   --ui-shadow: 0 16px 42px rgba(31, 35, 41, .09);
   --ui-shadow-soft: 0 8px 24px rgba(31, 35, 41, .06);
 
-  /* Compatibility aliases keep the page-specific layouts small while they
-     migrate away from their former blue and terracotta palettes. */
-  --bg: var(--ui-bg);
-  --panel: var(--ui-surface);
-  --panel-2: var(--ui-surface-soft);
-  --surface: var(--ui-surface);
-  --surface-solid: var(--ui-surface);
-  --surface-soft: var(--ui-surface-soft);
-  --text: var(--ui-text);
-  --ink: var(--ui-text);
-  --muted: var(--ui-muted);
-  --subtle: var(--ui-subtle);
-  --faint: var(--ui-subtle);
-  --line: var(--ui-line);
-  --line-strong: var(--ui-line-strong);
-  --border: var(--ui-line-strong);
-  --card: var(--ui-surface);
-  --card-edge: var(--ui-line-strong);
-  --accent: var(--ui-accent);
-  --accent-strong: var(--ui-accent-strong);
-  --accent-ink: var(--ui-accent-strong);
-  --accent-soft: var(--ui-accent-soft);
-  --accent-quiet: var(--ui-accent-quiet);
-  --code: var(--ui-code);
-  --ring: var(--ui-ring);
-  --danger: var(--ui-danger);
   --gold: #a87428;
-  --chip: var(--ui-surface-muted);
-  --chip-ink: var(--ui-muted);
-  --shadow: var(--ui-shadow);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -157,7 +132,7 @@ button, input, select, textarea { font-family: inherit; }
   flex: 0 0 24px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-control);
   background: var(--ui-toast-icon-surface, var(--ui-accent-soft));
   color: var(--ui-toast-accent, var(--ui-accent));
   font-size: 13px;
@@ -252,7 +227,7 @@ button, input, select, textarea { font-family: inherit; }
 .app-dialog-input {
   width: 100%;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-control);
   padding: 9px 10px;
   background: var(--ui-surface);
   color: var(--ui-text);

@@ -131,10 +131,10 @@ QbarStoreLogPathConflict(targetPath, legacyPath) {
 QbarStoreUseExistingTarget(targetPath, legacyPath) {
     QbarStoreLogPathConflict(targetPath, legacyPath)
     if FileExist(legacyPath) {
-        targetError := ""
-        if !QbarStoreValidateExistingTarget(targetPath, &targetError) {
+        targetValidationMessage := ""
+        if !QbarStoreValidateExistingTarget(targetPath, &targetValidationMessage) {
             DebugLog("Qbar conflicting target database is invalid target=" . targetPath
-                . " legacy=" . legacyPath . " detail=" . targetError)
+                . " legacy=" . legacyPath . " detail=" . targetValidationMessage)
             throw Error("安装目录中的 Qbar 数据库未通过校验")
         }
     }

@@ -7,12 +7,11 @@
 <style>
 :root {
   color-scheme: light dark;
-  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { margin: 0; background: var(--card); color: var(--ink); }
-::selection { background: var(--accent-soft); }
+body { margin: 0; background: var(--ui-surface); color: var(--ui-text); }
+::selection { background: var(--ui-accent-soft); }
 
 /* The window frame is the chrome; the page just fills it. */
 .card {
@@ -30,74 +29,74 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   position: relative;
   gap: 10px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--ui-line);
   flex: none;
 }
 .search-wrap { position: relative; flex: 0 1 300px; width: 300px; max-width: calc(100% - 44px); }
 #search {
   width: 100%;
-  border: 1px solid var(--card-edge);
+  border: 1px solid var(--ui-line-strong);
   background: transparent;
-  color: var(--ink);
+  color: var(--ui-text);
   border-radius: 999px;
   padding: 6px 14px;
-  font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 13px/1.4 var(--ui-font-family);
   outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
-#search::placeholder { color: var(--faint); }
-#search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#search::placeholder { color: var(--ui-subtle); }
+#search:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
 .suggest {
   position: absolute;
   top: calc(100% + 6px);
   left: 0; right: 0;
-  background: var(--card);
-  border: 1px solid var(--card-edge);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius-card);
+  box-shadow: var(--ui-shadow);
   padding: 4px;
   max-height: 300px;
   overflow-y: auto;
   z-index: 10;
 }
 .suggest::-webkit-scrollbar { width: 8px; }
-.suggest::-webkit-scrollbar-thumb { background: var(--chip); border-radius: 6px; }
+.suggest::-webkit-scrollbar-thumb { background: var(--ui-surface-muted); border-radius: 6px; }
 .suggest-item {
   display: block;
   width: 100%;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--ui-text);
   text-align: left;
   padding: 6px 12px;
-  border-radius: 8px;
-  font: 13.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  border-radius: var(--ui-radius-control);
+  font: 13.5px/1.5 var(--ui-font-family);
   cursor: pointer;
 }
-.suggest-item:hover { background: var(--accent-quiet); color: var(--ink); }
-.suggest-item.active { background: var(--accent-soft); color: var(--accent-ink); }
+.suggest-item:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
+.suggest-item.active { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
 .topbar .spacer { display: none; }
 .modebtn {
-  border: 1px solid var(--card-edge);
+  border: 1px solid var(--ui-line-strong);
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-muted);
   border-radius: 999px;
   padding: 5px 12px;
-  font: 12px/1.2 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 12px/1.2 var(--ui-font-family);
   cursor: pointer;
   position: absolute;
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
 }
-.modebtn:hover { border-color: var(--line-strong); color: var(--accent-ink); background: var(--accent-quiet); }
+.modebtn:hover { border-color: var(--ui-line-strong); color: var(--ui-accent-strong); background: var(--ui-accent-quiet); }
 /* ---------- scrolling body ---------- */
 .scroll { flex: 1; overflow-y: auto; padding: 26px 34px 32px; }
 .scroll::-webkit-scrollbar { width: 10px; }
-.scroll::-webkit-scrollbar-thumb { background: var(--chip); border-radius: 8px; border: 2px solid var(--card); }
+.scroll::-webkit-scrollbar-thumb { background: var(--ui-surface-muted); border-radius: var(--ui-radius-control); border: 2px solid var(--ui-surface); }
 .scroll::-webkit-scrollbar-track { background: transparent; }
 
-.boot { color: var(--faint); text-align: center; margin-top: 120px; font-size: 13px; letter-spacing: .3em; }
+.boot { color: var(--ui-subtle); text-align: center; margin-top: 120px; font-size: 13px; letter-spacing: .3em; }
 
 /* ---------- headword ---------- */
 .head-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
@@ -113,9 +112,9 @@ body { margin: 0; background: var(--card); color: var(--ink); }
 /* Phonetic and speaker stay glued together; the group keeps the headword's
    baseline (its own first-baseline) while the button centers on the text. */
 .head-sound { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.phonetic { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.phonetic { color: var(--ui-muted); font-size: 15px; font-variant-numeric: tabular-nums; }
 .speak-btn {
-  color: var(--accent);
+  color: var(--ui-accent);
   background: transparent;
   border: 1px solid transparent;
   width: 27px; height: 27px;
@@ -125,20 +124,20 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   cursor: pointer;
   flex: none;
 }
-.speak-btn:hover { background: var(--accent-quiet); }
+.speak-btn:hover { background: var(--ui-accent-quiet); }
 .speak-btn .lucide { width: 15px; height: 15px; }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .btn {
-  border: 1px solid var(--card-edge);
+  border: 1px solid var(--ui-line-strong);
   background: transparent;
-  color: var(--accent-ink);
-  border-radius: 8px;
+  color: var(--ui-accent-strong);
+  border-radius: var(--ui-radius-control);
   padding: 5px 13px;
-  font: 500 12.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 500 12.5px/1.5 var(--ui-font-family);
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
+.btn:hover { background: var(--ui-accent-quiet); border-color: var(--ui-line-strong); }
 
 /* ---------- badges ---------- */
 .badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
@@ -147,14 +146,14 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   font-weight: 500;
   padding: 2.5px 10px;
   border-radius: 999px;
-  background: var(--chip);
-  color: var(--chip-ink);
+  background: var(--ui-surface-muted);
+  color: var(--ui-muted);
   letter-spacing: .02em;
   white-space: nowrap;
 }
-.badge.oxford { background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; }
+.badge.oxford { background: var(--ui-accent-soft); color: var(--ui-accent-strong); font-weight: 650; }
 .badge.stars { background: transparent; color: var(--gold); font-size: 13px; letter-spacing: 2.5px; padding-left: 0; }
-.freq { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: 8px; }
+.freq { font-size: 11.5px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: 8px; }
 
 /* ---------- sections ---------- */
 .section-title {
@@ -165,44 +164,44 @@ body { margin: 0; background: var(--card); color: var(--ink); }
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .22em;
-  color: var(--faint);
+  color: var(--ui-subtle);
 }
-.section-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.section-title::after { content: ""; flex: 1; height: 1px; background: var(--ui-line); }
 .sense { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 4px 0; font-size: 14.5px; line-height: 1.85; }
 .pos-chip {
   font-family: Georgia, serif;
   font-style: italic;
   font-size: 13px;
-  color: var(--accent-ink);
+  color: var(--ui-accent-strong);
   text-align: right;
   padding-top: 1px;
 }
-.pos-chip.domain { font-style: normal; font-family: inherit; color: var(--muted); font-size: 12px; }
+.pos-chip.domain { font-style: normal; font-family: inherit; color: var(--ui-muted); font-size: 12px; }
 .sense-text { min-width: 0; overflow-wrap: anywhere; }
 
 /* ---------- word forms ---------- */
 .forms { display: flex; flex-wrap: wrap; gap: 7px; }
 .form-chip {
-  border: 1px solid var(--card-edge);
+  border: 1px solid var(--ui-line-strong);
   background: transparent;
-  color: var(--ink);
-  border-radius: 8px;
+  color: var(--ui-text);
+  border-radius: var(--ui-radius-control);
   padding: 4px 11px;
-  font: 12.5px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 12.5px/1.5 var(--ui-font-family);
   cursor: pointer;
   display: inline-flex;
   gap: 6px;
   align-items: baseline;
 }
-.form-chip:hover { background: var(--accent-quiet); border-color: var(--line-strong); }
-.form-chip .form-label { color: var(--muted); font-size: 11.5px; }
-.form-chip .form-word { color: var(--accent-ink); font-weight: 600; }
+.form-chip:hover { background: var(--ui-accent-quiet); border-color: var(--ui-line-strong); }
+.form-chip .form-label { color: var(--ui-muted); font-size: 11.5px; }
+.form-chip .form-word { color: var(--ui-accent-strong); font-weight: 600; }
 
 /* ---------- miss state ---------- */
 .miss { text-align: center; padding: 90px 20px 0; }
 .miss-word { font-family: Georgia, serif; font-size: 30px; margin-bottom: 10px; overflow-wrap: anywhere; }
-.miss-title { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
-.miss-hint { color: var(--faint); font-size: 12.5px; margin-bottom: 22px; }
+.miss-title { color: var(--ui-muted); font-size: 14px; margin-bottom: 6px; }
+.miss-hint { color: var(--ui-subtle); font-size: 12.5px; margin-bottom: 22px; }
 .miss .btn { padding: 7px 18px; font-size: 13px; }
 
 [hidden] { display: none !important; }

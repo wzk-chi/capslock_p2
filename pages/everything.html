@@ -18,7 +18,6 @@ body {
   overflow: hidden;
   background: var(--ui-bg);
   color: var(--ui-text);
-  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   user-select: none;
 }
 
@@ -55,7 +54,7 @@ body {
   min-height: 34px;
   padding: 0 13px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-control);
   background: var(--ui-surface);
   color: var(--ui-text);
   cursor: pointer;
@@ -84,12 +83,12 @@ body {
   margin-bottom: 4px;
   padding: 0 11px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-control);
   background: transparent;
   color: var(--ui-muted);
   cursor: pointer;
   text-align: left;
-  font: 12px/1.2 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 12px/1.2 var(--ui-font-family);
 }
 .category .lucide { width: 15px; height: 15px; }
 .category:hover { background: var(--ui-accent-quiet); color: var(--ui-text); }
@@ -128,7 +127,7 @@ body {
   background: transparent;
   color: var(--ui-muted);
   cursor: pointer;
-  font: 11px/1.2 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 11px/1.2 var(--ui-font-family);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -203,13 +202,13 @@ body {
   color: var(--ui-text);
   cursor: pointer;
   text-align: left;
-  font: 12px/1.2 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 12px/1.2 var(--ui-font-family);
 }
 .menu-item:hover { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .menu-item[aria-checked="true"] { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); font-weight: 650; }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: var(--ui-line-strong); background-clip: padding-box; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: var(--ui-radius-control); background: var(--ui-line-strong); background-clip: padding-box; }
 </style>
 </head>
 <body>

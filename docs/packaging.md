@@ -53,7 +53,7 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 资源保持原有目录结构，因为主程序通过 `A_ScriptDir` 按文件路径加载：
 
 - `capslock_p2.exe`
-- `pages\`：`theme.css`、`icons.js`、`windowbar.js`、`panel.js`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件；交互面板通过 `panel.js` 节流上报鼠标移动，以恢复系统指针。
+- `pages\`：`theme.css`、`icons.js`、`windowbar.js`、`panel.js`、`settings-page.js`、`clipboard-history.js`、`chat.js`、`qbar.html`、`qbar-notes.html`、`qbar-search.js`、`everything.html`、`translate.html`、`dictionary.html`、`chat.html`、`settings.html`、`usage.html`（浏览器打开的「使用介绍」页，CapsLock+F1）。设置、剪贴板历史和聊天页面的业务脚本按原 classic script 顺序加载各自页面文件。所有 HTML 页面依赖同目录的 `theme.css` 共享主题文件；交互面板通过 `panel.js` 节流上报鼠标移动，以恢复系统指针。
 - `vendor\`：AI 回答使用的 `marked.min.js`、`purify.min.js`，共享 UI 图标库
   `lucide\lucide.min.js` 及其许可证，还有随安装包分发的 `pinyin-pro\pinyin-pro.js`、MIT
   许可和来源说明。

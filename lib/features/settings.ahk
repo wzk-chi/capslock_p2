@@ -1,19 +1,11 @@
-; Standalone settings window shell. The page is intentionally a placeholder for
-; now; configuration data and save messages will be added in a later pass.
+; Settings panel facade: lifecycle, message routing, configuration drafts and save receipts.
 
 global SettingsHost := 0
 global SettingsVisible := false
 global SettingsPendingPage := "general"
 global SettingsPendingToast := ""
-global SettingsShortcutHook := 0
-global SettingsShortcutTarget := ""
 global SettingsTestGeneration := 0
 global SettingsTestOperation := 0
-global WindowPickerVisible := false
-global WindowPickerKind := ""
-global WindowPickerRows := []
-global WindowPickerBindingNumber := 0
-global WindowPickerBindType := 1
 
 SettingsShow(initialPage := "general", toastMessage := "", *) {
     global SettingsHost, SettingsVisible, SettingsPendingPage, SettingsPendingToast
@@ -231,6 +223,7 @@ SettingsApplyQbarPlugin(message) {
             invalidChange := ""
             effectiveChanges := ConfigPrepareUserOverrides(
                 changes, originalContent, &candidateContent, &invalidChange)
+            settingsSubmitted := effectiveChanges.Count > 0
             if invalidChange != "" {
                 DebugLog("Settings Qbar save rejected plugin=" . pluginId
                     . " invalid config=" . invalidChange)
@@ -332,21 +325,6 @@ SettingsDeleteQbarPlugin(message) {
     SettingsSendQbarPluginDeleted(false, errorText, pluginId)
 }
 
-SettingsStartShortcutCapture(message) {
-    global SettingsShortcutHook, SettingsShortcutTarget
-    msg := LLMMessageParse(message)
-    target := LLMMsgField(msg, "key")
-    SettingsStopShortcutCapture()
-    if target = ""
-        return
-    hook := InputHook("L0")
-    hook.KeyOpt("{All}", "+NS")
-    hook.OnKeyDown := SettingsShortcutKeyDown
-    SettingsShortcutTarget := target
-    SettingsShortcutHook := hook
-    hook.Start()
-}
-
 SettingsPageIsAllowed(page) {
     return page = "general" || page = "mouse" || page = "llm" || page = "translate"
         || page = "ai" || page = "shortcuts" || page = "tab" || page = "qbar" || page = "windows"
@@ -357,121 +335,6 @@ SettingsSetPendingPage(page) {
     page := StrLower(Trim(String(page)))
     if SettingsPageIsAllowed(page)
         SettingsPendingPage := page
-}
-
-SettingsStopShortcutCapture(*) {
-    global SettingsShortcutHook, SettingsShortcutTarget
-    hook := SettingsShortcutHook
-    SettingsShortcutHook := 0
-    SettingsShortcutTarget := ""
-    if IsObject(hook)
-        try hook.Stop()
-}
-
-SettingsShortcutKeyDown(hook, vk, sc) {
-    global SettingsShortcutHook, SettingsShortcutTarget
-    if SettingsShortcutIsModifier(vk)
-        return
-    key := SettingsShortcutKeyInfo(vk, sc)
-    if !IsObject(key)
-        return
-    modifiers := SettingsShortcutModifierInfo()
-    target := SettingsShortcutTarget
-    value := modifiers["value"] . key["value"]
-    label := modifiers["label"]
-    if label != ""
-        label .= "+"
-    label .= key["label"]
-    SettingsShortcutHook := 0
-    SettingsShortcutTarget := ""
-    try hook.Stop()
-    SetTimer(SettingsSendShortcutCapture.Bind(target, value, label), -1)
-}
-
-SettingsShortcutIsModifier(vk) {
-    return vk = 0x10 || vk = 0xA0 || vk = 0xA1
-        || vk = 0x11 || vk = 0xA2 || vk = 0xA3
-        || vk = 0x12 || vk = 0xA4 || vk = 0xA5
-        || vk = 0x5B || vk = 0x5C
-}
-
-SettingsShortcutModifierInfo() {
-    ctrl := GetKeyState("Ctrl", "P")
-    alt := GetKeyState("Alt", "P")
-    shift := GetKeyState("Shift", "P")
-    win := GetKeyState("LWin", "P") || GetKeyState("RWin", "P")
-    value := (ctrl ? "^" : "") . (alt ? "!" : "") . (shift ? "+" : "") . (win ? "#" : "")
-    label := (ctrl ? "Ctrl" : "")
-    if alt
-        label .= (label = "" ? "" : "+") . "Alt"
-    if shift
-        label .= (label = "" ? "" : "+") . "Shift"
-    if win
-        label .= (label = "" ? "" : "+") . "Win"
-    return Map("value", value, "label", label)
-}
-
-SettingsShortcutKeyInfo(vk, sc) {
-    keyName := ""
-    try keyName := GetKeyName(Format("sc{:03X}", sc))
-    if keyName = ""
-        try keyName := GetKeyName(Format("vk{:02X}", vk))
-    if keyName = ""
-        return 0
-    normalized := StrLower(keyName)
-    if normalized = "space"
-        return Map("value", "{Space}", "label", "Space")
-    if normalized = "enter" || normalized = "numpadenter"
-        return Map("value", normalized = "enter" ? "{Enter}" : "{NumpadEnter}",
-            "label", normalized = "enter" ? "Enter" : "Num Enter")
-    if normalized = "tab"
-        return Map("value", "{Tab}", "label", "Tab")
-    if normalized = "escape" || normalized = "esc"
-        return Map("value", "{Esc}", "label", "Esc")
-    if normalized = "backspace"
-        return Map("value", "{Backspace}", "label", "Backspace")
-    if normalized = "delete" || normalized = "del"
-        return Map("value", "{Delete}", "label", "Delete")
-    if normalized = "insert" || normalized = "ins"
-        return Map("value", "{Insert}", "label", "Insert")
-    if normalized = "home"
-        return Map("value", "{Home}", "label", "Home")
-    if normalized = "end"
-        return Map("value", "{End}", "label", "End")
-    if normalized = "pageup" || normalized = "pgup"
-        return Map("value", "{PgUp}", "label", "PageUp")
-    if normalized = "pagedown" || normalized = "pgdn"
-        return Map("value", "{PgDn}", "label", "PageDown")
-    if normalized = "up" || normalized = "down" || normalized = "left" || normalized = "right"
-        return Map("value", "{" . keyName . "}", "label", keyName)
-    if normalized = "capslock"
-        return Map("value", "{CapsLock}", "label", "CapsLock")
-    if normalized = "printscreen"
-        return Map("value", "{PrintScreen}", "label", "PrintScreen")
-    if normalized = "scrolllock"
-        return Map("value", "{ScrollLock}", "label", "ScrollLock")
-    if normalized = "pause"
-        return Map("value", "{Pause}", "label", "Pause")
-    if normalized = "appskey" || normalized = "contextmenu"
-        return Map("value", "{AppsKey}", "label", "ContextMenu")
-    if RegExMatch(keyName, "i)^F(?:[1-9]|1[0-9]|2[0-4])$")
-        return Map("value", "{" . keyName . "}", "label", keyName)
-    if RegExMatch(keyName, "i)^Numpad")
-        return Map("value", "{" . keyName . "}", "label", "Num " . SubStr(keyName, 7))
-    if StrLen(keyName) = 1 {
-        if RegExMatch(keyName, "^[A-Za-z0-9]$")
-            return Map("value", StrLower(keyName), "label", StrUpper(keyName))
-        return Map("value", "{" . keyName . "}", "label", keyName)
-    }
-    return Map("value", "{" . keyName . "}", "label", keyName)
-}
-
-SettingsSendShortcutCapture(target, value, label) {
-    global SettingsHost
-    if !IsObject(SettingsHost) || target = ""
-        return
-    payload := Map("key", target, "value", value, "label", label)
-    PanelHostExecute(SettingsHost, "window.receiveShortcutCapture(" . JSON.stringify(payload, 0) . ");")
 }
 
 SettingsConfigSections() {
@@ -527,58 +390,6 @@ SettingsBindingSnapshot() {
         result.Push(row)
     }
     return result
-}
-
-SettingsSelectHotkeyApplication(*) {
-    global SettingsHost
-    applicationPath := ""
-    try applicationPath := FileSelect(1, "", "选择应用程序", "应用程序 (*.exe)")
-    catch as pickerError {
-        SettingsSendHotkeyApplicationSelected(0)
-        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
-        ShowMsg(LLMText(
-            "Unable to open the application picker. Reopen Settings and try again.",
-            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
-        return
-    }
-    if applicationPath = ""
-        return
-    profile := AppProfileDraftFromPath(applicationPath)
-    if !IsObject(profile)
-        return
-    SettingsSendHotkeyApplicationSelected(profile)
-}
-
-SettingsSendHotkeyApplicationSelected(profile) {
-    global SettingsHost
-    if !IsObject(SettingsHost) || !IsObject(profile)
-        return
-    DebugLog("Hotkey application profile returned id=" . String(profile["id"]))
-    PanelHostExecute(SettingsHost,
-        "window.hotkeyApplicationSelected(" . JSON.stringify(profile, 0) . ");")
-}
-
-SettingsSelectHotkeyApplicationPath(path) {
-    global WindowPickerKind, WindowPickerVisible
-    DebugLog("Hotkey application selection received pathLength=" . StrLen(String(path))
-        . " visible=" . WindowPickerVisible . " kind=" . WindowPickerKind)
-    if !WindowPickerVisible || WindowPickerKind != "hotkeyApplication" {
-        DebugLog("Hotkey application selection ignored: picker state mismatch")
-        return
-    }
-    path := Trim(String(path))
-    if path = "" {
-        DebugLog("Hotkey application selection ignored: empty path")
-        return
-    }
-    profile := AppProfileDraftFromPath(path)
-    if !IsObject(profile) {
-        DebugLog("Hotkey application profile creation failed")
-        return
-    }
-    DebugLog("Hotkey application profile created id=" . profile["id"])
-    SettingsCloseWindowPicker(false)
-    SettingsSendHotkeyApplicationSelected(profile)
 }
 
 SettingsPushSnapshot(*) {
@@ -685,7 +496,6 @@ SettingsApplyDraft(message) {
             if sections.Has(section)
                 SettingsCollectSectionChanges(changes, section, sections[section])
         }
-        sectionsSubmitted := SettingsHasChanges(changes)
         savePhase := "check external settings changes"
         if msg.Has("base") && IsObject(msg["base"]) {
             conflict := SettingsFindDraftConflict(changes, msg["base"])
@@ -731,8 +541,8 @@ SettingsApplyDraft(message) {
                 SettingsSendSaved(false, "应用配置在设置页外发生了变化，请取消后重新载入。")
                 return
             }
-            savePhase := "validate application profiles"
-            if !AppProfilesValidateDraft(profiles, &profileError) {
+            savePhase := "normalize application profiles"
+            if !AppProfilesNormalizeDraft(profiles, &normalizedProfiles, &profileError) {
                 SettingsSendSaved(false, profileError)
                 return
             }
@@ -755,6 +565,7 @@ SettingsApplyDraft(message) {
         savePhase := "prepare global settings"
         effectiveChanges := ConfigPrepareUserOverrides(
             changes, originalContent, &candidateContent, &invalidChange)
+        sectionsSubmitted := effectiveChanges.Count > 0
         if invalidChange != "" {
             SettingsSendSaved(false, LLMText(
                 "Invalid setting value: " . invalidChange,
@@ -763,7 +574,7 @@ SettingsApplyDraft(message) {
         }
         if profilesDirty {
             savePhase := "prepare application profiles"
-            if !AppProfilePrepareDraftContent(profiles, candidateContent,
+            if !AppProfilePrepareDraftContent(normalizedProfiles, candidateContent,
                 &candidateContent, &profileError) {
                 SettingsSendSaved(false, profileError)
                 return
@@ -844,15 +655,6 @@ SettingsApplyDraft(message) {
             SettingsSendSaved(false, LLMText("Save failed.", "保存失败。"))
         }
     }
-}
-
-SettingsHasChanges(changes) {
-    if Type(changes) != "Map"
-        return false
-    for section, values in changes
-        if Type(values) = "Map" && values.Count
-            return true
-    return false
 }
 
 ; ConfigSchema validates each scalar field. Translation mode additionally has
@@ -1049,198 +851,6 @@ SettingsSendTestResult(generation, ok, text) {
     try PanelHostExecute(SettingsHost, script)
     catch as testResultError
         DebugLog("Settings test result delivery failed")
-}
-
-SettingsOpenWindowPicker(message) {
-    msg := LLMMessageParse(message)
-    numberValid := false
-    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
-    if !numberValid || bindingNumber < 1 || bindingNumber > 10
-        return
-    bindTypeValid := false
-    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
-    if !bindTypeValid || bindType < 1 || bindType > 2
-        return
-    try SettingsShowWindowPicker(bindingNumber, bindType)
-    catch as pickerError {
-        SettingsShow("windows")
-        DebugLog("Settings window picker failed errorType=" . Type(pickerError))
-        ShowMsg(LLMText(
-            "Unable to open the window picker. Reopen Settings and try again.",
-            "无法打开窗口选择器。请重新打开设置后重试。"), 3000)
-    }
-}
-
-SettingsOpenOpenApplicationPicker(message) {
-    msg := LLMMessageParse(message)
-    numberValid := false
-    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
-    if !numberValid || bindingNumber < 1 || bindingNumber > 10
-        return
-    bindTypeValid := false
-    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
-    if !bindTypeValid || bindType != 3
-        return
-    try SettingsShowApplicationPicker(bindingNumber)
-    catch as pickerError {
-        SettingsShow("windows")
-        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
-        ShowMsg(LLMText(
-            "Unable to open the application picker. Reopen Settings and try again.",
-            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
-    }
-}
-
-SettingsOpenOtherApplicationPicker(message) {
-    msg := LLMMessageParse(message)
-    numberValid := false
-    bindingNumber := LLMMsgNumber(msg, "number", &numberValid, 0, true)
-    if !numberValid || bindingNumber < 1 || bindingNumber > 10
-        return
-    bindTypeValid := false
-    bindType := WindowBindingType(LLMMsgNumber(msg, "bindType", &bindTypeValid, 0, true), 0)
-    if !bindTypeValid || bindType != 3
-        return
-    applicationPath := ""
-    try applicationPath := FileSelect(1, "", "选择其他应用", "应用程序 (*.exe)")
-    catch as pickerError {
-        SettingsShow("windows")
-        DebugLog("Settings application picker failed errorType=" . Type(pickerError))
-        ShowMsg(LLMText(
-            "Unable to open the application picker. Reopen Settings and try again.",
-            "无法打开应用选择器。请重新打开设置后重试。"), 3000)
-        return
-    }
-    if applicationPath = "" {
-        SettingsShow("windows")
-        return
-    }
-    BindWindowToApplication(bindingNumber, applicationPath)
-    SettingsShow("windows")
-    SetTimer(SettingsPushSnapshot, -1)
-}
-
-SettingsShowWindowPicker(bindingNumber, bindType) {
-    global SettingsHost, WindowPickerVisible, WindowPickerKind
-    global WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
-    if WindowPickerVisible
-        SettingsCloseWindowPicker(false)
-
-    settingsGui := PanelHostGui(SettingsHost)
-    excludeHwnd := IsObject(settingsGui) ? settingsGui.Hwnd : 0
-    rows := WindowBindingOpenWindows(excludeHwnd)
-    if !rows.Length {
-        SettingsShow("windows")
-        ShowMsg("没有找到当前用户已打开的窗口。", 2500)
-        return
-    }
-    WindowPickerKind := "window"
-    WindowPickerRows := rows
-    WindowPickerBindingNumber := bindingNumber
-    WindowPickerBindType := bindType
-    WindowPickerVisible := true
-    SettingsPushWindowPicker()
-}
-
-SettingsShowApplicationPicker(bindingNumber) {
-    SettingsOpenApplicationPicker("application", bindingNumber)
-}
-
-SettingsShowHotkeyApplicationPicker(*) {
-    DebugLog("Hotkey application picker opening")
-    SettingsOpenApplicationPicker("hotkeyApplication")
-}
-
-SettingsOpenApplicationPicker(kind, bindingNumber := 0) {
-    global SettingsHost, WindowPickerVisible, WindowPickerKind
-    global WindowPickerRows, WindowPickerBindingNumber
-    if WindowPickerVisible
-        SettingsCloseWindowPicker(false)
-
-    settingsGui := PanelHostGui(SettingsHost)
-    excludeHwnd := IsObject(settingsGui) ? settingsGui.Hwnd : 0
-    rows := WindowBindingOpenApplications(excludeHwnd)
-    if !rows.Length {
-        DebugLog("Application picker found no open applications kind=" . kind)
-        if kind != "hotkeyApplication"
-            SettingsShow("windows")
-        ShowMsg("没有找到当前用户已打开的应用。", 2500)
-        return
-    }
-    DebugLog("Application picker results kind=" . kind . " count=" . rows.Length)
-    WindowPickerKind := kind
-    WindowPickerRows := rows
-    WindowPickerBindingNumber := bindingNumber
-    WindowPickerVisible := true
-    SettingsPushWindowPicker()
-}
-
-SettingsPushWindowPicker(*) {
-    global SettingsHost, WindowPickerVisible, WindowPickerKind, WindowPickerRows
-    if !WindowPickerVisible || !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
-        return
-
-    isApplication := WindowPickerKind = "application" || WindowPickerKind = "hotkeyApplication"
-    isHotkeyApplication := WindowPickerKind = "hotkeyApplication"
-    rows := []
-    for item in WindowPickerRows {
-        if isApplication
-            rows.Push(Map("name", item.exe, "count", item.items.Length, "path", item.path))
-        else
-            rows.Push(Map("title", item.title, "exe", item.exe, "class", item.windowClass))
-    }
-    payload := Map(
-        "kind", WindowPickerKind,
-        "title", isApplication ? "选择已打开应用" : "选择已打开窗口",
-        "description", isHotkeyApplication ? "选择应用以添加快捷键配置。"
-            : isApplication ? "选择应用并绑定它的全部窗口。" : "选择要绑定的窗口。",
-        "rows", rows)
-    DebugLog("Window picker pushed kind=" . WindowPickerKind . " count=" . rows.Length)
-    PanelHostExecute(SettingsHost, "window.receiveWindowPicker(" . JSON.stringify(payload, 0) . ");")
-}
-
-SettingsWindowPickerSelect(index) {
-    global WindowPickerKind, WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
-    bindingNumber := WindowPickerBindingNumber
-    if WindowPickerKind = "application" {
-        application := WindowPickerRows[index]
-        SettingsCloseWindowPicker(false)
-        BindWindowToApplication(bindingNumber, application.path)
-    } else {
-        item := WindowPickerRows[index]
-        bindType := WindowPickerBindType
-        SettingsCloseWindowPicker(false)
-        BindWindowItemSelection(bindingNumber, item, bindType)
-    }
-    SettingsShow("windows")
-    SetTimer(SettingsPushSnapshot, -1)
-}
-
-SettingsWindowPickerCancel(*) {
-    global SettingsHost, WindowPickerKind
-    reopenHotkeyApplications := WindowPickerKind = "hotkeyApplication"
-    DebugLog("Window picker cancelled kind=" . WindowPickerKind)
-    if reopenHotkeyApplications {
-        SettingsCloseWindowPicker(false)
-        if IsObject(SettingsHost) && PanelHostPageReady(SettingsHost)
-            PanelHostExecute(SettingsHost, "window.openHotkeyApplicationDialog();")
-        return
-    }
-    SettingsCloseWindowPicker(true)
-}
-
-SettingsCloseWindowPicker(restoreSettings := true) {
-    global SettingsHost, WindowPickerVisible, WindowPickerKind
-    global WindowPickerRows, WindowPickerBindingNumber, WindowPickerBindType
-    WindowPickerVisible := false
-    WindowPickerKind := ""
-    WindowPickerRows := []
-    WindowPickerBindingNumber := 0
-    WindowPickerBindType := 1
-    if IsObject(SettingsHost) && PanelHostPageReady(SettingsHost)
-        PanelHostExecute(SettingsHost, "window.closeWindowPicker();")
-    if restoreSettings
-        SettingsShow("windows")
 }
 
 SettingsResize(targetGui, minMax, width, height) {

@@ -28,7 +28,8 @@
 capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
   config.ahk                       schema、字段 codec、INI 解析、默认覆盖层、类型读取与原子写入
-  core.ahk                         初始化、剪贴板、热串匹配、选区读取与公共服务
+  core.ahk                         初始化、剪贴板序号/槽位、热串匹配与应用级编排
+  shared/selection.ahk             选区读取、文本规范化与 UI Automation provider
   clipboard/clipboard_store.ahk   安装目录下 SQLite 剪贴板历史数据库与事务
   clipboard/clipboard_formats.ahk ClipboardAll 白名单格式解析、校验与恢复
   clipboard/clipboard_history.ahk 历史采集队列、去重、收藏、容量和回放
@@ -62,10 +63,14 @@ lib\
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
   aiChat.ahk                       AI 聊天面板、会话命令和流式请求生命周期
   aiChat_store.ahk                 AI 多会话 SQLite 存储（{app}\data\ai-chat\ai-chat.db）
+  settings.ahk                     设置面板生命周期、消息路由、草稿和统一保存回执
+  settings/settings_capture.ahk    快捷键录制 InputHook 生命周期与页面回执
+  settings/settings_picker.ahk     设置窗口/应用选择器状态、回执和取消恢复
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
+  chat.js / clipboard-history.js / settings-page.js            大型页面的 classic script 业务逻辑
   theme.css / icons.js / windowbar.js / panel.js / dialog.js / toast.js 共享主题、图标、窗口栏、指针恢复、对话框和 Toast
   notes-preview.js                   把 Vditor 渲染出的笔记正文拍平成可复制行并算行数预算
   vendor\                            Vditor（笔记页编辑器与预览渲染）、marked + DOMPurify（AI 回答）、图标、拼音
