@@ -4,8 +4,9 @@
 复核日期：2026-10-05
 细化及再次复核日期：2026-10-05
 性能测量及对应整改日期：2026-10-06
+整改完成性与修复方式复审日期：2026-10-06（基于提交 `3636570`）
 
-状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点；最终代码复审发现的第 20 项独立 Everything 查询回归、第 33 项快捷键分组展开状态问题，以及第 03、05、23 项的回执、错误提示和 profile 校验边界均已修复并静态复核。第 25、31 项已按性能数据完成优化；第 26 项已度量并保留原 checkpoint 策略。当前入口及全部 AHK include 以 AutoHotkey `/validate` 和 `#Warn All, StdOut` 校验通过，exit=0 且无警告。本轮没有启动应用、运行项目脚本或测试。
+状态：原 36 项已逐项核对；本次修复第 10、11、15、16、20、21、24、34 项相关的 R01–R09 共 9 组遗漏。实现修改已进入复审，全部 AHK include 在临时启用 `#Warn All, StdOut` 并解除入口中的 `VarUnset, Off` 后 `/validate` 返回 exit=0、无警告，工作区 `git diff --check` 通过。另行复读了修改调用链并修正发现的静态问题；项目约束禁止启动应用和运行项目测试，因此 WebView、窗口、异步时序等行为没有动态验证。第 01 项保留首轮职责拆分；第 09、26、35 项按原有证据保留现策略；第 25、31 项优化仍有既有测量数据支持。本轮更新了实现及本文档，没有新增测试或运行项目脚本。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -13,7 +14,7 @@
 
 原文多数源码观察成立，但把若干设计差异、条件风险和潜在性能成本写成了确定故障，部分 P1 评级偏高。本版将它们区分为具体缺陷、宿主校验缺口、设计约定待统一和可选结构整理。
 
-优先保留的具体问题包括：配置读取失败被接受为空覆盖层、设置保存部分提交、插件设置及命令归属漏校验、删除/禁用工具后历史仍可重放、词典联想的单引号处理，以及窗口绑定坏数据和缺版本动作消息的处理。Qbar 动态 provider 尚未接通属于扩展架构落差。性能与拆分项均需要控制方案复杂度，不以文件长度、同步调用或重复代码本身判定严重故障。
+初审中保留的具体问题包括：配置读取失败被接受为空覆盖层、设置保存部分提交、插件设置及命令归属漏校验、删除/禁用工具后历史仍可重放、词典联想的单引号处理，以及窗口绑定坏数据和缺版本动作消息的处理；相关实现均在前文记录整改。Qbar 动态 provider 已接通；本轮进一步修复其 raw fallback 状态门和 Notes 记账边界。性能与拆分项按证据处理，不以文件长度、同步调用或重复代码本身判定严重故障。
 
 本次重点修正文档：
 
@@ -173,7 +174,7 @@ AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明�
 - [lib/features/settings.ahk:887](../lib/features/settings.ahk#L887) SettingsHide() 与 [897](../lib/features/settings.ahk#L897) Shutdown() 仍负责调用 StopCapture 与 ClosePicker，PanelHost 创建/销毁留在 facade；[capslock_p2.ahk:37](../capslock_p2.ahk#L37) 起包含三个设置模块，[docs/architecture.md:66](architecture.md#L66) 更新职责表。文件头已改成实际职责说明。
 - 静态确认输入钩子、picker 和宿主各只有一个所有者，关闭/隐藏/取消路径都可清理；不为单个消息建立新服务文件。
 
-**实施状态：已完成录制与 picker 生命周期拆分，静态核查通过。** `settings_capture.ahk` 独占 InputHook 状态、录制/停止、按键归一化和捕获结果回传；`settings_picker.ahk` 独占 picker 状态、应用/窗口列表、选择、取消及恢复路径。宿主现在校验 picker 行号在当前列表范围内，快捷键应用路径必须属于当前 picker 快照。`settings.ahk` 保留唯一 WebMessage 路由、Settings 面板生命周期和配置保存协调，`SettingsHide()` / `SettingsShutdown()` 仍集中清理这两个模块。入口 include 与架构职责表已更新，旧 placeholder 注释已改为实际职责。AHK `/validate` 已通过；输入钩子和 picker 关闭时序未运行验证。
+**实施状态：职责拆分与待启动录制定时器的失效处理已完成（R09）。** `settings_capture.ahk` 独占 InputHook 状态、录制/停止、按键归一化和捕获结果回传；`settings_picker.ahk` 独占 picker 状态、应用/窗口列表、选择、取消及恢复路径。宿主校验 picker 行号和路径快照。录制请求现在由 capture 模块持有定时器和代次；停止、隐藏或关闭会取消待启动 timer 并使旧的启动、按键回调和页面回传失效。待录制期间自定义快捷键保持禁用。settings facade 仍集中路由和清理。全警告 `/validate` 通过；输入钩子与 WebView 消息时序未运行确认。
 
 ## Qbar
 
@@ -193,11 +194,11 @@ AHK 警告复核将 `Initialize()` 仅用于错误提示的 `errorText` 声明�
 - setResults() 增加批次 session/generation 元信息，即使 rows 为空也更新页面当前上下文；否则 raw 执行仍只能从不存在的 row 取身份。新 query、show、hide、shutdown 和 registry 发布清空快照（[lib/features/qbar/qbar.ahk:75](../lib/features/qbar/qbar.ahk#L75)、[lib/features/qbar/qbar_panel.ahk:53](../lib/features/qbar/qbar_panel.ahk#L53)）。
 - 保留 queryPending、别名冲突排序、无参数搜索的触发词补全、路径/文件夹操作、Ctrl+Enter 和静态设置 fallback。静态确认所有选中结果都经 Map、参数只来自宿主对象，queued 执行有二次校验；快速输入/重开/配置刷新时序仍待运行确认。
 
-**实施状态：已完成代码修改并静态复核。** `QbarSendResults()` 为每批候选在宿主建立单一快照，记录 session、页面 queryId、宿主 querySeq、registry generation、宿主保存的查询文本，以及精确 `candidateId → candidate` 映射。别名候选在快照中保存宿主解析出的 commandId/args；开始菜单、文件、文件夹等动态候选保存宿主实际的快捷方式路径、exe 或完整文件路径。SQLite 不可用时，仅允许静态内置白名单动作，例如设置入口；页面显示文本本身不成为执行身份。
+**实施状态：候选快照和原始文本执行门已完成（R01/R04）。** `QbarSendResults()` 为每批候选在宿主建立单一快照，记录 session、页面 queryId、宿主 querySeq、registry generation、宿主保存的查询文本，以及精确 `candidateId → candidate` 映射。候选仍从宿主快照获得稳定 commandId/args 或可信路径。AI/Everything/Notes 旧别名仅在注册表不可用时进入静态 fallback；注册表可用时，禁用状态与用户修改后的别名由当前 registry 决定。查询解析按空白分隔输入词，只规范化别名前缀并用原文位置提取参数，连续空格/Tab 不再绕过或误拒多词别名，参数内空白保留。
 
 页面的 `setResults()` 现在即使收到空列表也保存本批 session 和 generation。`execute` 消息必须提供正 queryId、当前 session、generation 和 candidateId 字段；缺失/错误类型不会降级成 0。执行排队后再次核对当前 session、queryId、querySeq、generation 和面板可见性；candidateId 非空时必须精确命中快照 Map，再从 Map 取得 commandId、参数或动态路径。文件/文件夹仍支持 Ctrl+Enter 定位，开始菜单使用快照里的 `.lnk` 和 exe；路径、设置等静态 fallback 都走宿主已有动作。
 
-candidateId 为空时是独立的原始文本路径：宿主采用快照中的原始查询，按当前 registry 重新解析；忽略页面发送的 text、selected、selectedType、commandId。新 query 在入口处立即失效旧快照；显示/隐藏、页面成功或失败导航、关闭、shutdown 及 registry 发布也会清空它。Everything 结果发布还携带并复核启动时的 session/query/generation 上下文。
+candidateId 为空时是独立的原始文本路径：宿主采用快照中的原始查询，按当前 registry 解析，并忽略页面发送的 `text`、`selected`、`selectedType`、`commandId`。旧别名 fallback 只在注册表不可用时运行。新 query 在入口处立即失效旧快照；显示/隐藏、导航、关闭、shutdown 及 registry 发布也会清空它。Everything 后端只向独立 Everything 页面发布结果，不恢复已删除的 Qbar 结果上下文分支。
 
 静态核查确认页面不再发送 selected/commandId 作为执行授权，generic execute 的唯一入口是带完整上下文的 `QbarExecute()`；候选执行只查快照，原始文本只使用宿主快照文本，注册命令仍在 `QbarExecuteRegistered()` 检查当前命令启用状态和 handler 白名单。历史重放仍经既有 displayed-history ID 路径，独立于普通候选执行。按项目约束未运行 AHK、WebView、程序、脚本或测试；快速输入、重开、registry 更新与菜单/文件真实动作时序仍待允许运行时验证。
 
@@ -219,7 +220,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - **不要直接把 Replay 改为 QbarExecuteRegistered()：**它自身会 Remember/usage，Replay 外层也 Remember，Notes/Settings 还有延后成功路径。最小修复先补授权/参数，动作层统一与第 16 项一起处理，成功历史和使用频率只记一次，拒绝不记。
 - 静态确认没有按别名重新授权失效历史，Normalize 不丢状态，创建 history 的各路径附真实稳定 ID；删除/禁用/再启用、带参数重放及延后计数需后续运行确认。
 
-**实施状态：已完成代码修改并静态复核。** `QbarHistoryReplay()` 先验证当前 query 与 displayed-history ID，再针对每条历史直接按 `entry.commandId` 查当前 registry，要求 pluginId 精确匹配、命令与插件当前启用且未退役、定义有效并且 handler 在白名单内；kind 与当前 handler 也必须一致。payload 按 kind 校验，run 要求保存的 command 快照和字符串 args；回放以 `QbarRunCommand(payload.command, entry.args.args)` 恢复当时参数。ResolveCommand 不再按 input/别名换授权对象；仅当新建的非插件型 URL/path/shortcut 历史尚无 ID 时，按固定内置 kind 映射 canonical ID，真正回放仍要求历史条目内已有稳定 ID 和 pluginId。
+**实施状态：重放授权、加载容错和定位动作持久化已完成（R02/R03）。** `QbarHistoryReplay()` 按稳定 ID、pluginId、当前 enabled/retired 状态、handler、kind 和 payload 授权。历史加载在 Identity 访问字段前校验 kind 与 payload 类型；损坏记录逐条拒绝并记脱敏诊断，不打断后续记录。reveal 作为经过校验的 action 随 path payload 持久化，启动时据此恢复动作；旧的无 action 记录按 open 处理。run 参数继续来自保存的 args，不按别名重新授权。
 
 删除插件事务将关联 `command_history.replayable` 持久化为 0，并在事务提交后将已加载缓存同步标为不可重放；仅禁用时保留该位，列表和执行门按当前命令 enabled/retired 即时计算，重新启用后可恢复。列表把 `replayable` 状态传给页面，禁用/删除工具的记录以淡化样式显示并提示可按 Tab 恢复输入；页面阻止直接执行，宿主再次验证。`QbarHistoryNormalizeEntry()` 严格保留 replayable，缺失或格式异常按不可重放处理；store save 缺失标记不再默认写为 1。历史工具标题以记录时快照写入并在重复执行时保留，改名不会改写旧历史名称；shortcut 的展示文本取原输入快照。
 
@@ -240,7 +241,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - Publish 后再调用 [lib/features/qbar/qbar_index.ahk:12](../lib/features/qbar/qbar_index.ahk#L12) InvalidateConfigIndex() 及 [lib/features/qbar/qbar_search.ahk:81](../lib/features/qbar/qbar_search.ahk#L81) 的相关索引刷新。**第三次复核精度：**commit 前失败可 rollback；commit 后索引/页面失败只能报告“已保存，刷新失败”并重试刷新，不能声称全部失败都已回滚。
 - 保留 next 原子交换、每次发布 generation 只增一次、失败旧 registry/索引仍服务。静态确认关键读取成功才 commit、commit 前不 publish、发布函数无副作用；数据库忙/只读/提交失败及事件重入仍需后续运行确认。
 
-**实施状态：事务发布与查询快照失效已完成，静态核查通过。** [qbar_registry.ahk](../lib/features/qbar/qbar_registry.ahk) 已将候选构建和发布分开；运行表、插件设置、使用记录加载都通过 `bool + 输出容器` 区分读取失败与成功空结果，插件设置及定义 JSON 解析失败会拒绝构建。启动 catalog、修改、删除和创建都在 `BEGIN` 后写入并于同一连接内构建 next，成功后 `COMMIT`，随后在同一 `Critical` 保护段中一次发布；构建/提交失败先保留错误文本、回滚并继续服务旧 registry。`QbarRegistryPublish()` 交换运行表和 generation，并清空 Qbar 当前查询候选快照；它不做 SQL 或页面调用。提交后的索引失效移到事务外，单独记录异常并最多重试两次，不会将已提交数据库操作反馈为保存失败。插件修改预校验已在第 15 项实现。本项其他实际数据库忙/只读/提交失败及事件重入路径未运行确认。
+**实施状态：事务发布与查询快照失效已完成，静态核查通过。** [qbar_registry.ahk](../lib/features/qbar/qbar_registry.ahk) 已将候选构建和发布分开；运行表、插件设置、使用记录加载都通过 `bool + 输出容器` 区分读取失败与成功空结果。读库失败拒绝构建；个别插件的设置 JSON、定义或 schema 无效则禁用受影响命令，并继续构建其他有效命令，不把坏设置接受为空默认值。启动 catalog、修改、删除和创建都在 `BEGIN` 后写入并于同一连接内构建 next，成功后 `COMMIT`，随后在同一 `Critical` 保护段中一次发布；构建/提交失败先保留错误文本、回滚并继续服务旧 registry。`QbarRegistryPublish()` 交换运行表和 generation，并清空 Qbar 当前查询候选快照；它不做 SQL 或页面调用。提交后的索引失效移到事务外，单独记录异常并最多重试两次，不会将已提交数据库操作反馈为保存失败。插件修改预校验已在第 15 项实现。本项其他实际数据库忙/只读/提交失败及事件重入路径未运行确认。
 
 ### 13 Qbar 的 AppData 落点与当前约定不一致——成立，P3 已整改
 
@@ -290,13 +291,13 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - registry Build 的数据库 settings 也经 normalizer，坏数据禁用对应可执行命令并记录诊断；保存后的 ClipboardHistoryOnPluginSettingsChanged() 等通知不能遗漏。run schema 第 191 行声明 append/replace，但执行不消费 argumentMode、create 强制 append；最小方案明确当前仅支持 append，不把 enum 通过误写成 replace 已实现，不顺便开发新模式。
 - 静态确认新建/独立/整体/DB加载同规则，未验证前不写任何存储，readonly ID不可覆写。无 {q}/空模板、整体 clipboard、跨插件 ID及配置后的通知需后续运行确认。
 
-**实施状态：已完成代码修改并静态复核。** `QbarPluginHostPreparePluginChanges()` 先从页面对象提取可写 patch，再按当前注册表核实插件、命令及其归属；只接收已存在且未退役的 commandId，不读取页面传入的 definition、handler 或 schema。显示名称、布尔值、setting schema、别名列表都在进入 store 前校验和规范化；schema 拒绝未知字段，URL 模板要求 `{q}`，命令行不能为空或含换行，枚举/布尔/整数按 catalog 限定。别名只在同一命令内按大小写与连续空白归一后去重，不因其他命令存在同名别名而拒绝，因此注册表仍能保留全部冲突候选。
+**实施状态：插件身份/设置校验和查询端别名规则均已复核完成。** `QbarPluginHostPreparePluginChanges()` 先从页面对象提取可写 patch，再按当前注册表核实插件、命令及其归属；只接收已存在且未退役的 commandId，不读取页面传入的 definition、handler 或 schema。显示名称、布尔值、setting schema、别名列表都在进入 store 前校验和规范化；schema 拒绝未知字段，URL 模板要求 `{q}`，命令行不能为空或含换行，枚举/布尔/整数按 catalog 限定。别名存储与查询均按大小写和连续空白规范，冲突候选仍全部保留。
 
 新建、独立工具保存与整体设置保存都先执行预校验；新建页面只发送当前工具类型的 schema 字段。`QbarRegistryBuild()` 也用同一 normalizer 检查从数据库读到的设置，错误设置或不匹配 catalog 的定义会让相应命令停用并写诊断日志，不会执行页面或数据库提供的 handler。整体设置保存路径在任何配置写入之前校验插件变更。
 
 静态复核检查了创建、独立保存、整体保存、DB registry 构建及执行 handler 白名单调用点，并确认普通字段修改不会把页面展示字段写回数据库。未运行 AHK、应用、脚本或测试；各设置值与 WebView 消息的运行时类型、数据库坏数据修复体验和多候选实际排序仍未运行确认。独立 Qbar 保存同时写 INI 与插件数据库时的部分提交回执及页面草稿基线仍由第 03 项处理；火山/搜索模板错误提示的多语言一致性也尚未做运行验证。
 
-### 16 dynamicProviders 尚未接通查询执行——成立，P2 扩展架构落差
+### 16 dynamicProviders 已接通，原始文本 fallback 与 Notes 记账仍需复核——成立，P2 扩展架构落差
 
 - 依据：[qbar_registry.ahk](../lib/features/qbar/qbar_registry.ahk) 仅创建/填充 dynamicProviders，没有消费者；[qbar_execution.ahk](../lib/features/qbar/qbar_execution.ahk) 的 start-menu handler 返回 false，实际开始菜单/路径/URL 由既有 index/commands 分支处理。
 - 复核意见：开始菜单当前仍能使用，问题是新动态插件不能仅靠定义/provider 接入。相关内置 fallback 工具被设置页隐藏，不应推导普通用户禁用它们后仍执行的场景。
@@ -312,13 +313,13 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 第一次执行和历史最终共用动作层，但外层只一次 Remember/usage；Notes/Settings 的延后成功回调单独接入，避免第 11 项双计数。当前隐藏的 fallback 工具不随整理变成新用户开关。
 - 本项依赖 10/11/12/15，适合实际新增动态工具前实施。保留缓存/预热、拼音、重名排序、路径浏览与静态设置 fallback；静态确认 dynamicProviders 真正被消费且新增 adapter 不改页面/hotkey 业务，实际搜索/排序/定位/统计仍待运行确认。
 
-**实施状态：已完成代码修改并静态复核。** `QbarRegistryDynamicProviderByHandler()` 现在消费 RegistryBuild 收集的已启用 fallback command，适配点仍使用 catalog 中的稳定 `handlerId`，不新增数据库 provider 名称或第二套注册表。`QbarAllItems()` 为开始菜单快照附加当前 `builtin.start-menu.open` 的 commandId、pluginId 和规范化快捷方式路径 candidateKey；文件夹浏览与 Everything 导入结果通过 `builtin.open-path` adapter 保存宿主路径；用户输入的文件/网址通过 `builtin.open-path` / `builtin.open-url` adapter 进入现有注册执行入口。
+**实施状态：动态 provider、工具状态执行门和 Notes 记账已静态复核完成。** `QbarRegistryDynamicProviderByHandler()` 消费 RegistryBuild 收集的已启用 fallback command，适配点仍使用 catalog 中的稳定 `handlerId`，不新增数据库 provider 名称或第二套注册表。`QbarAllItems()` 为开始菜单快照附加当前 `builtin.start-menu.open` 的 commandId、pluginId 和规范化快捷方式路径 candidateKey；文件夹浏览结果通过 `builtin.open-path` adapter 保存宿主路径；用户输入的文件/网址通过 `builtin.open-path` / `builtin.open-url` adapter 进入现有注册执行入口。独立 Everything 不向 Qbar 导入结果。静态工具别名只在 registry 不可用时 fallback；Notes 通过 deferred 成功回调只记一次。
 
-`QbarExecuteRegistered()` 的 start-menu handler 已执行受信快照中的 `.lnk` 与 exe，路径 handler 保留 Ctrl+Enter 定位，URL handler复用既有打开动作。候选 payload 只从第 10 项宿主快照生成，页面不负责路径解析。注册表存在但 provider 被禁用或无效时，索引不显示其动态候选、输入执行也会拒绝；仅在 SQLite registry 不可用时保留原静态 host fallback。已预热的 StartMenuItems 缓存、拼音/首字母筛选与输入路径行为保留。
+`QbarExecuteRegistered()` 的 start-menu handler 已执行受信快照中的 `.lnk` 与 exe，路径 handler 保留 Ctrl+Enter 定位，URL handler复用既有打开动作。候选 payload 只从第 10 项宿主快照生成，页面不负责路径解析。对于开始菜单、路径及 URL 的动态 provider，注册表存在但 provider 被禁用或无效时，索引不显示其动态候选、输入执行也会拒绝；该路径仅在注册表不可用时保留静态 fallback。AI/Everything/Notes 的旧别名回退没有同样的限制，见 R01。已预热的 StartMenuItems 缓存、拼音/首字母筛选与输入路径行为保留。
 
-动态 candidateKey 用规范化路径关联到 provider commandId；QbarUsageInfo、Store 使用记录和历史重放使用相同的 `usageKey + candidateKey`，删除/禁用授权由第 11 项历史门控制。首选动作都调用 `QbarExecutionRememberRegistered()`，成功历史和使用频率各记录一次；Notes/Settings 延后成功回调未改动。
+动态 candidateKey 用规范化路径关联到 provider commandId；QbarUsageInfo、Store 使用记录和历史重放使用相同的 `usageKey + candidateKey`，删除/禁用授权由第 11 项历史门控制。已接通的动态动作调用 `QbarExecutionRememberRegistered()`；Settings 保留延后成功记账。Notes 同时立即记账和延后再记，存在 R05 所述重复与提前成功问题，不能宣称所有入口只记录一次。
 
-静态核查确认 `dynamicProviders` 有唯一消费者、开始菜单不再命中 handler 的 `return false` 空实现、开始菜单/文件/文件夹候选执行使用宿主 payload，注册可用时没有绕过禁用状态的 host 直执行分支。按项目约束未运行 AHK、程序、脚本或测试；实际开始菜单索引、排序、Ctrl+Enter、文件打开和候选统计仍未运行验证。
+静态核查确认 `dynamicProviders` 有唯一消费者，开始菜单/文件/文件夹候选执行使用宿主 payload。R01/R05 已修复原始文本及静态候选 fallback 状态门，以及 Notes 单次成功记账。按项目约束未运行 AHK、程序、脚本或测试；实际开始菜单索引、排序、Ctrl+Enter、文件打开和候选统计仍未运行验证。
 
 ## 翻译与词典
 
@@ -437,12 +438,14 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - SaveWindowBinding() 改为一次准备完整内容并只复用 ConfigAtomicWrite() 文件替换能力，返回明确成功结果；不能调用带应用 ConfigSchema 校验的 ConfigWriteValue() 去写数字绑定段。序列化目标编号时清理该段已不用的旧 id/class/exe/path 项，其他编号的段保持原样。
 - **再次复核补充：**当前调用点是 [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372) BindWindowToItem()、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411) AddWindowToGroup()、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) BindWindowToApplication()；原实现先更新内存、忽略 Save 结果并提示“saved”。要求是在持久化成功后发布新绑定/提示成功，失败保留旧绑定；自动刷新调用位于 [lib/features/windows.ahk:535](../lib/features/windows.ahk#L535) 和 [lib/features/windows.ahk:549](../lib/features/windows.ahk#L549)，写盘失败不能撤销已经完成的窗口激活动作。
 
-**实施状态：已完成代码修改和静态核查；未运行程序、脚本或测试。**
+**实施状态：坏数据解析、显式保存和单窗口自动恢复句柄落盘均已完成（R07）；本次复核发现并修正排序调用的运行时错误，见下文。未启动程序或运行项目脚本/测试。**
+
+- **复核遗漏（2026-10-06）：** 用户报告 [WindowBindingItemKeys()](../lib/features/windows.ahk#L131) 第 164 行因 Sort 第三个参数无效而抛错。此前复核漏掉了函数签名核对，导致“排序后的索引可正常加载”的静态结论不完整。[AHK v2 Sort 官方文档](https://www.autohotkey.com/docs/v2/lib/Sort.htm)规定 Sort(String, Options, Callback) 的第三个参数是可选比较函数；未指定 D 时项目分隔符默认是换行符。原代码将 Chr(10) 错传为比较函数。现删除第三参数，保留 "C" 大小写敏感选项和固定宽度索引键；它们按字符串升序仍对应非负索引的数值顺序，随后继续以换行符拆分结果。此次修复仅做源码审查及 /validate 语法校验，没有启动应用或复现运行路径。
 
 - 已在 [lib/features/windows.ahk:23](../lib/features/windows.ahk#L23) 先解析完整 INI 到候选 Map，再一次替换 WinBindings；文件读取失败保留旧 Map。count 通过非负整数字符串及 Int64 可转换范围校验。id_* 按实际存在的索引枚举并按数值排序；有 count 时仅读取 1..count，没 count 时保留旧格式的 0 起始索引，不为巨大 count 循环。重复数字索引、越界/非法索引和非法句柄逐项跳过并 DebugLog。
 - [lib/features/windows.ahk:171](../lib/features/windows.ahk#L171) 对 HWND 做纯数字及当前指针宽度范围校验。数值合法但窗口已关闭（含 0）的记录仍带着 class/exe/path 加载，让既有窗口查找/替换流程继续恢复绑定。
 - [lib/features/windows.ahk:279](../lib/features/windows.ahk#L279) 先在内存中生成整个绑定段，删除目标编号旧 section 后写回完整内容，通过 ConfigAtomicWrite() 替换；目标段的旧 id/class/exe/path 一并清除，其他 section 内容保留。保存函数返回成功/失败并将技术错误写日志，界面只提示保存失败。
-- [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372)、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411)、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) 的单窗口、窗口组、应用绑定现在先保存成功再发布到 WinBindings 并提示成功；自动恢复保存结果在 [lib/features/windows.ahk:535](../lib/features/windows.ahk#L535) 和 [lib/features/windows.ahk:549](../lib/features/windows.ahk#L549) 检查并记录失败，不撤销已完成的窗口激活。
+- [lib/features/windows.ahk:372](../lib/features/windows.ahk#L372)、[lib/features/windows.ahk:411](../lib/features/windows.ahk#L411)、[lib/features/windows.ahk:439](../lib/features/windows.ahk#L439) 的单窗口、窗口组、应用绑定现在先保存成功再发布到 WinBindings 并提示成功；窗口组/应用自动刷新会检查保存结果。单窗口自动恢复因 finder 提前修改 HWND 而无法进入保存分支（R07），原先宣称 [lib/features/windows.ahk:538](../lib/features/windows.ahk#L538) 与 [553](../lib/features/windows.ahk#L553) 两条自动恢复路径均检查保存结果不准确。
 - 静态核查：代码调用链和引用位置已重新检索；针对源码的 git diff --check -- lib/features/windows.ahk 无空白错误。本项实际修改文件为 lib/features/windows.ahk 和本节文档。
 - 运行边界：AHK `/validate` 已通过；依照 AGENTS.md 未启动应用、运行脚本或测试，因此实际 INI 原子替换、损坏文件恢复、窗口组/应用启动与失效 HWND 的运行行为仍未验证。
 
@@ -482,7 +485,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 静态复核确认 malformed payload 在任何写盘前被拒绝、显式布尔解析有失败状态、合法缺省仍归一化为字符串 1，并且 `AppProfilePrepareDraftContent()` 只接收已规范化 Array。AHK `/validate` 与 `#Warn All, StdOut` 通过；未运行程序或测试，profile 写盘及设置页保存时序未动态验证。
 
-### 24 每 500ms 重新解析 profile——成立，已整改，P3
+### 24 每 500ms 重新解析 profile——成立，已完成快路径，P3
 
 - 依据：[core.ahk](../lib/app/core.ahk) 无文件时间变化仍调用 AppProfilesLoad()；[appProfiles.ahk](../lib/input/appProfiles.ahk) 每次重读 INI、重建 Map 并完整序列化比较。
 - 复核意见：持续重复工作属实，但不能没有耗时证据判为明显性能问题。文件长度不能检测同长度编辑；内容指纹也仍需读文件。
@@ -496,7 +499,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 后续确有磁盘读取成本时才考虑更细粒度文件版本。与第 02 项共同调整后，ReloadSettings() 可把同一次已读取用户段传给 profile builder，避免立即再次读同一 INI。
 - 保留 500ms 外部修改响应、AppProfilesStamp 的规范化内容语义及设置页冲突检测；原始 INI/指纹都不写入日志。静态确认空闲路径不重做整个 profile 对象集，读取失败仍保留旧配置。
 
-**实施状态：已完成未变内容快路径，静态核查通过。** `ConfigParseIni()` 可将成功读取的原始 UTF-8 文本返回给调用方；`AppProfilesLoad()` 记录最近一次成功接受的文本及文件存在状态。轮询再次读取到相同文本时直接返回 `changed=false`，跳过 INI 解析、profile Map 重建和 JSON stamp 序列化。同秒同长度但内容不同的编辑仍由完整文本比较发现；配置读取失败不会更新缓存，保持后续重试。由 `ConfigLoad()` 提供已解析 Map 的发布会使原文缓存失效，后续探测只需重新建立一次基线。该改动减少解析和分配，不消除文件读取，也不宣称有实测性能收益。未运行程序或测试。
+**实施状态：原文比较已移到解析之前（R08）。** `ConfigReadIni()` 只读取 UTF-8 原文及存在/错误状态；`AppProfilesLoad()` 比较已接受内容，只有变化才建立 INI Map 并构建 profile 候选。同秒不同内容仍可发现，读取失败不更新缓存；`ConfigLoad()` 继续向 profile parser 传递同一次读取的 Map。此优化减少未变轮询的解析和分配，未单独实测收益。
 
 ### 36 F8 的旧动作名与现有语义不符——成立，已整改，P3
 
@@ -622,7 +625,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 新查询开始时立即推进结果版本，使旧菜单/旧结果动作失效；该查询成功后的结果发布使用此版本。这样队列中的旧动作即使在新搜索尚未返回时才执行，也不能操作旧结果。保留单调版本、结果 ID、页面 resultsInteractive、菜单 menuResultVersion 快照和“结果已不可用”反馈，不另建候选快照。
 - 静态确认所有动作不能省略 version，入口严格解析正整数，执行前再次比对当前代次；正常页面仍发送版本。菜单刷新、搜索失败时的交互以及真实文件动作反馈仍待运行确认。
 
-**实施状态：已完成（静态核查）**
+**实施状态：动作版本、独立查询上下文、job 所有权及最终结果发布均已完成静态修复（R06）。**
 
 - 修改 [lib/features/everything/everything_panel.ahk](../lib/features/everything/everything_panel.ahk) 的 action 消息入口：复用 LLMMsgNumber(integerOnly=true)，仅将解析成功的正 Integer 版本绑定到延迟动作；缺失、格式非法、非正数或不能表示为 Integer 的版本不会入队。
 - 修改 [lib/features/everything/everything.ahk](../lib/features/everything/everything.ahk)：每次新查询开始时推进 EverythingResultsVersion，查询结果沿用该代次发布；EverythingFindResult() 改为必须传入版本，并在扫描结果前拒绝非正 Integer 及非当前版本。延迟动作因此会在新查询开始或结果更新后被拒绝，原有“结果已不可用”反馈保留。
@@ -710,7 +713,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - `applyShortcutFilter(updateShortcutGroups)` 仅在快捷键过滤入口更新快捷键组；`renderCustomHotkeys()` 传 `false`，只刷新自定义热键列表。无搜索时同范围重建继续保留手动展开组，范围切换仍重置；搜索自动展开规则不变。不增加全页持久 mounted/version/DOM diff 状态。
 - 保留draft/baseSections、dirtyFields/pluginsDirty/profilesDirty、快照保护、录制停止规则、过滤/overridesOnly和AppDialog。静态确认局部profile操作不刷新Tab/插件/绑定，首次snapshot仍完整，所有相关UI都被更新；实际焦点/过滤/收益待运行确认。
 
-**实施状态：已完成局部渲染及同范围展开状态修复，静态核查通过。** profile 选择、创建、删除、启停及恢复继承只更新相关快捷键区域；自定义热键重绘不再重设快捷键分组状态，同范围无搜索重建保留手动展开分组，范围切换及搜索自动展开规则不变。保存回执按提交域更新：只写回仍等于旧基线的表单字段；TabHotString、Keys、CustomHotkey、翻译模式、profile、插件和窗口绑定分别刷新相应列表或控件，不再因回执重建全部动态列表。草稿与新基线比较仍用于保留保存期间继续产生的编辑。`renderAll()` 保留给完整设置快照入口。未运行页面；实际焦点、展开状态和大量列表下的收益仍未验证。
+**实施状态：已完成局部渲染及同范围展开状态修复，静态核查通过。** profile 选择、创建、删除、启停及恢复继承只更新相关快捷键区域；自定义热键重绘不再重设快捷键分组状态，同范围无搜索重建保留手动展开分组，范围切换及搜索自动展开规则不变。保存回执按提交域更新：普通保存的已提交字段仅在当前值仍等于该次提交快照时写回；无该字段提交快照时才比较旧基线。TabHotString、Keys、CustomHotkey、翻译模式、profile、插件和窗口绑定分别刷新相应列表或控件，不再因回执重建全部动态列表。草稿与新基线比较仍用于保留保存期间继续产生的编辑。`renderAll()` 保留给完整设置快照入口。未运行页面；实际焦点、展开状态和大量列表下的收益仍未验证。
 
 ### 35 Everything 逐行事件监听——事实成立，P3 可选
 
@@ -728,30 +731,11 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 **处理状态：按复核建议保留现实现，本轮不改事件绑定。** 该项为可选整理，当前闭包实现清楚且没有监听开销证据；本轮授权度量针对第 25、26、31 项，没有对逐行监听单独测量，仍不以文件行数或监听数量推导瓶颈。静态确认现有监听仍走 `resultsInteractive`、结果版本及菜单快照保护。
 
-## 后续修改顺序与实施边界
+## 本轮实施、复审与运行限制
 
-1. 第 02、03、10、11、12、15、20、21、30 项的配置、保存、执行身份及结果校验修改已完成并静态核查。
-2. 第 04、05、06、07、08、09、13、14、17、18、19、29、32 项的请求生命周期、提示、页面策略、数据落点与语言目录等修改已按各条记录完成；运行边界仍未验证。
-3. 第 01、27、34 项已按状态/所有权边界完成首轮拆分；第 22–24、28、33、36 项已完成，第 35 项保留现实现。不得因文件长度或可见重复直接拆分，要保持状态所有权与现有交互。
-4. 第 25、26、31 项已按用户授权使用 temp/perf-20261006 内的测量脚本取得数据。25 已按结果将重复汇总/逐条删除改为一次候选收集和批量裁剪；26 完成度量但保留 checkpoint 频率，避免无产品数据丢失窗口依据地延迟保存；31 修复 SQLite REGEXP 元数并用原生 LIKE 降低 fuzzy 层耗时。性能数值仅代表本机合成数据/当前词库样本，不外推为所有机器的响应保证。
+R01–R09 均已按记录修复，并静态复读对应调用链。复审期间还调整了三处实现细节：别名查询现在逐输入词构造前缀并查内存 Map，避免为每个已注册别名重复拆分输入；Everything 先在局部构造结果，再在短 Critical 中复核并交换 job/结果所有权，资源释放和文件 I/O 保持在锁外；录制启动失败会清理 pending 状态并只记录错误类型。改动复用现有 registry、history/store、PanelHost 和 capture 生命周期，没有新增表或平行执行系统。
 
-所有建议优先复用现有官方绑定、store、registry、PanelHost 和页面公共服务；不为推测风险引入平行系统，不默认加入兼容层、事务框架、工作线程或新数据表。
-
-
-### 建议实施批次与依赖
-
-| 批次 | 条目 | 应先完成的接口/边界 |
-| --- | --- | --- |
-| 独立的小范围正确性修复 | 02、20、21、30 | 配置读取结果、严格结果版本、窗口绑定解析/保存结果、词典参数绑定；均已完成。 |
-| Qbar 保存基础 | 12、15 | 插件规范化、关键读库成功结果、Build/Publish 与提交回执语义；已完成。 |
-| Qbar 执行与历史 | 10、11 | 当前候选快照和直接稳定 ID 授权；已完成，并保留原动作层以避免重复记历史。 |
-| 设置部分提交反馈 | 03 | 跨存储提交回执与页面基线更新；已完成。 |
-| ES 参数与说明 | 14、06、17 | 已完成；文案按当前真实分页/回退语义同步，没有恢复已主动改变的旧规则。 |
-| 网络请求生命周期 | 04、18 | 非流式 HTTP、provider.test 和翻译 Cancel operation 已接线；LLM SSE/AI 的既有 ID 接口保留。 |
-| 共享面板与资源 | 07、08、27、28、32、33、35 | 来源事件注册/解绑、共享主题、设置局部渲染及三页脚本抽取已完成；29 已完成，35 保留既有闭包。 |
-| 扩展及按证据整理 | 16、01、19、22–26、31、34、36 | 16、19、22–24、36 已完成；01 已拆出选区服务，34 已拆出 capture/picker；25 和 31 已根据测量结果完成优化，26 已测量并保留策略；动态 adapter 依赖 10/11/12/15。 |
-
-每一批以文档中的“静态确认”作为代码审阅清单；它们是源码关系核对，不是新增测试。涉及网络、事件重入、窗口/指针或视觉的运行边界保持待确认，当前任务不实施这些验证。
+依照 `AGENTS.md` 未启动应用或运行项目测试。本轮完整入口及所有 include 在临时启用全部警告后 `/validate` 返回 exit=0、无警告；`git diff --check` 通过。真实 WebView/Everything 事件排序、InputHook 拦截、文件/窗口操作及迁移故障仍未动态验证。第 25、26、31 项沿用原有测量数据，本轮没有重新运行测量，也未读写用户数据库。
 
 ## 复核方法与限制
 
@@ -765,5 +749,147 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 修复 `lib/shared/panelHost.ahk` 的 `cursorMove` JSON 比较字符串，使它通过 AHK 语法验证。
 - `Initialize()` 将一次性错误提示变量限制在局部；`ReloadSettings()` 使用独立的 `loadedUserDocument` 名称。
 - `QbarShow()` / `QbarHide()` 明确重置全局 `QbarCurrentQueryText`，避免旧查询文本残留；`QbarStoreUseExistingTarget()` 将局部校验信息重命名为 `targetValidationMessage`，清除 AHK 同名遮蔽警告。
-- 用户提供的 `ClipboardHistoryJoin` 未赋值警告已按完整 include 入口复核：定义位于 `lib/features/clipboard/clipboard_formats.ahk`，入口在 `capslock_p2.ahk` 中先包含 store、再包含 formats；完整入口以 `#Warn All, StdOut` `/validate` 返回 `exit=0` 且无警告，因此没有增加重复 join helper。局部文件分析仍可能无法解析跨 `#Include` 函数。
-- 对当前 `capslock_p2.ahk` 的全部 include 重新执行 AutoHotkey `/validate` 并开启 `#Warn All, StdOut`，结果 `exit=0`、无警告；只做语法验证，未启动应用或运行项目脚本/测试。
+- 用户提供的 `ClipboardHistoryJoin` 未赋值警告已按完整 include 入口复核：定义位于 `lib/features/clipboard/clipboard_formats.ahk`，入口在 `capslock_p2.ahk` 中先包含 store、再包含 formats；本次完整入口在 stdin 同时把裸 `#Warn` 改为 `#Warn All, StdOut`、把后续 `#Warn VarUnset, Off` 改为 `#Warn VarUnset, StdOut`，`/validate` 返回 `exit=0` 且无警告，因此没有增加重复 join helper。局部文件分析仍可能无法解析跨 `#Include` 函数。
+- 本次对当前 `capslock_p2.ahk` 的全部 include 重新执行 AutoHotkey `/validate`：stdin 副本同时将裸 `#Warn` 改为 `#Warn All, StdOut`，将后续 `#Warn VarUnset, Off` 改为 `#Warn VarUnset, StdOut`，真正收集全部警告，结果 `exit=0`、无警告。仅替换裸 `#Warn` 会被后续 VarUnset 屏蔽覆盖，不能证明该类警告检查通过。只做语法验证，未启动应用或运行项目脚本/测试。
+
+## 2026-10-06 整改完成性与修复方式复审
+
+基准实现为提交 `3636570` 加上本次工作区修改；复审前只有审查文档存在未提交修改。本节记录 R01–R09 的确认依据、修复范围和验收情况；前文“依据”可能保留初审时源码观察，应以实施状态和本节为当前结论。本次修改了实现与文档，没有提交或打包。逻辑结论来自静态调用链，不描述为动态复现。
+
+结论：此前确认的 24 项和本次修复的 9 组均按源码调用链复核；第 01、27、34 项按完整职责边界保留首轮拆分，09、26、35 项按依据保留现策略。R01–R09 已实现建议中的最小修复，并做过静态复核；但 2026-10-06 用户报告窗口绑定加载时 Sort 参数错误，证明此前复核仍漏掉了 API 参数契约。该问题已按官方 AHK v2 文档修正并记录在第 21 项；应用运行路径仍未验证。R07 的副作用早于最新提交；本轮修正属于补齐遗漏，不把它描述为新引入回归。
+
+### 36 项完成情况与修复方式评价
+
+| 项目 | 本次状态 | 当前实现及评价 |
+| --- | --- | --- |
+| 01 核心职责 | 首轮完成 | 选区/UIA 按完整所有权移入 selection，core 保留编排；继续按功能边界拆分合理，没有必要按行数拆完。 |
+| 02 配置读取 | 已完成 | 候选读取、失败保留旧运行态、接受时间戳及重试已落实；FileExist/stat 的原文限定仍保留，不扩大保证范围。 |
+| 03 跨存储保存 | 已完成 | 写前校验、最多一次 INI 写入、独立插件事务和分域回执清楚；saveId/提交字段快照保护新草稿合理，无需通用跨存储事务框架。 |
+| 04 连接测试 | 已完成 | 普通 JSON 复用异步 WinHTTP；请求代次、取消和终态处理已有统一所有者。 |
+| 05 用户错误提示 | 已完成目标范围 | core/settings/windows 及工具删除的指定错误路径已转为用户说明；该结论不表示全仓所有其他功能的错误文案已统一。 |
+| 06 AI 使用说明 | 已完成 | 持久化历史、分页、新会话和模型上下文限制分开说明，与实现一致。 |
+| 07 面板来源/导航 | 已完成 | 官方文件 URL 转换、准确本页来源判断、导航 ID 和成对解绑合理。 |
+| 08 指针恢复 | 已完成 | 八页共享节流监听及宿主显示/激活入口已覆盖，新增脚本进入清单。 |
+| 09 外部图片 | 已处理，保留策略 | README 明确当前外部加载行为；没有证据要求引入代理或媒体存储。 |
+| 10 候选执行身份 | 已完成修复 | 候选快照、fallback 可用条件与当前注册表执行门已覆盖；多空白/Tab 匹配保留参数原文，见 R01/R04。 |
+| 12 提交/发布 | 已完成，文档已纠偏 | 同连接事务内 Build、提交后 Publish、派生索引在事务外刷新合理；坏插件 JSON 实际禁用相应命令而非拒绝整个构建。 |
+| 13 Qbar 数据目录 | 已完成 | 官方 backup、双库校验、无覆盖发布及保留旧库适合迁移；安装目录不可写时明确失败，无隐式 AppData 回退。 |
+| 14 ES 参数边界 | 已完成 | 固定客户端开关后追加 -search*，保留查询原文；比整体引用查询准确。 |
+| 15 插件校验 | 已完成修复 | 共用 normalizer、写前预校验、真实归属校验与查询端空白规范一致。 |
+| 16 动态 provider | 已完成修复 | 开始菜单/路径/URL 复用现索引和执行入口；Notes 记账在面板成功打开后执行一次，见 R05。 |
+| 17 互译回退 | 已完成 | 来源不确定时准确显示回退标记，保留已明确加入的目标 A 规则。 |
+| 18 翻译传输 | 已完成 | provider 内保留签名/串行批次，异步 operation 可取消；不重复维护第二套阻塞传输。 |
+| 19 语言目录 | 已完成 | schema、宿主快照及页面共用目录，服务商代码映射留在 provider 合理。 |
+| 20 Everything 版本 | 已完成修复 | 缺版本动作拒绝、独立查询身份、CSV job 所有权及最终结果版本发布均复核。 |
+| 21 窗口坏数据 | 已完成修复 | 严格解析、候选发布、显式绑定保存和单窗口替换句柄落盘已落实。 |
+| 22 快捷键预构建 | 已完成 | 注册时规范化 Map/路径索引，执行时重读活动窗口，保留原优先级与原键语义。 |
+| 23 profile 规范化 | 已完成 | 草稿规范化与序列化分层，非法 enabled/缺失数组在写盘前拒绝，未知 metadata 保留。 |
+| 24 profile 轮询 | 已完成快路径 | 原文读取后先比较接受基线，只有文件变化时才解析 INI，见 R08。 |
+| 25 剪贴板预算 | 已完成优化 | 一次汇总、同口径候选累计与批量删除，保护项/顺序/事务保留；现有 CSV 支持收益。 |
+| 26 AI checkpoint | 已处理，保留策略 | 测量支持保留 1 秒节流；更长间隔会改变异常退出丢失窗口，当前不新增存储结构合理。 |
+| 27 大页面脚本 | 已完成首轮抽取 | classic script 状态所有权、依赖顺序和 window 入口保留，新增资源进入安装清单。 |
+| 28 共享主题 | 已完成 | 通用字体与少量圆角集中，内容字体差异及 Qbar 宿主半径对应保留。 |
+| 29 WindowBar 重复 | 已完成 | class/aria 状态由共享模块管理，页面保留本地化标签；不为两行 post 新建框架合理。 |
+| 30 词典联想 SQL | 已完成 | 固定语句、参数绑定、Finalize 和失败层处理清楚。 |
+| 31 词典模糊层 | 已完成优化 | REGEXP 元数修正与原生 LIKE 替代有性能记录及双向差集证据。 |
+| 32 pageReady 镜像 | 已完成 | 使用唯一 Host 就绪状态，ready/navigation 推进与最终 Execute 门保留。 |
+| 33 设置局部渲染 | 已完成 | 局部刷新和同范围分组展开保留；普通保存以提交快照合并新基线，不再仅比较旧基线。 |
+| 34 capture/picker 拆分 | 已完成修复 | capture/picker 所有权、快照校验及录制定时器取消/代次守卫已落实，见 R09。 |
+| 35 逐行监听 | 已处理，保留实现 | 结果有上限且监听清楚，未证明瓶颈；保持结果版本和不可交互守卫合理。 |
+| 36 F8 语义命名 | 已完成 | 实现、默认/demo 配置、分类及文案同步，无旧名兼容层。 |
+
+### R01 [P2] 禁用工具或移除默认别名后，旧别名仍可直接执行
+
+- 关联原条目：10、16。位置：[qbar_commands.ahk:104](../lib/features/qbar/qbar_commands.ahk#L104)、[115](../lib/features/qbar/qbar_commands.ahk#L115) 的 raw text 工具回退；[qbar_registry.ahk:109](../lib/features/qbar/qbar_registry.ahk#L109) 只把有效别名/启用命令加入 byAlias。
+- 触发及证据：停用 Everything/Notes/AI，或工具仍启用但删除其默认 e/n/ai 等别名后，输入 e 查询内容、n 关键词或 ai 问题并 Enter。registry 无匹配候选，但 raw 分支再次调用硬编码 QbarEsAlias/QbarNotesAlias/QbarAiAlias，经 QbarStaticFallbackActionExecute 直接执行。该分支没有“注册表不可用”的前置条件，也不核对当前命令 enabled。
+- 影响：用户已禁用的工具或已移除的旧别名仍有效；候选身份校验正确不能弥补这个宿主 raw 执行分支。第 16 项原先“注册可用时没有直执行绕过”保证过宽。
+- 最小修改意见：把这些旧别名回退整体放到“运行注册表不存在”的分支；注册表存在时完全服从其别名和启用状态。复用现有 registry 判断，不通过文本重新寻找另一个命令，也不要给每个工具加新的执行系统。
+- 实施：`QbarExecuteRawText()` 仅在 `QbarRegistryIsAvailable()` 为 false 时保留旧的静态工具别名；内置候选只在注册表不可用时才建静态 fallback 项，执行端也拒绝注册表有效时的 `staticAction`。注册表有效时，不匹配或已禁用的工具不会再由 `e/n/ai` 旁路执行；配置短键仍保留其优先级。复审发现并补齐了候选分支的同类旁路。静态验收点通过。**状态：已修复；未运行数据库不可用/禁用工具交互。**
+
+### R02 [P2] 定位历史重启后被恢复为打开文件
+
+- 关联原条目：11、16。位置：[qbar_execution.ahk:57](../lib/features/qbar/qbar_execution.ahk#L57)、[qbar_commands.ahk:185](../lib/features/qbar/qbar_commands.ahk#L185)、[qbar_store.ahk:823](../lib/features/qbar/qbar_store.ahk#L823)、[qbar_history.ahk:92](../lib/features/qbar/qbar_history.ahk#L92)、[132](../lib/features/qbar/qbar_history.ahk#L132)。
+- 触发及证据：Ctrl+Enter 对文件/文件夹定位，内存 history 的 kind 为 reveal；数据库保存 commandId/args/payload，但没有保存 kind，payload 也只有 path。下次初始化按同一个 builtin.open-path handler 重建 kind，统一得到 path。重放分发据此调用 QbarOpenPath，无法恢复 QbarLocateInExplorer。
+- 影响：持久化前后动作语义改变；定位可变成打开文件，若对象是程序也会启动它。问题是动作信息在写盘时丢失，不是当前稳定 ID 授权无效。
+- 最小修改意见：在路径 payload 中保存经过白名单校验的 action（open/reveal），加载时恢复 kind，授权门同步检查 action 与 handler；无需新增表或另建命令体系。已有不带该字段的记录按当前明确的 open 语义处理，不猜测原操作。
+- 实施：所有通过 `builtin.open-path` 的 reveal 入口均将 `action:"reveal"` 存入现有 payload。加载时 handler 与 action 联合恢复 kind，授权和 normalize 再次检查 action；没有该字段的历史按 open 解释。创建/保存/加载/identity/授权/重放静态链路一致。**状态：已修复；未运行重启后的文件动作。**
+
+### R03 [P2] 一条坏历史 payload 可以中断整个历史加载
+
+- 关联原条目：11。位置：[qbar_history.ahk:31](../lib/features/qbar/qbar_history.ahk#L31)、[38](../lib/features/qbar/qbar_history.ahk#L38)、[92](../lib/features/qbar/qbar_history.ahk#L92)、[749](../lib/features/qbar/qbar_history.ahk#L749)、[800](../lib/features/qbar/qbar_history.ahk#L800)，JSON 容错 helper 为 [qbar_registry.ahk:519](../lib/features/qbar/qbar_registry.ahk#L519)。
+- 触发及证据：最近一条 URL 历史 payload_json 无效或为 {}。EntryFromStore 仍产生 kind=url 的 entry；EnsureLoaded 在执行授权之前调用 Identity，后者直接访问 payload["url"] 并抛缺键异常。其他 kind 也有类似直接字段读取。Loaded 标志已提前置为 true，异常还会留下部分初始化的历史状态。
+- 影响：一条损坏记录影响其余历史列表及后续记账；新加入的 replay payload 检查只在执行/可重放判断生效，时间上晚于故障点。
+- 最小修改意见：从执行授权中提取共用的“记录结构/payload 类型”校验，在加载后、Identity 前调用；结构校验不要要求工具当前启用，否则会把正常的停用历史一并丢弃。坏记录可保留标题/输入并标不可重放，Identity 使用安全的记录 ID，或逐条跳过并写脱敏日志；一条坏记录不能中断整个循环。Loaded 只在加载流程正常收尾时发布，或明确保留可重试失败态。
+- 实施：增加独立于当前插件启用状态的 `QbarHistoryEntryPayloadValid()`；Identity 与重放授权在访问 payload 字段前使用。加载逐条隔离解析/结构错误并记录错误类型，Loaded 在加载收尾后才发布。坏记录被跳过，其余记录继续加载；停用工具的结构有效历史仍可展示。**状态：已修复；未对损坏数据库做运行注入。**
+
+### R04 [P2] 多词别名的连续空白归一只发生在存储端
+
+- 关联原条目：10、15及 AGENTS.md 的别名契约。位置：[qbar_store.ahk:849](../lib/features/qbar/qbar_store.ahk#L849)、[qbar_registry.ahk:196](../lib/features/qbar/qbar_registry.ahk#L196) 的输入解析与 longest-prefix Map 查询。
+- 触发及证据：默认 cl set 输入成 cl  set 或 cl<Tab>set。保存端 QbarNormalizeAlias 折叠连续空白；查询端只 Trim/StrLower，随后按单空格 alias 的字符长度匹配，第二个空格或 Tab 会使前缀匹配失败。即使单词别名后用 Tab 分隔参数，当前仅允许字符为空格的边界检查也会拒绝。
+- 影响：已接受的别名规则与实际查询不一致，最长别名匹配不能覆盖不同空白写法。
+- 实施：查询端按原文的非空白词逐段构造标准化别名前缀，直接在内存 `byAlias` Map 查找最长匹配；记录最后一个别名词在原文中的结束位置，从原文提取参数，不重写整个查询。解析复杂度按输入词数增长，不再为每条 alias 分配拆分数组。**状态：已修复；输入形态静态核对，未运行页面交互。**
+
+### R05 [P2] 首次 Notes 执行重复记账，延后失败也已记成功
+
+- 关联原条目：11、16。位置：[qbar_execution.ahk:32](../lib/features/qbar/qbar_execution.ahk#L32)、[qbar_commands.ahk:257](../lib/features/qbar/qbar_commands.ahk#L257)、[267](../lib/features/qbar/qbar_commands.ahk#L267)、[qbar_notes.ahk:24](../lib/features/qbar/qbar_notes.ahk#L24)、[qbar_history.ahk:169](../lib/features/qbar/qbar_history.ahk#L169)、[212](../lib/features/qbar/qbar_history.ahk#L212)。
+- 触发及证据：注册 Notes handler 调用 QbarScheduleNotes(args,true)，只排队 NotesShow 就立即 RememberRegistered；NotesShow 成功显示又因为 recordHistory=true 再 Remember。两次 Remember 都推进 Usage，第二次由默认 NotesEntry 生成，还会丢失首条保存的 args/真实别名输入。若延后打开失败，第一笔成功统计已经发生。
+- 影响：使用频率每次增加两次，历史内容可能被默认输入覆盖，失败打开也被当成功。
+- 最小修改意见：排队前构造带 commandId/pluginId/args 和展示快照的 entry，复用现有 QbarNotesHistoryAction；由 NotesShow(...,false) 成功后统一 Remember 一次。注册调用处不能再立即记账。仅将 recordHistory=false、仍保留立即 Remember，不能解决提前成功的问题。
+- 实施：注册 Notes handler 先将稳定 commandId/pluginId/args 附到 history entry，再调用现有 `QbarScheduleNotesHistory()`。排队阶段不记账，`NotesShow(..., false)` 成功后由唯一的 `QbarNotesHistoryAction()` 记一次；失败不记。历史重放共用该成功回调。**状态：已修复；未运行面板创建失败或事件时序。**
+
+### R06 [P2] Everything 的长处理后未复核任务与结果所有权
+
+- 关联原条目：20。这组包含同一生命周期的两个发布/清理窗口，独立查询的既有上下文回归已经修复，不应恢复已删除的 Qbar session 检查。
+- 窗口一位置：[qbar_everything.ahk:257](../lib/features/qbar/qbar_everything.ahk#L257)、[265](../lib/features/qbar/qbar_everything.ahk#L265)、[267](../lib/features/qbar/qbar_everything.ahk#L267)、[345](../lib/features/qbar/qbar_everything.ahk#L345)、[366](../lib/features/qbar/qbar_everything.ahk#L366)。FinishJob 入口检查 SameJob，随后解析 CSV。解析期间 AHK 线程可被新查询打断；恢复后旧 ClearJob 不再接受已替换的 owner，因此不会摘除新任务。正常成功解析分支 timedOut=false，不把原竞态夸大为必然终止新 es.exe。
+- 窗口二位置：[everything.ahk:208](../lib/features/everything/everything.ahk#L208)、[226](../lib/features/everything/everything.ahk#L226)、[253](../lib/features/everything/everything.ahk#L253)。PublishResults 在局部做最多 500 项文件信息读取和页面行构造；最终交换前在 Critical 内复核 seq/requestId 并固定 version，payload 使用函数参数 requestId。文件 I/O 和 JSON 序列化不在临界段内。
+- 影响：新查询可能持续搜索中；旧结果也可能被显示为新查询结果，并以新版本允许文件动作。
+- 实施：finish/poll 清理传入预期 job id，在 Critical 内仅摘除当前 owner，进程和临时文件释放在摘除后针对本地 job；CSV 完成但 owner 已过期时再次清理自己的临时路径。查询取消在同一短 Critical 更新 seq 并摘除旧 job。启动/重试安装也核对 request 与空 owner，迟到任务自行释放。Everything 先在局部构建 metadata/rows，最终在短 Critical 内复核 ES seq、requestId 并交换结果及固定 version；页面 payload 使用参数 requestId，Critical 不包文件 I/O 或 JSON 序列化。**状态：已修复（静态调用链）；真实进程交错未运行验证。**
+
+### R07 [P2] 单窗口替换 HWND 后的持久化分支不可达
+
+- 关联原条目：21。位置：[windows.ahk:467](../lib/features/windows.ahk#L467)、[527](../lib/features/windows.ahk#L527)、[536](../lib/features/windows.ahk#L536)、[538](../lib/features/windows.ahk#L538)。
+- 触发及证据：原窗口已关闭，FindReplacementWindow 根据 class/exe 找到另一个窗口。finder 已把 item.id 改成 replacement；调用方随后比较 item.id != replacement 必为 false，因此从不保存新 HWND，保存失败日志分支也不会进入。
+- 影响：当前窗口可激活，内存句柄也更新，但磁盘绑定仍是旧值；不能宣称自动恢复保存结果已经检查。该副作用早已存在，属于本轮复核遗漏，不是最新修复引入。
+- 最小修改意见：让 FindReplacementWindow 只返回句柄，由唯一调用方保存旧值、比较后赋值/持久化。保留“激活完成后保存失败不撤销激活”的既有约定，不重复查窗。
+- 实施：`FindReplacementWindow()` 现在只返回句柄；调用方以替换前的 item.id 作比较，再更新和保存绑定。finder 不再提前写入 `item.id`，因此新句柄保存分支可达。**状态：已修复；未运行窗口重启恢复。**
+
+### R08 [P3] profile 原文快路径仍位于 INI 解析之后
+
+- 关联原条目：24。位置：[appProfiles.ahk:26](../lib/input/appProfiles.ahk#L26)、[33](../lib/input/appProfiles.ahk#L33)、[config.ahk:503](../lib/app/config.ahk#L503)、[520](../lib/app/config.ahk#L520)。
+- 证据：ConfigParseIni 在返回原文前已调用 ConfigParseIniText；AppProfilesLoad 随后才比较 sourceContent。因此未变内容每 500ms 仍完整拆行/建立 INI Map，只省 profile Map 与 stamp 工作。原文“直接返回、跳过 INI 解析”不符合实现。
+- 实施：`ConfigReadIni()` 统一读取 UTF-8 原文和存在/错误状态，`ConfigParseIni()` 再调用文本解析。`AppProfilesLoad()` 现在先读原文并和已接受内容比对，只有变化才调用 `ConfigParseIniText()`；同秒不同内容仍被发现，读取失败不推进缓存。**状态：已修复；文件监视运行时收益未实测。**
+
+### R09 [P2] 停止或隐藏录制未使待启动定时器失效
+
+- 关联原条目：34，影响第 22 项的快捷键可用性。位置：[settings.ahk:128](../lib/features/settings.ahk#L128)、[130](../lib/features/settings.ahk#L130)、[902](../lib/features/settings.ahk#L902)、[912](../lib/features/settings.ahk#L912)、[settings_capture.ahk:10](../lib/features/settings/settings_capture.ahk#L10)、[33](../lib/features/settings/settings_capture.ahk#L33)、[93](../lib/features/settings/settings_capture.ahk#L93)、[128](../lib/features/settings/settings_capture.ahk#L128)、[231](../lib/features/settings/settings_capture.ahk#L231)、[customHotkeys.ahk:89](../lib/input/customHotkeys.ahk#L89)。
+- 触发及证据：startShortcutRecording 通过 SetTimer 延迟，stopShortcutRecording 立即执行；Hide/Shutdown 也只停止当前 hook。如果停止/隐藏在启动 timer 执行前发生，当时没有 hook 可停，timer 随后仍创建并 Start。capture 没有 SettingsVisible 或请求代次检查。
+- 影响：隐藏/已取消的录制器可能吞下一次按键，在完成捕获前 IsObject(SettingsShortcutHook) 还会使自定义快捷键停用。职责拆分本身合理，但“所有关闭/隐藏/取消路径都可清理”只覆盖已启动的 hook。
+- 最小修改意见：由 capture 模块持有 pending timer 和录制代次；开始请求立即登记，Stop/Hide/Shutdown 同时取消 timer 并使代次失效。延迟启动、KeyDown 和回传只接受当前代次/当前 hook，启动前检查设置可见及页面就绪。复用 Settings 生命周期，不再增加页面录制状态副本。
+- 实施：capture 模块持有 pending timer、generation 和页面 captureId；开始/停止消息按 captureId 关联，旧 stop/回传不能影响新录制。延迟启动、InputHook 回调及成功/失败回传均检查当前代次；启动及撤销状态切换由短 Critical 保护。设置不可见或页面未就绪时不启动 hook，初始化失败会恢复页面录制状态并记录错误类型。待捕获期间自定义快捷键禁用；Hide/Shutdown 沿用集中清理入口。**状态：已修复；钩子和页面交错未运行验证。**
+
+### 完成声明与校验方式纠偏
+
+- 已修正第 10/16 项残留的 Everything→Qbar 结果发布/adapter 描述。当前 ES 后端唯一消费者是独立 Everything 页面，不能为了匹配旧文字恢复死分支。
+- 已修正第 12 项“坏 JSON 拒绝整个构建”：读库失败拒绝 Build；个别坏定义/设置禁用对应命令，其他有效命令继续服务。隔离受影响工具的方式合理。
+- 已将第 21、24、34 项和相关汇总/批次状态收窄为真实完成范围；第 33 项普通保存字段的比较依据是提交快照，旧基线比较只适用于没有该字段提交快照的合并。
+- 入口 [capslock_p2.ahk:10](../capslock_p2.ahk#L10) 仍有 `#Warn VarUnset, Off`。仅把裸 `#Warn` 改成 All, StdOut 会被该行覆盖；本次临时 stdin 副本同时解除该屏蔽，完整入口及全部 include 的语法检查返回 exit=0、无输出。没有修改入口，也没有额外添加 ClipboardHistoryJoin helper。
+
+本次实际语法检查方式如下；`/validate` 只验证，不执行 Initialize，也不启动项目：
+
+```powershell
+$exe = 'D:\utils\AutoHotkey\v2\AutoHotkey64.exe'
+$patch = (Get-Content -Raw capslock_p2.ahk) -replace '(?m)^#Warn\s*$', '#Warn All, StdOut'
+$patch = $patch -replace '(?m)^#Warn VarUnset, Off\s*$', '#Warn VarUnset, StdOut'
+$text = ($patch | & $exe /ErrorStdOut /validate '*' 2>&1 | Out-String).Trim()
+"exit=$LASTEXITCODE"
+$text
+```
+
+### 下一轮修改顺序与边界
+
+1. 先修 R01、R06、R09 的执行/任务所有权与取消边界，避免禁用后执行、旧任务覆盖或隐藏录制。
+2. 修 R02/R03/R05 的持久化语义、坏记录隔离和成功记账；这些应复用当前 store/history/deferred action，不增加平行执行层。
+3. 修 R04/R07 的解析契约与窗口保存；最后完成 R08 的剩余性能快路径。
+4. 每组修改后先按上述静态验收点复读完整调用链，再执行全警告语法校验。真实时序、窗口/网络/视觉及故障路径仍需另行运行验证；本次未执行这些验证。
+
+现有 `capslock_p2-debug.log` 的相关记录主要来自整改前，未提供上述当前代码缺口的动态复现。既有 `temp/perf-20261006/` CSV 用于复核第 25/26/31 项数据，本次没有重新运行测量或读写用户数据库。已完成项的修复总体保持复用现有服务、职责清楚和局部修改；剩余问题需要补齐已有边界，不需要推翻当前架构。

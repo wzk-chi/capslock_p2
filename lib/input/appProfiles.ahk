@@ -23,7 +23,7 @@ AppProfilesLoad(&changed := false, publish := true, source := 0) {
     if sourceProvided {
         sections := source
     } else {
-        sections := ConfigParseIni(SettingsFile, &loaded, &sourceExists, &sourceContent)
+        sourceContent := ConfigReadIni(SettingsFile, &loaded, &sourceExists)
         if !loaded {
             if AppProfilesLastLoadFailure != "read"
                 DebugLog("Application profiles load failed stage=read")
@@ -36,6 +36,7 @@ AppProfilesLoad(&changed := false, publish := true, source := 0) {
             AppProfilesLastLoadFailure := ""
             return true
         }
+        sections := ConfigParseIniText(sourceContent)
     }
     try {
         candidateProfiles := Map()

@@ -238,20 +238,33 @@ EverythingPublishResults(results, seq, requestId) {
             "label", item.Has("label") ? item["label"] : path,
             "icon", item.Has("icon") ? item["icon"] : ""))
     }
-    EverythingResults := normalized
-    version := EverythingResultsVersion
     iconKeys := Map()
     rows := EverythingPageRows(normalized, &iconKeys)
     payload := Map(
-        "requestId", EverythingQuerySeq,
-        "resultsVersion", version,
+        "requestId", requestId,
         "items", rows,
         "truncated", truncated)
+    criticalState := Critical("On")
+    published := false
+    try {
+        if QbarEsRequestIsCurrent(seq, requestId) {
+            version := EverythingResultsVersion
+            payload["resultsVersion"] := version
+            EverythingResults := normalized
+            published := true
+        }
+    } finally {
+        Critical(criticalState)
+    }
+    if !published
+        return false
     EverythingExec("window.setResults(" . JSON.stringify(payload, 0) . ");")
-    EverythingQueueIcons(iconKeys)
+    if QbarEsRequestIsCurrent(seq, requestId)
+        EverythingQueueIcons(iconKeys)
     EverythingExec("window.setSearchState(" . JSON.stringify(Map(
-        "state", "ready", "requestId", EverythingQuerySeq,
+        "state", "ready", "requestId", requestId,
         "message", EverythingText("", "")), 0) . ");")
+    return true
 }
 
 EverythingPageRows(items, &iconKeys) {

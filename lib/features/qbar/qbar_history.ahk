@@ -19,7 +19,6 @@ QbarHistoryEnsureLoaded() {
     global QbarHistoryLoaded, QbarHistoryItems, QbarUsageItems, QbarStoreError
     if QbarHistoryLoaded
         return
-    QbarHistoryLoaded := true
     QbarHistoryItems := []
     QbarUsageItems := Map()
     if !QbarStoreReady && !QbarStoreInit()
@@ -29,14 +28,21 @@ QbarHistoryEnsureLoaded() {
     seenHistory := Map()
     historyRows := QbarStoreLoadHistoryRows(QbarHistoryLimit)
     for row in historyRows {
-        entry := QbarHistoryEntryFromStore(row)
+        try entry := QbarHistoryEntryFromStore(row)
+        catch as loadError {
+            DebugLog("Qbar history row rejected errorType=" . Type(loadError))
+            continue
+        }
         if !IsObject(entry)
             continue
         identity := QbarHistoryIdentity(entry)
-        if identity != "" && seenHistory.Has(identity)
+        if identity = "" {
+            DebugLog("Qbar history row rejected: invalid payload")
             continue
-        if identity != ""
-            seenHistory[identity] := true
+        }
+        if seenHistory.Has(identity)
+            continue
+        seenHistory[identity] := true
         QbarHistoryItems.Push(entry)
     }
     if !QbarHistoryItems.Length && QbarStoreError = ""
@@ -53,6 +59,7 @@ QbarHistoryEnsureLoaded() {
     } else {
         DebugLog("Qbar usage rows could not be loaded: " . QbarStoreError)
     }
+    QbarHistoryLoaded := true
 }
 
 QbarHistorySeedInitialSettings() {
@@ -87,7 +94,8 @@ QbarHistoryEntryFromStore(row) {
         return 0
     payload := row.Has("payload_json") ? QbarRegistryJsonMap(row["payload_json"]) : Map()
     args := row.Has("args_json") ? QbarRegistryJsonMap(row["args_json"]) : Map()
-    kind := QbarHistoryKindForHandler(row.Has("handler_id") ? row["handler_id"] : "")
+    kind := QbarHistoryKindForHandler(
+        row.Has("handler_id") ? row["handler_id"] : "", payload)
     return Map(
         "id", row["id"],
         "kind", kind,
@@ -103,7 +111,7 @@ QbarHistoryEntryFromStore(row) {
         "lastUsedUtc", QbarHistoryStoreTime(row.Has("last_used_at") ? row["last_used_at"] : ""))
 }
 
-QbarHistoryKindForHandler(handlerId) {
+QbarHistoryKindForHandler(handlerId, payload := 0) {
     switch handlerId {
         case "builtin.ai.ask":
             return "ai"
@@ -120,7 +128,9 @@ QbarHistoryKindForHandler(handlerId) {
         case "builtin.run":
             return "run"
         case "builtin.open-path":
-            return "path"
+            return Type(payload) = "Map" && payload.Has("action")
+                && Type(payload["action"]) = "String" && payload["action"] = "reveal"
+                ? "reveal" : "path"
         case "builtin.start-menu.open":
             return "shortcut"
         default:
@@ -491,6 +501,8 @@ QbarHistoryAuthorizeReplay(entry, &command := 0, &runArgs := "") {
         || !entry.Has("kind") || Type(entry["kind"]) != "String"
         || !entry.Has("payload") || Type(entry["payload"]) != "Map"
         return false
+    if !QbarHistoryEntryPayloadValid(entry)
+        return false
 
     command := QbarRegistryCommand(entry["commandId"])
     if !IsObject(command) || command["pluginId"] != entry["pluginId"]
@@ -529,6 +541,12 @@ QbarHistoryAuthorizeReplay(entry, &command := 0, &runArgs := "") {
                 return false
         case "path", "reveal":
             if !QbarHistoryPayloadString(payload, "path", &value) || value = ""
+                return false
+            if kind = "reveal" && (!payload.Has("action")
+                || Type(payload["action"]) != "String" || payload["action"] != "reveal")
+                return false
+            if kind = "path" && payload.Has("action")
+                && (Type(payload["action"]) != "String" || payload["action"] != "open")
                 return false
         case "ai":
             if !QbarHistoryPayloadString(payload, "question", &value)
@@ -591,6 +609,8 @@ QbarHistoryNormalizeEntry(entry) {
         return 0
     if Type(entry["payload"]) != "Map"
         return 0
+    if !QbarHistoryEntryPayloadValid(entry)
+        return 0
     if !entry.Has("replayable")
         return 0
     replayable := false
@@ -625,6 +645,8 @@ QbarHistoryNormalizeEntry(entry) {
             if !QbarHistoryPayloadString(payload, "path", &value) || value = ""
                 return 0
             normalizedPayload["path"] := value
+            if payload.Has("action")
+                normalizedPayload["action"] := payload["action"]
         case "ai":
             if !QbarHistoryPayloadString(payload, "question", &value)
                 value := ""
@@ -724,6 +746,50 @@ QbarHistoryReadBoolean(value, &parsed := false) {
     return false
 }
 
+QbarHistoryEntryPayloadValid(entry) {
+    if Type(entry) != "Map" || !entry.Has("kind") || Type(entry["kind"]) != "String"
+        || !entry.Has("payload") || Type(entry["payload"]) != "Map"
+        return false
+    kind := entry["kind"]
+    payload := entry["payload"]
+    if !QbarHistoryKnownKind(kind)
+        return false
+
+    value := ""
+    runQuery := false
+    switch kind {
+        case "run":
+            return QbarHistoryPayloadString(payload, "command", &value) && value != ""
+        case "shortcut":
+            return QbarHistoryPayloadString(payload, "shortcutPath", &value)
+                && value != "" && QbarHistoryPayloadString(payload, "exe", &value)
+        case "url":
+            return QbarHistoryPayloadString(payload, "url", &value)
+                && RegExMatch(value, "i)^(https?|ftp)://")
+        case "path", "reveal":
+            if !QbarHistoryPayloadString(payload, "path", &value) || value = ""
+                return false
+            if kind = "reveal"
+                return payload.Has("action") && Type(payload["action"]) = "String"
+                    && payload["action"] = "reveal"
+            return !payload.Has("action") || (Type(payload["action"]) = "String"
+                && payload["action"] = "open")
+        case "ai":
+            return QbarHistoryPayloadString(payload, "question", &value)
+        case "everything":
+            if !QbarHistoryPayloadString(payload, "query", &value)
+                return false
+            return payload.Has("runQuery")
+                && QbarHistoryReadBoolean(payload["runQuery"], &runQuery)
+        case "notes", "clipboard":
+            return QbarHistoryPayloadString(payload, "search", &value)
+        case "settings":
+            return QbarHistoryPayloadString(payload, "page", &value)
+                && QbarHistorySettingsPageAllowed(value)
+    }
+    return false
+}
+
 QbarHistoryBoolValue(value) {
     parsed := false
     if !QbarHistoryReadBoolean(value, &parsed)
@@ -732,6 +798,8 @@ QbarHistoryBoolValue(value) {
 }
 
 QbarHistoryIdentity(entry) {
+    if !QbarHistoryEntryPayloadValid(entry)
+        return ""
     kind := entry["kind"]
     payload := entry["payload"]
     switch kind {

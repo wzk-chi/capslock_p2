@@ -126,9 +126,9 @@ SettingsWebMessageReceived(sender, args) {
     else if messageType = "testSettings"
         SettingsStartTest(message)
     else if messageType = "startShortcutRecording"
-        SetTimer(SettingsStartShortcutCapture.Bind(message), -1)
+        SettingsQueueShortcutCapture(message)
     else if messageType = "stopShortcutRecording"
-        SettingsStopShortcutCapture()
+        SettingsStopShortcutCaptureMessage(message)
     else if messageType = "selectOpenWindow"
         SetTimer(SettingsOpenWindowPicker.Bind(message), -1)
     else if messageType = "selectOpenApplication"

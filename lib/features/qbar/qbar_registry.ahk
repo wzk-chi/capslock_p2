@@ -198,25 +198,25 @@ QbarRegistryResolve(text) {
     result := Map("matchedAlias", "", "args", "", "candidates", [])
     if !IsObject(QbarRuntimeRegistry) || !QbarRuntimeRegistry.Has("byAlias")
         return result
-    input := Trim(String(text), " `t")
+    input := Trim(String(text), " `t`r`n`v`f")
     if input = ""
         return result
-    lower := StrLower(input)
+    normalizedPrefix := ""
     bestAlias := ""
-    for alias, commandIds in QbarRuntimeRegistry["byAlias"] {
-        aliasLength := StrLen(alias)
-        if StrLen(lower) < aliasLength
-            continue
-        if SubStr(lower, 1, aliasLength) != alias
-            continue
-        if StrLen(lower) > aliasLength && SubStr(lower, aliasLength + 1, 1) != " "
-            continue
-        if StrLen(alias) > StrLen(bestAlias)
-            bestAlias := alias
+    bestConsumedLength := 0
+    matchPosition := 1
+    while RegExMatch(input, "\S+", &wordMatch, matchPosition) {
+        word := StrLower(wordMatch[0])
+        normalizedPrefix .= (normalizedPrefix = "" ? "" : " ") . word
+        matchPosition := wordMatch.Pos(0) + wordMatch.Len(0)
+        if QbarRuntimeRegistry["byAlias"].Has(normalizedPrefix) {
+            bestAlias := normalizedPrefix
+            bestConsumedLength := matchPosition - 1
+        }
     }
     if bestAlias = ""
         return result
-    args := Trim(SubStr(input, StrLen(bestAlias) + 1), " `t")
+    args := Trim(SubStr(input, bestConsumedLength + 1), " `t`r`n`v`f")
     result["matchedAlias"] := bestAlias
     result["args"] := args
     result["candidates"] := QbarRegistryCandidateCommands(bestAlias, args)
@@ -330,6 +330,13 @@ QbarRegistryCommand(commandId) {
     if !IsObject(QbarRuntimeRegistry) || !QbarRuntimeRegistry["byCommandId"].Has(commandId)
         return 0
     return QbarRuntimeRegistry["byCommandId"][commandId]
+}
+
+QbarRegistryIsAvailable() {
+    global QbarRuntimeRegistry
+    return Type(QbarRuntimeRegistry) = "Map"
+        && QbarRuntimeRegistry.Has("byAlias")
+        && QbarRuntimeRegistry.Has("byCommandId")
 }
 
 QbarRegistryDynamicProviderByHandler(handlerId) {

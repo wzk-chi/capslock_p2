@@ -496,22 +496,25 @@ ConfigDefaultRead(section, key, defaultValue := "") {
 }
 
 ConfigParseIni(filePath, &loaded := false, &exists := false, &content := "") {
+    content := ConfigReadIni(filePath, &loaded, &exists)
+    return ConfigParseIniText(content)
+}
+
+ConfigReadIni(filePath, &loaded := false, &exists := false) {
     loaded := true
     exists := FileExist(filePath) != ""
     content := ""
-    sections := Map()
     if !exists
-        return sections
+        return content
 
     ; Force UTF-8: an ANSI (GBK) decode of a UTF-8 file can swallow the LF
     ; after a multi-byte character, merging the next line into a comment.
     try content := FileRead(filePath, "UTF-8")
     catch {
         loaded := false
-        return sections
+        return ""
     }
-
-    return ConfigParseIniText(content)
+    return content
 }
 
 ConfigParseIniText(content) {

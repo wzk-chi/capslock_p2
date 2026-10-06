@@ -43,7 +43,7 @@ QbarExecuteSnapshotCandidate(candidate, ctrlHeld, registryGeneration) {
         }
         return QbarExecuteRegistered(commandId, args, ctrlHeld, registryGeneration, payload)
     }
-    if candidate.Has("staticAction")
+    if candidate.Has("staticAction") && !QbarRegistryIsAvailable()
         return QbarStaticFallbackActionExecute(candidate["staticAction"],
             candidate.Has("args") ? String(candidate["args"]) : "")
 
@@ -65,7 +65,7 @@ QbarExecuteSnapshotCandidate(candidate, ctrlHeld, registryGeneration) {
         if ctrlHeld {
             if QbarLocateInExplorer(path)
                 return QbarHistoryRemember(QbarHistoryNew("reveal", path, path,
-                    Map("path", path)))
+                    Map("path", path, "action", "reveal")))
             return false
         }
         if QbarOpenPath(path)
@@ -112,21 +112,23 @@ QbarExecuteRawText(text, ctrlHeld, registryGeneration) {
         return QbarExecuteRegistered(candidate["commandId"], resolution["args"],
             ctrlHeld, registryGeneration)
     }
-    if QbarEsAlias(text) && !QbarConfigShortKeyExists(text)
-        return QbarStaticFallbackActionExecute("everything", "")
-    if !QbarConfigShortKeyExists(text) && QbarNotesAlias(text)
-        return QbarStaticFallbackActionExecute("notes", "")
+    if !QbarRegistryIsAvailable() {
+        if QbarEsAlias(text) && !QbarConfigShortKeyExists(text)
+            return QbarStaticFallbackActionExecute("everything", "")
+        if !QbarConfigShortKeyExists(text) && QbarNotesAlias(text)
+            return QbarStaticFallbackActionExecute("notes", "")
 
-    if QbarSplitCommand(text, &typedToken, &typedRest) {
-        if !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken)
-            return QbarStaticFallbackActionExecute("everything", typedRest)
-        if !QbarConfigShortKeyExists(typedToken) && QbarNotesAlias(typedToken)
-            return QbarStaticFallbackActionExecute("notes", typedRest)
-        if !QbarConfigShortKeyExists(typedToken) && QbarAiAlias(typedToken)
-            return QbarStaticFallbackActionExecute("ai", typedRest)
+        if QbarSplitCommand(text, &typedToken, &typedRest) {
+            if !QbarConfigShortKeyExists(typedToken) && QbarEsAlias(typedToken)
+                return QbarStaticFallbackActionExecute("everything", typedRest)
+            if !QbarConfigShortKeyExists(typedToken) && QbarNotesAlias(typedToken)
+                return QbarStaticFallbackActionExecute("notes", typedRest)
+            if !QbarConfigShortKeyExists(typedToken) && QbarAiAlias(typedToken)
+                return QbarStaticFallbackActionExecute("ai", typedRest)
+        }
+        if !QbarConfigShortKeyExists(text) && QbarAiAlias(text)
+            return QbarStaticFallbackActionExecute("ai", "")
     }
-    if !QbarConfigShortKeyExists(text) && QbarAiAlias(text)
-        return QbarStaticFallbackActionExecute("ai", "")
 
     DebugLog("QbarExecute")
     DebugLogPrivate("Qbar execute", text)
@@ -181,7 +183,7 @@ QbarExecuteOpenPath(path, ctrlHeld, registryGeneration) {
     if ctrlHeld {
         if QbarLocateInExplorer(path)
             return QbarHistoryRemember(QbarHistoryNew("reveal", path, path,
-                Map("path", path)))
+                Map("path", path, "action", "reveal")))
         return false
     }
     if QbarOpenPath(path)

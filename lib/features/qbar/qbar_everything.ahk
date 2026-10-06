@@ -114,12 +114,15 @@ QbarEsStartSearch(arg, useBundled, seq, querySeq) {
 
 QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
     global QbarEsJob, QbarEsJobId
+    if !QbarEsRequestIsCurrent(seq, querySeq)
+        return false
     exe := QbarEsExe()
     if exe = ""
         return false
-    QbarEsClearJob(true)
+    criticalState := Critical("On")
     QbarEsJobId += 1
     jobId := QbarEsJobId
+    Critical(criticalState)
     tmp := QbarEsTempPath(seq, jobId)
     instance := useBundled = 1 ? " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) : ""
     limit := SubStr(kind, 1, 6) = "probe-"
@@ -136,7 +139,7 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
         return false
     }
     handle := DllCall("OpenProcess", "uint", 0x101000, "int", false, "uint", pid, "ptr")
-    QbarEsJob := Map(
+    job := Map(
         "id", jobId,
         "kind", kind,
         "seq", seq,
@@ -149,7 +152,26 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
         "querySeq", querySeq,
         "arg", arg,
         "owner", "qbar-es-client")
-    SetTimer(QbarEsPollJob, -50)
+    criticalState := Critical("On")
+    installed := false
+    try {
+        if QbarEsRequestIsCurrent(seq, querySeq) && !IsObject(QbarEsJob) {
+            QbarEsJobId := jobId
+            QbarEsJob := job
+            SetTimer(QbarEsPollJob, -50)
+            installed := true
+        }
+    } finally {
+        Critical(criticalState)
+    }
+    if !installed {
+        if handle
+            DllCall("CloseHandle", "ptr", handle)
+        if ProcessExist(pid)
+            try ProcessClose(pid)
+        try FileDelete(tmp)
+        return false
+    }
     if !ProcessExist(pid)
         QbarEsPollJob()
     return true
@@ -157,24 +179,32 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
 
 QbarEsScheduleRetry(seq, arg, delayMs, querySeq) {
     global QbarEsJob, QbarEsJobId, QbarEsWarmupDeadline
-    QbarEsClearJob(true)
-    QbarEsJobId += 1
-    QbarEsJob := Map(
-        "id", QbarEsJobId,
-        "kind", "retry",
-        "seq", seq,
-        "pid", 0,
-        "handle", 0,
-        "tmpPath", "",
-        "startedAt", A_TickCount,
-        "deadline", QbarEsWarmupDeadline,
-        "nextAttempt", A_TickCount + delayMs,
-        "useBundled", 1,
-        "querySeq", querySeq,
-        "arg", arg,
-        "owner", "qbar-timer")
-    SetTimer(QbarEsPollJob, -50)
-    return true
+    criticalState := Critical("On")
+    scheduled := false
+    try {
+        if !QbarEsRequestIsCurrent(seq, querySeq) || IsObject(QbarEsJob)
+            return false
+        QbarEsJobId += 1
+        QbarEsJob := Map(
+            "id", QbarEsJobId,
+            "kind", "retry",
+            "seq", seq,
+            "pid", 0,
+            "handle", 0,
+            "tmpPath", "",
+            "startedAt", A_TickCount,
+            "deadline", QbarEsWarmupDeadline,
+            "nextAttempt", A_TickCount + delayMs,
+            "useBundled", 1,
+            "querySeq", querySeq,
+            "arg", arg,
+            "owner", "qbar-timer")
+        SetTimer(QbarEsPollJob, -50)
+        scheduled := true
+    } finally {
+        Critical(criticalState)
+    }
+    return scheduled
 }
 
 QbarEsPollJob(*) {
@@ -183,12 +213,13 @@ QbarEsPollJob(*) {
         return
     job := QbarEsJob
     if !QbarEsJobIsCurrent(job) {
-        QbarEsClearJob(true)
+        QbarEsClearJob(true, job)
         return
     }
     if job["kind"] = "retry" {
         if A_TickCount >= job["deadline"] {
-            QbarEsClearJob(false)
+            if !QbarEsClearJob(false, job)
+                return
             QbarEsBundledState := "unknown"
             QbarEsUseBundled := 0
             QbarEsHint(QbarText("Everything is still building its index.", "Everything 仍在建立索引。"),
@@ -200,7 +231,8 @@ QbarEsPollJob(*) {
             return
         }
         seq := job["seq"], arg := job["arg"], querySeq := job["querySeq"]
-        QbarEsClearJob(false)
+        if !QbarEsClearJob(false, job)
+            return
         QbarEsStartSearch(arg, 1, seq, querySeq)
         return
     }
@@ -232,7 +264,11 @@ QbarEsFinishJob(job, exitCode, timedOut := false) {
     results := (!timedOut && exitCode = 0 && kind = "search")
         ? QbarParseEsCsv(job["tmpPath"])
         : []
-    QbarEsClearJob(timedOut)
+    if !QbarEsClearJob(timedOut, job) {
+        if job["tmpPath"] != ""
+            try FileDelete(job["tmpPath"])
+        return
+    }
     if !QbarEsRequestIsCurrent(seq, querySeq)
         return
 
@@ -290,20 +326,46 @@ QbarEsPublishResults(results, seq, querySeq) {
 }
 
 QbarEsCancelJob(reason := "") {
-    global QbarEsSeq
-    QbarEsSeq += 1
-    QbarEsClearJob(true)
+    global QbarEsSeq, QbarEsJob
+    criticalState := Critical("On")
+    try {
+        QbarEsSeq += 1
+        job := QbarEsJob
+        QbarEsJob := 0
+        SetTimer(QbarEsPollJob, 0)
+    } finally {
+        Critical(criticalState)
+    }
+    if IsObject(job)
+        QbarEsReleaseJob(job, true)
     if reason != ""
         DebugLog("Es job cancelled")
 }
 
-QbarEsClearJob(closeProcess := true) {
+QbarEsClearJob(closeProcess := true, expectedJob := 0) {
     global QbarEsJob
-    SetTimer(QbarEsPollJob, 0)
-    if !IsObject(QbarEsJob)
-        return
-    job := QbarEsJob
-    QbarEsJob := 0
+    job := 0
+    criticalState := Critical("On")
+    try {
+        if !IsObject(QbarEsJob)
+            return false
+        if IsObject(expectedJob) && QbarEsJob["id"] != expectedJob["id"]
+            return false
+        job := QbarEsJob
+        QbarEsJob := 0
+        SetTimer(QbarEsPollJob, 0)
+    } finally {
+        Critical(criticalState)
+    }
+    if !IsObject(job)
+        return false
+    QbarEsReleaseJob(job, closeProcess)
+    return true
+}
+
+QbarEsReleaseJob(job, closeProcess := true) {
+    if !IsObject(job)
+        return false
     if closeProcess && job["owner"] = "qbar-es-client" {
         running := false
         if job["handle"] {
@@ -319,6 +381,7 @@ QbarEsClearJob(closeProcess := true) {
         DllCall("CloseHandle", "ptr", job["handle"])
     if job["tmpPath"] != ""
         try FileDelete(job["tmpPath"])
+    return true
 }
 
 QbarEsSameJob(job) {

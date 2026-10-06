@@ -12,6 +12,7 @@ const state = {
   hotkeyApplicationDialog: null
 };
 let shortcutRecording = null;
+let shortcutCaptureSequence = 0;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const post = payload => {
@@ -533,7 +534,7 @@ function shortcutActionGroups(values, allowNative = true) {
 }
 function stopShortcutRecording(notifyHost = true) {
   if (!shortcutRecording) return;
-  if (notifyHost) post({ type: 'stopShortcutRecording' });
+  if (notifyHost) post({ type: 'stopShortcutRecording', captureId: shortcutRecording.captureId });
   shortcutRecording.button.classList.remove('recording');
   shortcutRecording.button.textContent = '录制';
   shortcutRecording = null;
@@ -546,7 +547,8 @@ function ensureShortcutOption(select, action) {
   select.append(option);
 }
 window.receiveShortcutCapture = function (capture) {
-  if (!shortcutRecording || !capture || !capture.value) return;
+  if (!shortcutRecording || !capture || !capture.value
+    || Number(capture.captureId) !== shortcutRecording.captureId) return;
   if (shortcutRecording.kind === 'custom') {
     if (shortcutRecording.field === 'trigger') {
       shortcutRecording.input.value = capture.label || formatCustomTrigger(capture.value);
@@ -572,6 +574,14 @@ window.receiveShortcutCapture = function (capture) {
     shortcutRecording.select.closest('.shortcut-row'), 'Keys', shortcutRecording.key);
   stopShortcutRecording(false);
   setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
+};
+window.shortcutCaptureFailed = function (capture) {
+  if (!shortcutRecording || !capture
+    || Number(capture.captureId) !== shortcutRecording.captureId) return;
+  stopShortcutRecording(false);
+  setStatus(document.documentElement.lang === 'en'
+    ? 'Could not start shortcut recording. Try again.'
+    : '无法启动按键录制，请重试。', true);
 };
 window.addEventListener('blur', stopShortcutRecording);
 function shortcutCategory(key, action) {
@@ -734,11 +744,12 @@ function renderShortcuts(preserveExpandedGroups = true) {
           return;
         }
         stopShortcutRecording();
-        shortcutRecording = { key: entry.key, select, button: record };
+        const captureId = ++shortcutCaptureSequence;
+        shortcutRecording = { key: entry.key, select, button: record, captureId };
         record.classList.add('recording');
         record.textContent = '按键…';
         setStatus('按下要录制的快捷键');
-        post({ type: 'startShortcutRecording', key: entry.key });
+        post({ type: 'startShortcutRecording', key: entry.key, captureId });
       });
       actionButtons.append(record);
       row.append(label, select, actionButtons);
@@ -807,11 +818,12 @@ function startCustomHotkeyRecording(row, input, field, button) {
     return;
   }
   stopShortcutRecording();
-  shortcutRecording = { kind: 'custom', row, input, field, button };
+  const captureId = ++shortcutCaptureSequence;
+  shortcutRecording = { kind: 'custom', row, input, field, button, captureId };
   button.classList.add('recording');
   button.textContent = '按键…';
   setStatus('按下要录制的快捷键');
-  post({ type: 'startShortcutRecording', key: 'custom' });
+  post({ type: 'startShortcutRecording', key: 'custom', captureId });
 }
 function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   root.querySelector('.custom-hotkey-empty')?.remove();

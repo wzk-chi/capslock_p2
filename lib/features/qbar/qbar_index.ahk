@@ -306,8 +306,10 @@ QbarFilterItems(text) {
 
 QbarRegistryBuiltinItem(commandId, fallback) {
     command := QbarRegistryCommand(commandId)
-    if !IsObject(command)
+    if !IsObject(command) && !QbarRegistryIsAvailable()
         return fallback
+    if !IsObject(command)
+        return 0
     if !command["enabled"]
         return 0
     aliases := []

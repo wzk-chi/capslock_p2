@@ -161,7 +161,7 @@ WindowBindingItemKeys(values, hasCount, count, bindingNumber) {
     ordered := []
     if sortText = ""
         return ordered
-    for sortKey in StrSplit(Sort(RTrim(sortText, Chr(10)), "C", Chr(10)), Chr(10)) {
+    for sortKey in StrSplit(Sort(RTrim(sortText, Chr(10)), "C"), Chr(10)) {
         if itemKeys.Has(sortKey)
             ordered.Push(itemKeys[sortKey])
     }
@@ -463,10 +463,8 @@ FindReplacementWindow(item) {
         windowList := WinGetList("ahk_exe " . item.exe)
     else
         windowList := WinGetList("ahk_class " . item.windowClass . " ahk_exe " . item.exe)
-    if windowList.Length {
-        item.id := windowList[1]
-        return item.id
-    }
+    if windowList.Length
+        return windowList[1]
     return 0
 }
 

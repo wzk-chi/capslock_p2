@@ -30,8 +30,9 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
                 return QbarExecutionRememberRegistered(command, args,
                     QbarHistoryEverythingEntry(args, runQuery))
         case "builtin.notes.search":
-            if QbarScheduleNotes(args, true)
-                return QbarExecutionRememberRegistered(command, args, QbarHistoryNotesEntry(args))
+            historyEntry := QbarExecutionPrepareHistoryEntry(
+                command, args, QbarHistoryNotesEntry(args))
+            return QbarScheduleNotesHistory(historyEntry)
         case "builtin.clipboard.open":
             ; Freeze a validated target before QbarHide changes the foreground
             ; window. The history panel must not guess from an old Qbar HWND.
@@ -53,7 +54,8 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
             if ctrlHeld {
                 if QbarLocateInExplorer(path)
                     return QbarExecutionRememberRegistered(command, args,
-                        QbarHistoryNew("reveal", path, path, Map("path", path)), candidateKey)
+                        QbarHistoryNew("reveal", path, path,
+                            Map("path", path, "action", "reveal")), candidateKey)
             } else if QbarOpenPath(path)
                 return QbarExecutionRememberRegistered(command, args,
                     QbarHistoryNew("path", path, path, Map("path", path)), candidateKey)
@@ -104,6 +106,13 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
 }
 
 QbarExecutionRememberRegistered(command, args, historyEntry, candidateKey := "") {
+    QbarExecutionPrepareHistoryEntry(command, args, historyEntry, candidateKey)
+    if IsObject(historyEntry)
+        QbarHistoryRemember(historyEntry)
+    return true
+}
+
+QbarExecutionPrepareHistoryEntry(command, args, historyEntry, candidateKey := "") {
     if IsObject(command) {
         if IsObject(historyEntry) {
             historyEntry["commandId"] := command["commandId"]
@@ -118,9 +127,7 @@ QbarExecutionRememberRegistered(command, args, historyEntry, candidateKey := "")
             }
         }
     }
-    if IsObject(historyEntry)
-        QbarHistoryRemember(historyEntry)
-    return true
+    return historyEntry
 }
 
 QbarExecutionPayloadString(payload, key, fallback := "") {
