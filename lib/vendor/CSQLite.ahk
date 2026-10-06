@@ -106,8 +106,20 @@ class CSQLite {
 			return (this._Path := "", this.ErrorMsg := this._ErrMsg(), this.ErrorCode := RC, false)
 		this.ptr := HDB
 		static pfns := Map()
-		for fn in [regexp, regex_replace]
-			this.createScalarFunction(fn.Name, pfns.Get(fn, 0) || pfns[fn] := CallbackCreate(fn, "F C"), fn.MaxParams)
+		for fn in [regexp, regex_replace] {
+			; The callback has three ABI parameters (context, argument count,
+			; values); SQLite's SQL arity is separate: REGEXP takes two values.
+			sqlArgumentCount := fn.Name = "regexp" ? 2 : 3
+			if !this.createScalarFunction(fn.Name,
+				pfns.Get(fn, 0) || pfns[fn] := CallbackCreate(fn, "F C"), sqlArgumentCount) {
+				errorMessage := this.ErrorMsg
+				errorCode := this.ErrorCode
+				this.CloseDB()
+				this.ErrorMsg := errorMessage
+				this.ErrorCode := errorCode
+				return false
+			}
+		}
 		return true
 		regexp(Context, ArgC, vals) {
 			regexNeedle := DllCall("SQLite3.dll\sqlite3_value_text16", "Ptr", NumGet(vals + 0, "Ptr"), "Cdecl Str")

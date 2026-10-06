@@ -3,8 +3,9 @@
 初审日期：2026-10-05
 复核日期：2026-10-05
 细化及再次复核日期：2026-10-05
+性能测量及对应整改日期：2026-10-06
 
-状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改进行中：截至 2026-10-06，第 01、02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、17、18、19、20、21、22、23、24、27、28、29、30、32、33、34、36 项已完成代码修改及静态核查；第 35 项按复核结论保留现实现；第 25、26、31 项待可用的性能度量。入口及全部 AHK include 已用 AutoHotkey `/validate` 校验，exit=0 且无警告；未启动应用或执行脚本/测试。
+状态：原文 36 项已逐条复核并细化到实际文件、当前行号、接口和关联调用点。整改进行中：截至 2026-10-06，第 01–34、36 项已完成代码修改及静态核查；第 35 项按复核结论保留现实现。第 25、31 项已按性能数据完成优化；第 26 项已度量，保留原 checkpoint 策略。入口、全部 AHK include 和本轮临时测量脚本均用 AutoHotkey /validate 与 #Warn All, StdOut 校验，exit=0 且无警告。本轮经用户授权只运行了 temp/perf-20261006/ 内的测量脚本：剪贴板和 AI 使用合成数据库，词典只读打开项目词库；未启动应用、未触碰用户数据库、未运行项目测试。
 
 文中的位置链接指向当前工作区的实际文件和行号；行号以本次细化时源码为准，后续修改后应按函数名重新定位。拟新增的文件/函数会明确标为建议，不代表本次已经实现。
 
@@ -373,35 +374,46 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 - 依据（整改前）：[dictionary.ahk](../lib/features/dictionary.ahk) 允许内部撇号，精确查询有 SQL 引号转义；联想 LIKE 与 REGEXP 却直接拼接该文本，DictionarySqlLikeEscape() 只处理 LIKE 通配符。原 GetTable() 查询失败被忽略。
 - 复核意见：整改前带撇号的合法查询能产生无效 SQL，缺陷有确定语法依据，无需把它扩大成脚本注入结论。
-- 修改意见：复用现有 CSQLite 的 Prepare/Bind/Step 能力，将 LIKE 文本和 REGEXP 模式作为参数绑定；模式构建只负责搜索语义。给查询失败增加不含原文的诊断，避免再增加一套混合 SQL/LIKE 转义封装。
+- 修改意见：复用现有 CSQLite 的 Prepare/Bind/Step 能力，将用户词作为参数绑定；用 LIKE 模式表达模糊子序列，不把用户文本或模式拼入 SQL。给查询失败增加不含原文的诊断，避免再增加一套混合 SQL/LIKE 转义封装。
 
 **具体位置与落实内容**
 
-- 位置：[lib/features/dictionary.ahk:24](../lib/features/dictionary.ahk#L24) 合法词规则；[DictionarySendSuggestions()](../lib/features/dictionary.ahk#L327) 三层查询；[DictionarySuggestCollect()](../lib/features/dictionary.ahk#L359) 准备、绑定和取行；[DictionaryFuzzyPattern()](../lib/features/dictionary.ahk#L448) 与 [DictionarySqlLikeEscape()](../lib/features/dictionary.ahk#L462) 分别构建正则和 LIKE 搜索模式。精确查询仍使用其原有引号处理，本项没有重写该查询。已核对 [lib/vendor/CSQLite.ahk:257](../lib/vendor/CSQLite.ahk#L257) Prepare、BindText、Step、Finalize 与 ColumnText 契约；未修改 vendor。
-- prefix/contains/fuzzy 三条联想 SQL 现为固定 SQL 文本。LIKE 参数分别绑定 `escaped . "%"` 与 `"%" . escaped . "%"`；fuzzy 将首字母前缀和 `DictionaryFuzzyPattern(word)` 分别绑定。`DictionarySqlLikeEscape()` 仅保留 LIKE 通配符语义，单引号作为参数数据传递，REGEXP 模式也不再拼进 SQL。
-- `DictionarySuggestCollect()` 以 `Prepare(sql . " LIMIT 24")` 创建语句，参数位置从 1 开始绑定；`StatementStep()` 返回 100 时按第 0 列读取一行，101 表示完成，其他状态视为失败。收集中的每层结果先暂存，仅在查询成功且 Finalize 成功后并入总候选，避免 Step/读取异常把半层结果带入后续候选。
-- Prepare 成功后的所有流程都处于 `try/finally` 中；达到候选上限、绑定失败、Step 失败或异常都会 Finalize。诊断仅记录 tier、stage、输入长度和 API 实际可用的结果：Prepare 可读到其 `ErrorCode`，BindText/Finalize 仅返回布尔值，Step 直接返回 SQLite 状态码；不读这些后续调用未更新的 `db.ErrorCode`，也不记录查询词、SQL 或正则文本。
-- 保留频率排序、LIKE/REGEXP 匹配语义、每层 `LIMIT 24`、最终 12 条、跨层去重及 session/query 前后检查。
+- 位置：[lib/features/dictionary.ahk:24](../lib/features/dictionary.ahk#L24) 合法词规则；[DictionarySendSuggestions()](../lib/features/dictionary.ahk#L326) 三层查询；[DictionarySuggestCollect()](../lib/features/dictionary.ahk#L357) 准备、绑定和取行；[DictionaryFuzzyLikePattern()](../lib/features/dictionary.ahk#L447) 与 [DictionarySqlLikeEscape()](../lib/features/dictionary.ahk#L455) 构建模糊/LIKE 模式。精确查询仍使用原有引号处理，本项没有重写该查询。已核对 [lib/vendor/CSQLite.ahk:269](../lib/vendor/CSQLite.ahk#L269) Prepare、BindText、Step、Finalize 与 ColumnText 契约；REGEXP 元数修正在第 31 项记录。
+- prefix/contains/fuzzy 三条联想 SQL 现为固定 SQL 文本。LIKE 参数分别绑定 `escaped . "%"` 与 `"%" . escaped . "%"`；fuzzy 绑定 `DictionaryFuzzyLikePattern(word)`，例如 helo → h%e%l%o%。DictionarySqlLikeEscape() 处理 LIKE 特殊字符，单引号作为参数数据传递。
+- DictionarySuggestCollect() 以 Prepare(sql . " LIMIT 24") 创建语句，参数位置从 1 开始绑定；StatementStep() 返回 100 时按第 0 列读取一行，101 表示完成，其他状态视为失败。每层结果先暂存，仅在查询成功且 Finalize 成功后并入总候选；错误诊断记录 tier、stage、长度及可用错误码，不记录查询词或正文。
+- 保留频率排序、三层顺序、每层 LIMIT 24、最终 12 条、跨层去重及 session/query 前后检查。精确查词仍使用原查询流程。
 
-**实施状态：已完成（仅静态修改与核查；未运行程序、脚本或测试）**
+**实施状态：SQL 参数绑定已完成；模糊层与 CSQLite 注册元数修复见第 31 项。**
 
-- 修改文件：[lib/features/dictionary.ahk](../lib/features/dictionary.ahk)；更新本节文档。未改页面、vendor 或精确查询。
-- 静态核查：三条 SQL 中不再拼接用户词或正则模式；每条 SQL 的占位符数与绑定参数数相符；LIKE 转义和三层查询顺序、排序及结果上限保留；每个成功 Prepare 后均进入 finally 调用 Finalize，失败层的暂存结果不会合并。`git diff --check` 通过。
-- 运行边界：按仓库约束未启动脚本/程序、未运行测试，故没有运行时验证撇号词的候选结果或各 SQLite 错误分支。
+- 修改文件：[lib/features/dictionary.ahk](../lib/features/dictionary.ahk)，后续 [lib/vendor/CSQLite.ahk](../lib/vendor/CSQLite.ahk) 修复独立记录于第 31 项；页面和精确查询未改。
+- 静态核查：三条 SQL 均绑定用户词，Prepare/Bind/Step/Finalize 契约和失败层暂存逻辑保留；每层 LIMIT 24、最终 12 条、频率排序及短路保留。AHK /validate 与 #Warn All, StdOut 无警告。
+- 运行边界：按用户本轮授权用临时脚本只读测了真实词典；合法撇号输入及三层建议路径已运行。没有启动应用或运行项目测试。
 
-### 31 词典分层查询的潜在同步成本——部分成立，P3 待度量
+### 31 词典分层查询与 REGEXP 元数错误——性能问题已度量并优化，另修复模糊层缺陷
 
-- 依据：[dictionary.ahk](../lib/features/dictionary.ahk) 分层执行同步 GetTable()；候选足够即短路，最终 12 条、每层 SQL LIMIT 24 的限制已有。
-- 复核意见：包含/REGEXP 和频率排序可能处理较大候选集合，LIMIT 不等于只检查 24 行；本轮没有执行计划/独立耗时证据，不能定为必然全表慢扫描。
-- 修改意见：在允许的后续性能工作中先核对索引和各层耗时，再优化 SQL/排序/回退策略。保留现有去抖、查询代次与结果上限，暂不为未经证明的延迟引入工作线程或独立查询系统。
+- 依据：页面在 dictionary.html 做 120 ms 去抖；宿主 DictionarySendSuggestions() 同步执行 prefix、contains、fuzzy 三层，并在候选足够时短路。最终上限 12 条、每层 LIMIT 24。
+- 实测数据：resources/dictionary.db 为 12,189,696 B、49,099 个词条；stardict 是 word COLLATE NOCASE 的 WITHOUT ROWID 表，只有 word 主键索引。词条没有非 ASCII 字符或换行，因此本项目词库内的 LIKE 子序列与原 ASCII 输入 REGEXP 子序列语义一致。
+- 查询计划：prefix 和 fuzzy 按 word 主键范围搜索，但都需临时 B-tree 按频率表达式排序；contains 为全表扫描并用临时 B-tree 排序。LIMIT 24 不限制扫描行数。
+- 各层独立 COUNT(*) 匹配数（不是实际扫描行数；实际建议会因短路跳过后层）：app 为 147/289/153，helo 为 0/4/11，psh 为 0/8/135，tch 为 2/233/67，can't 和 qzx 均为 0/0/0。
+- 原始 REGEXP 绑定实际还有功能缺陷：CSQLite.OpenDB() 按 AHK 回调函数的 MaxParams=3 注册了 regexp；SQLite 的 X REGEXP Y 只传 2 个 SQL 参数。PRAGMA function_list 显示 narg=3，两参数查询报 wrong number of arguments，三参数调用才成功。因此在前两层候选不足 12 时，原 fuzzy 层无法正确返回结果。
+- 已修复 vendor 注册：lib/vendor/CSQLite.ahk 的 OpenDB() 为 regexp 明确登记 SQL 元数 2，为 regex_replace 登记 3；注册失败则关闭连接并保留错误状态。临时实测 regexp('a','a') 返回 1，regex_replace('abc','b','x') 返回 axc。
+- 已优化 fuzzy：lib/features/dictionary.ahk 的 DictionaryFuzzyLikePattern() 把 helo 变成 h%e%l%o%，使用绑定后的原生 LIKE 表达首字母锚定、有序字符和任意后缀，避免每个候选词经 AHK REGEXP 回调。10 个覆盖前缀、包含、无匹配、撇号、连字符和 fuzzy 的输入与修正后的 REGEXP 对照，双向 EXCEPT 差集均为 0。
 
-**具体位置与建议改法**
+**位置与耗时**
 
-- 位置：[pages/dictionary.html:545](../pages/dictionary.html#L545) 页面 120ms 输入去抖（545–557）；[lib/features/dictionary.ahk:204](../lib/features/dictionary.ahk#L204) 消息/单次 timer（204–239）、255–261 代次守卫、326–374 分层 SQL/Collect；[lib/vendor/CSQLite.ahk:206](../lib/vendor/CSQLite.ahk#L206) GetTable()（206–243）通过同步 sqlite3_exec。
-- 先完成第 30 项绑定，Prepare/Step 仍然是同步查询，不能把参数化描述为异步优化。**再次复核精度：**宿主 SetTimer(...,-1) 只是延后，去抖在页面，不是宿主另做一次去抖。
-- 后续获准度量时按 tier 记录处理候选量、查询耗时、是否已满足 cap；核对实际词库索引及频率排序查询计划，不能只按 word 的 NOCASE 注释猜测全部执行路径。
-- 若某层确有延迟，先处理 SQL/既有索引；减少回退或改变排序会影响候选质量，应说明取舍。层间可以增加 session/query 检查以跳过失效后层，但不能因此声称可打断正在执行的单次 sqlite3_step。
-- 静态确认 120ms 页面去抖、12/24 上限、足够候选短路和旧结果丢弃均保留。没有各层耗时证据时，不引入线程、独立连接或后台服务；LIMIT 既不证明只扫描 24 行，也不证明必然扫描整库。
+- 页面去抖：[pages/dictionary.html:545](../pages/dictionary.html#L545)；宿主路由与短路：[lib/features/dictionary.ahk:326](../lib/features/dictionary.ahk#L326)；分层 Prepare/Bind/Step：[357](../lib/features/dictionary.ahk#L357)；LIKE 模式：[447](../lib/features/dictionary.ahk#L447)；SQLite UDF 元数：[lib/vendor/CSQLite.ahk:83](../lib/vendor/CSQLite.ahk#L83)。
+- 修正元数后、切换 LIKE 前，RegExp fuzzy p50 在 helo 为 22.03 ms、can't 为 60.60 ms、psh 为 44.79 ms；原生 LIKE 对照分别为 1.12、2.00、1.69 ms。最终实际查询的热连接 p50/p95 为：
+
+| 输入 | REGEXP 路径 p50 | LIKE 路径 p50 / p95 |
+| --- | ---: | ---: |
+| helo | 45.00 ms | 22.36 / 22.78 ms |
+| can't | 81.88 ms | 25.56 / 28.54 ms |
+| psh | 72.68 ms | 24.96 / 27.41 ms |
+| qzx（无候选） | 24.23 ms | 21.20 / 21.65 ms |
+
+- fuzzy LIKE 单层 p50 为 0.37–2.00 ms。主要剩余成本在 contains 的全表扫描与排序，约 20–23 ms；本词库和当前规模下暂不增加线程、独立连接或新索引。改变排序或省略 contains 回退会改变候选质量，本轮保留。
+- 保留页面去抖、session/query 代次守卫、候选短路、12/24 上限、频率排序和旧结果丢弃。查询仍同步；这次只降低 fuzzy 层成本，不把 Prepare/Step 描述成异步。
+- 测量 CSV 和脚本在本地忽略目录 temp/perf-20261006/。词典只读打开；查询总耗时包括本地 JSON 构造但不包括实际 WebView 桥接/页面渲染。页面未启动，未运行项目测试。
 
 ## 输入与窗口功能
 
@@ -496,34 +508,45 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 ## 剪贴板与 AI 持久化
 
-### 25 剪贴板容量统计及较宽 Critical——部分成立，P3 待度量
+### 25 剪贴板容量统计及较宽 Critical——部分成立，P3 已度量并完成批量清理
 
-- 依据：[clipboard_history.ahk](../lib/features/clipboard/clipboard_history.ahk) 的 Critical 覆盖保存事务；[clipboard_store.ahk](../lib/features/clipboard/clipboard_store.ahk) 每次汇总用量，超额时逐条删除后重算。
-- 复核意见：SQLite [length(BLOB)](https://www.sqlite.org/lang_corefunc.html#length) 不必加载整个 BLOB，不能按每次读取 512 MiB 推算成本；TEXT 转换和关联行遍历仍有开销。500 是默认非收藏/非置顶上限，插件可设 20–5000，收藏/置顶不受数量裁剪；512 MiB 是所计字段的逻辑预算，不是数据库文件大小上限。
-- 修改意见：先区分聚合、裁剪和写入耗时。若需优化，优先一次获取候选大小并在原事务内批量裁剪。缩小 Critical 前必须确保共享 SQLite 连接的写事务串行、不会被 AHK 伪线程重入；不能只保留变量赋值 Critical 而放开事务。增量全局容量计数会增加修复/一致性成本，不作为默认方案。
+- 依据：[ClipboardHistoryRemember()](../lib/features/clipboard/clipboard_history.ahk#L542) 的 Critical 覆盖保存事务；旧版 [ClipboardHistoryStoreTrimToByteBudget()](../lib/features/clipboard/clipboard_store.ahk#L350) 超预算后每删一条就重算总量。
+- 复核意见：SQLite length(BLOB) 不等于每次读取整个 BLOB；耗时来自行遍历、TEXT 转 BLOB 长度和反复聚合。逻辑预算为 512 MiB，不是数据库文件大小。默认非收藏/非置顶上限 500，可设 20–5000；收藏/置顶不受该数量上限约束。
+- 已实施：将同一预算表达式集中到 ClipboardHistoryStoreStorageBytesExpression()，总量与候选大小共用。先在原事务计算总量；仅超预算时按 is_favorite=0 AND is_pinned=0、保护 ID 和原有 last_captured_at_utc ASC,id ASC 顺序读取候选 ID/同口径字节数，累加到足够后用一条批量 DELETE 删除。容量不足时在删除前报错，由外层原事务回滚。expiry、count 和 byte 清理仍在同一事务；Critical 范围未缩短。
 
-**具体位置与建议改法**
+**具体位置与测量**
 
-- 位置：[lib/features/clipboard/clipboard_history.ahk:542](../lib/features/clipboard/clipboard_history.ahk#L542) Remember()（542–581，546–576 Critical）；[lib/features/clipboard/clipboard_store.ahk:233](../lib/features/clipboard/clipboard_store.ahk#L233) 保存事务（233–323）、325–344 总量口径、346–374 逐条预算裁剪、455–496 缩略图、534–558 预算修改、569–603 pin、671–681 数量裁剪。
-- 本条先保留现结构；后续获准度量时分阶段记录写入、聚合、候选裁剪次数/耗时，只记数量、字节数和阶段。不能按 BLOB 体积推算聚合读取量。
-- 若证明反复聚合确有成本，将 325–338 的逻辑字节表达式集中供总量和候选查询复用；item.byte_size 不包括 manifest/text/search/preview/files/note/thumbnail，不能拿它直接替代总预算。
-- 在原写事务聚合一次总量；超额才按 is_favorite=0 AND is_pinned=0、保护 ID 及 last_captured_at_utc/id 原顺序一次读取候选 ID/同口径大小，累加挑够后批量删除。不足以释放空间时仍失败并 rollback，expiry/count/byte 三种清理仍属同一事务。
-- 最小方案保留 Critical。放开之前须保证共享 connection 所有写入口串行且没有 AHK 伪线程事务重入。victim 缓存清理（clipboard_formats.ahk 的 599/616 起）尽量移到 COMMIT 成功后按实际 victimIds 处理，避免 rollback 后缓存误当项已消失。
-- 缩略图当前超预算会回滚/跳过持久化，不主动裁其他项，不应套批量删除改变该行为。maxItems 口径见 [lib/features/qbar/qbar_plugin_catalog.ahk:73](../lib/features/qbar/qbar_plugin_catalog.ahk#L73)：500 默认、20–5000 可设、收藏/置顶不受此数量上限。静态确认所有预算字段、保护与顺序一致；无测量前不新增增量计数/表。
+- [lib/features/clipboard/clipboard_history.ahk:542](../lib/features/clipboard/clipboard_history.ahk#L542) ClipboardHistoryRemember()（546–576 持有 Critical）；[lib/features/clipboard/clipboard_store.ahk:233](../lib/features/clipboard/clipboard_store.ahk#L233) ClipboardHistoryStoreSave()；[325](../lib/features/clipboard/clipboard_store.ahk#L325) 总量汇总、[338](../lib/features/clipboard/clipboard_store.ahk#L338) 预算表达式、[350](../lib/features/clipboard/clipboard_store.ahk#L350) 批量预算清理；缩略图预算入口为 [478](../lib/features/clipboard/clipboard_store.ahk#L478)，其他预算修改从 [557](../lib/features/clipboard/clipboard_store.ahk#L557) 起。item.byte_size 不包括 manifest、文本、搜索、预览、文件、备注和缩略图，不能代替总预算表达式。
+- 基线和优化前后都用仓内 CSQLite 3.51.2、临时合成库、journal_mode=delete、synchronous=2、4096-byte page；每条逻辑占用 1,656 B（512 B snapshot，加合成 metadata）。汇总 p50 是25次热连接查询；StoreSave 和裁剪各为单次样本。Critical 保存值只包住原 StoreSave()，不含剪贴板采集、哈希和 Remember() 其余前处理，不能当成完整真实捕获耗时。
 
-### 26 AI checkpoint 重写完整回答——部分成立，P3 待度量
+| 合成记录数 | 汇总 p50 | 无删除 StoreSave | 清理 32 条 | 8 条清理 StoreSave |
+| ---: | ---: | ---: | ---: | ---: |
+| 500 | 1.14 ms | 7.74 ms | — | — |
+| 5,000 | 20.49 ms | 30.37 ms | 61.70 ms | 61.58 ms |
+| 10,000 | 40.85 ms | 47.01 ms | 117.28 ms | 119.81 ms |
+| 40,000 | 177.53 ms | 201.97 ms | 519.03 ms | 543.45 ms |
 
-- 依据：[aiChat.ahk](../lib/features/aiChat.ahk) 每秒最多 checkpoint 一次且仅长度增加时更新；[aiChat_store.ahk](../lib/features/aiChat_store.ahk) 绑定完整 answer 并提交事务，完成/失败最终保存已有。
-- 复核意见：长回答有累计文本绑定及事务写入成本，但物理写入量和卡顿未测量。初始化未配置 journal_mode=WAL，撤回特定 WAL 判断。
-- 修改意见：优先评估现有时间间隔/增长阈值，明确故障时可丢失的最近文本窗口并保留最终完整保存。不默认引入片段表、追加日志和合并恢复路径。
+- 40,000 条压力场景下，优化前 32 次逐条裁剪约 9,656 ms，优化后约 519 ms；带 8 条预算裁剪的 StoreSave 从约 2,518 ms 降到约 543 ms。5,000 条（可配置最大非收藏/非置顶数量）下，32 条清理约 62 ms。40,000 条均为可裁剪项，是超过常规数量上限的压力场景，不代表生产用户已遇到延迟。
+- 本地忽略目录 temp/perf-20261006/ 保留测量脚本及 CSV；使用的是合成数据库，没有读取或写入真实剪贴板历史。主流程静态复核确认所有清理入口保留保护项、顺序和事务；缓存仍在 DELETE 后、COMMIT 前失效，这是旧实现已有语义，提交失败只会导致缓存重新读取，不会丢失已回滚的记录。
 
-**具体位置与建议改法**
+### 26 AI checkpoint 重写完整回答——部分成立，P3 已度量，保留现策略
 
-- 位置：[lib/features/aiChat.ahk:450](../lib/features/aiChat.ahk#L450) 请求开始/重置（450–474）、476–491 delta 调度、494–510 checkpoint、512–572 终态保存、342–387 中断；[lib/features/aiChat_store.ahk:284](../lib/features/aiChat_store.ahk#L284) SaveAnswer()（284–340），101–123 恢复未完成轮次；失败重试 [lib/features/aiChat.ahk:830](../lib/features/aiChat.ahk#L830)（830–852）。
-- 首先度量 answerChars、新增字符量与 SaveAnswer 耗时，区分文本绑定/写事务与网络时间，不记录正文。当前没有 WAL 设定，也不能静态选择“最佳”间隔。
-- 若需要降低频率，集中声明 checkpoint 间隔，用“增长阈值或最大等待时间”决定保存。最大等待时间不能省，否则低速/暂停流一直没有恢复点；未达阈值但有未保存文本时保留唯一 timer。
-- 仅保存成功推进持久化长度/时间；失败保留重试，新增时间状态在开始、完成、取消时一并重置，requestId/turnId/running 守卫原样保留。
-- 正常完成、失败、主动取消/关闭的最终完整保存无条件绕过节流；pending answer save、retry 和启动恢复继续有效。静态确认唯一有效 checkpoint、失败不推进基线、终态必存或保留重试；不新增片段表/日志，故障可丢失窗口需与产品目标确认。
+- 依据：[AiChatCheckpointRequest()](../lib/features/aiChat.ahk#L489) 每秒最多 checkpoint 一次且仅在长度增加时更新；[AiChatStoreSaveAnswer()](../lib/features/aiChat_store.ahk#L284) 绑定完整 answer 并提交事务，终态完整保存已有。
+- 复核意见：长回答确有随文本长度增长的同步保存成本。数据库初始化未设置 WAL；本次测量观察到默认 journal_mode=delete、synchronous=2，没有据此推测物理写入量。
+- 测量使用原 AiChatStoreSaveAnswer() 和独立合成数据库，SQLite 3.51.2、4096-byte page；不含网络和流回调调度。每个大小热连接重复 15 次，表中为 p50/p95。ASCII 1 MiB 为 1 MiB UTF-8；中文 1 Mi 字符为 3 MiB UTF-8。
+
+| 回答 | checkpoint p50 / p95 |
+| --- | ---: |
+| ASCII 256 Ki 字符 | 3.43 / 9.97 ms |
+| 中文 256 Ki 字符 | 4.19 / 11.59 ms |
+| ASCII 1 Mi 字符 | 7.89 / 17.65 ms |
+| 中文 1 Mi 字符 | 19.81 / 31.39 ms |
+| ASCII 4 Mi 字符 | 40.06 / 53.70 ms |
+| 中文 4 Mi 字符 | 74.85 / 99.41 ms |
+
+- 另测 1 Mi ASCII 字符增长并保存 120 次：实际 SaveAnswer 调用累计约 1,465 ms，累计绑定的逻辑正文约 63.4 Mi 字符；这是分布于真实 120 秒调度窗口的调用成本，不是物理磁盘写入量，也没有在脚本中等待或模拟网络。
+- 当前普通回答大小下单次 checkpoint 为毫秒级；极长中文回答可接近 100 ms。调整间隔会直接增大异常退出可丢失的最近回答窗口；没有产品允许的数据丢失时长，不据此延迟 checkpoint。保留 1 秒节流、未保存内容的重试、终态绕过节流和启动恢复，不引入片段表或追加日志。
+- 脚本、CSV 和合成数据库均在本地忽略目录 temp/perf-20261006/；没有触碰 data/ai-chat/ai-chat.db。
 
 ### 09 Markdown 外部图片自动加载——事实成立，P3 产品策略
 
@@ -692,14 +715,14 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 保留loading/error/stale不可执行、排序/图标缓存、菜单打开时menuResultId/menuResultVersion快照、Enter/Ctrl+Enter/Ctrl+C/方向键。空白容器右键不被结果行委托接管。
 - 静态确认render不再创建四类监听、容器注册一次、索引对应排序后列表、所有动作仍带版本；单双击顺序/子节点/排序后的真实行为与性能收益待运行确认。
 
-**处理状态：按复核建议保留现实现，本轮不改事件绑定。** 该项为可选整理，当前闭包实现清楚且没有监听开销证据；依项目约束不能运行性能测量，暂不以文件行数或监听数量推导瓶颈。静态确认现有监听仍走 `resultsInteractive`、结果版本及菜单快照保护；后续页面整理若发现实际收益，再按本节方案改为委托。
+**处理状态：按复核建议保留现实现，本轮不改事件绑定。** 该项为可选整理，当前闭包实现清楚且没有监听开销证据；本轮授权度量针对第 25、26、31 项，没有对逐行监听单独测量，仍不以文件行数或监听数量推导瓶颈。静态确认现有监听仍走 `resultsInteractive`、结果版本及菜单快照保护。
 
 ## 后续修改顺序与实施边界
 
 1. 第 02、03、10、11、12、15、20、21、30 项的配置、保存、执行身份及结果校验修改已完成并静态核查。
 2. 第 04、05、06、07、08、09、13、14、17、18、19、29、32 项的请求生命周期、提示、页面策略、数据落点与语言目录等修改已按各条记录完成；运行边界仍未验证。
 3. 第 01、27、34 项已按状态/所有权边界完成首轮拆分；第 22–24、28、33、36 项已完成，第 35 项保留现实现。不得因文件长度或可见重复直接拆分，要保持状态所有权与现有交互。
-4. 第 25、26、31 项依赖耗时证据；当前约束仍禁止运行程序/脚本及编写测试，性能测量只能在后续明确允许的工作中安排。未取得数据前维持“待度量”，不声称已有性能收益或退化。
+4. 第 25、26、31 项已按用户授权使用 temp/perf-20261006 内的测量脚本取得数据。25 已按结果将重复汇总/逐条删除改为一次候选收集和批量裁剪；26 完成度量但保留 checkpoint 频率，避免无产品数据丢失窗口依据地延迟保存；31 修复 SQLite REGEXP 元数并用原生 LIKE 降低 fuzzy 层耗时。性能数值仅代表本机合成数据/当前词库样本，不外推为所有机器的响应保证。
 
 所有建议优先复用现有官方绑定、store、registry、PanelHost 和页面公共服务；不为推测风险引入平行系统，不默认加入兼容层、事务框架、工作线程或新数据表。
 
@@ -715,7 +738,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 | ES 参数与说明 | 14、06、17 | 已完成；文案按当前真实分页/回退语义同步，没有恢复已主动改变的旧规则。 |
 | 网络请求生命周期 | 04、18 | 非流式 HTTP、provider.test 和翻译 Cancel operation 已接线；LLM SSE/AI 的既有 ID 接口保留。 |
 | 共享面板与资源 | 07、08、27、28、32、33、35 | 来源事件注册/解绑、共享主题、设置局部渲染及三页脚本抽取已完成；29 已完成，35 保留既有闭包。 |
-| 扩展及待度量整理 | 16、01、19、22–26、31、34、36 | 16、19、22–24、36 已完成；01 已拆出选区服务，34 已拆出 capture/picker；动态 adapter 依赖 10/11/12/15。25、26、31 仍需独立性能证据后决定是否改动。 |
+| 扩展及按证据整理 | 16、01、19、22–26、31、34、36 | 16、19、22–24、36 已完成；01 已拆出选区服务，34 已拆出 capture/picker；25 和 31 已根据测量结果完成优化，26 已测量并保留策略；动态 adapter 依赖 10/11/12/15。 |
 
 每一批以文档中的“静态确认”作为代码审阅清单；它们是源码关系核对，不是新增测试。涉及网络、事件重入、窗口/指针或视觉的运行边界保持待确认，当前任务不实施这些验证。
 
@@ -724,7 +747,7 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 - 阅读了完整相关调用链、当前 AGENTS.md、原设计/整改/调查说明，并用 git log/show 核对关键后续行为变更。
 - 查看现有日志的相关事件/错误记录；未见容量聚合、checkpoint、profile 监视或词典分层查询的独立耗时证据，不能由事件间隔归因性能瓶颈。
 - ES 参数语义核对了仓内文件版本和同版本官方源码；SQLite BLOB 长度成本核对了官方说明。
-- 按 `AGENTS.md` 未启动项目、运行程序/脚本、编写或执行测试；使用其指定的 AHK `/validate` 入口校验所有 include，exit=0 且 `#Warn All, StdOut` 无警告。已完成项按各条记录静态检查代码与调用链；条件故障和性能影响没有被表述为动态复现结论。
+- 按 `AGENTS.md` 未启动项目，也未编写或执行项目测试。本轮经用户授权运行了 temp/perf-20261006 内的 AHK 测量脚本：剪贴板与 AI 只使用合成数据库，词典以只读方式打开 resources/dictionary.db。全部 AHK include 和临时脚本使用 /validate 与 #Warn All, StdOut 校验，exit=0 且无警告。其他已完成项仍按对应条目静态检查调用链；没有把未经运行的条件故障或视觉/网络边界描述为动态复现。
 
 ### 最终代码复审补充修正
 

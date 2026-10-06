@@ -320,10 +320,9 @@ DictionaryFocusSearch(*) {
 }
 
 ; Word suggestions for the search box, in three tiers: words starting with the
-; query, words containing it, then fuzzy subsequence matches ("helo" → hello;
-; the regexp scalar function registered by CSQLite does the matching). Query
-; text is bound as data so apostrophes cannot change the SQL. Capped at 12 words,
-; deduplicated across tiers.
+; query, words containing it, then fuzzy subsequence matches ("helo" → hello).
+; Query text is bound as data and LIKE metacharacters are escaped so punctuation
+; cannot change the SQL. Capped at 12 words, deduplicated across tiers.
 DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
     global DictionaryHost, DictionaryVisible, DictionarySessionId, DictionaryQuerySeq
     if !IsObject(DictionaryHost)
@@ -346,9 +345,8 @@ DictionarySendSuggestions(query, sessionId := 0, querySeq := 0) {
             ["%" . escaped . "%"], words, seen, 12, "contains", StrLen(word))
         if words.Length < 12 && StrLen(word) >= 3
             DictionarySuggestCollect(db,
-                "SELECT word FROM stardict WHERE word LIKE ? AND word REGEXP ?" . freqOrder,
-                [SubStr(word, 1, 1) . "%", DictionaryFuzzyPattern(word)],
-                words, seen, 12, "fuzzy", StrLen(word))
+                "SELECT word FROM stardict WHERE word LIKE ? ESCAPE '\'" . freqOrder,
+                [DictionaryFuzzyLikePattern(word)], words, seen, 12, "fuzzy", StrLen(word))
     }
     if sessionId && (!DictionaryVisible || sessionId != DictionarySessionId || querySeq != DictionaryQuerySeq)
         return
@@ -445,18 +443,12 @@ DictionarySuggestCollect(db, sql, parameters, words, seen, cap, tier, inputLengt
     }
 }
 
-; "helo" → "(?i)^h.*e.*l.*o": a prefix-anchored subsequence pattern.
-DictionaryFuzzyPattern(word) {
-    pattern := "(?i)^"
+; "helo" → "h%e%l%o%": LIKE wildcards preserve the ordered subsequence match.
+DictionaryFuzzyLikePattern(word) {
+    pattern := ""
     Loop Parse word
-        pattern .= DictionaryRegexEscape(A_LoopField) . ".*"
-    return SubStr(pattern, 1, StrLen(pattern) - 2)
-}
-
-DictionaryRegexEscape(char) {
-    if RegExMatch(char, "[.*?+\[\](){}|^$\\]")
-        return "\" . char
-    return char
+        pattern .= (A_Index > 1 ? "%" : "") . DictionarySqlLikeEscape(A_LoopField)
+    return pattern . "%"
 }
 
 ; Escape LIKE wildcards so a query like "a_b" stays literal (ESCAPE '\').

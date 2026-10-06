@@ -324,16 +324,8 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson, retentionCutoff := "", m
 
 ClipboardHistoryStoreStorageBytes(&totalBytes := 0) {
     totalBytes := 0
-    sql := "SELECT COALESCE(SUM("
-        . "COALESCE(length(payload.snapshot_blob),0)+"
-        . "COALESCE(length(CAST(payload.format_manifest_json AS BLOB)),0)+"
-        . "length(CAST(item.text_plain AS BLOB))+"
-        . "length(CAST(item.search_text AS BLOB))+"
-        . "length(CAST(item.preview_text AS BLOB))+"
-        . "length(CAST(item.files_json AS BLOB))+"
-        . "length(CAST(item.note_text AS BLOB))+"
-        . "COALESCE(length(CAST(thumbnail.png_data_uri AS BLOB)),0)"
-        . "),0) FROM clipboard_items AS item "
+    bytesExpression := ClipboardHistoryStoreStorageBytesExpression()
+    sql := "SELECT COALESCE(SUM(" . bytesExpression . "),0) FROM clipboard_items AS item "
         . "LEFT JOIN clipboard_payloads AS payload ON payload.item_id=item.id "
         . "LEFT JOIN clipboard_thumbnails AS thumbnail ON thumbnail.item_id=item.id;"
     if !ClipboardHistoryStoreRows(sql, &table)
@@ -343,34 +335,65 @@ ClipboardHistoryStoreStorageBytes(&totalBytes := 0) {
     return true
 }
 
+ClipboardHistoryStoreStorageBytesExpression(itemAlias := "item", payloadAlias := "payload",
+    thumbnailAlias := "thumbnail") {
+    return "COALESCE(length(" . payloadAlias . ".snapshot_blob),0)+"
+        . "COALESCE(length(CAST(" . payloadAlias . ".format_manifest_json AS BLOB)),0)+"
+        . "length(CAST(" . itemAlias . ".text_plain AS BLOB))+"
+        . "length(CAST(" . itemAlias . ".search_text AS BLOB))+"
+        . "length(CAST(" . itemAlias . ".preview_text AS BLOB))+"
+        . "length(CAST(" . itemAlias . ".files_json AS BLOB))+"
+        . "length(CAST(" . itemAlias . ".note_text AS BLOB))+"
+        . "COALESCE(length(CAST(" . thumbnailAlias . ".png_data_uri AS BLOB)),0)"
+}
+
 ClipboardHistoryStoreTrimToByteBudget(protectedId := "") {
     global ClipboardHistoryStoreMaxBytes, ClipboardHistoryStoreError
     protectedClause := ""
     if Type(protectedId) = "Array" {
         protectedIdList := ClipboardHistoryStoreIdListSql(protectedId)
         if protectedIdList != ""
-            protectedClause := " AND id NOT IN (" . protectedIdList . ")"
+            protectedClause := " AND item.id NOT IN (" . protectedIdList . ")"
     } else if protectedId != ""
-        protectedClause := " AND id<>" . ClipboardHistoryStoreSql(protectedId)
-    loop {
-        if !ClipboardHistoryStoreStorageBytes(&totalBytes)
-            throw Error(ClipboardHistoryStoreError)
-        if totalBytes <= ClipboardHistoryStoreMaxBytes
-            return true
+        protectedClause := " AND item.id<>" . ClipboardHistoryStoreSql(protectedId)
+    if !ClipboardHistoryStoreStorageBytes(&totalBytes)
+        throw Error(ClipboardHistoryStoreError)
+    if totalBytes <= ClipboardHistoryStoreMaxBytes
+        return true
 
-        sql := "SELECT id FROM clipboard_items WHERE is_favorite=0 AND is_pinned=0"
-        sql .= protectedClause
-        sql .= " ORDER BY last_captured_at_utc ASC,id ASC LIMIT 1;"
-        if !ClipboardHistoryStoreRows(sql, &table)
-            throw Error(ClipboardHistoryStoreError)
-        if table.RowCount < 1
-            throw Error("剪贴板历史容量已满，收藏和置顶记录占用了全部可用空间")
-        victimId := table.Rows[1][1]
-        if !ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id="
-            . ClipboardHistoryStoreSql(victimId) . ";")
-            throw Error(ClipboardHistoryStoreError)
-        ClipboardHistoryImagePreviewCacheDelete(victimId)
+    bytesToFree := totalBytes - ClipboardHistoryStoreMaxBytes
+    bytesExpression := ClipboardHistoryStoreStorageBytesExpression()
+    sql := "SELECT item.id," . bytesExpression . " AS storage_bytes "
+        . "FROM clipboard_items AS item "
+        . "LEFT JOIN clipboard_payloads AS payload ON payload.item_id=item.id "
+        . "LEFT JOIN clipboard_thumbnails AS thumbnail ON thumbnail.item_id=item.id "
+        . "WHERE item.is_favorite=0 AND item.is_pinned=0" . protectedClause
+        . " ORDER BY item.last_captured_at_utc ASC,item.id ASC;"
+    if !ClipboardHistoryStoreRows(sql, &table)
+        throw Error(ClipboardHistoryStoreError)
+
+    victimIds := []
+    bytesFreed := 0
+    for row in table.Rows {
+        victimIds.Push(String(row[1]))
+        bytesFreed += Integer(row[2])
+        if bytesFreed >= bytesToFree
+            break
     }
+    if bytesFreed < bytesToFree
+        throw Error("剪贴板历史容量已满，收藏和置顶记录占用了全部可用空间")
+
+    escapedIds := []
+    for victimId in victimIds
+        escapedIds.Push(ClipboardHistoryStoreSql(victimId))
+    idList := ClipboardHistoryJoin(escapedIds, ",")
+    if idList = ""
+        throw Error("剪贴板历史容量清理没有可删除的记录")
+    if !ClipboardHistoryStoreExec("DELETE FROM clipboard_items WHERE id IN (" . idList . ");")
+        throw Error(ClipboardHistoryStoreError)
+    for victimId in victimIds
+        ClipboardHistoryImagePreviewCacheDelete(victimId)
+    return true
 }
 
 ClipboardHistoryStoreReadPayload(id, &manifestJson := "") {
