@@ -25,8 +25,11 @@ global CapsAltClipboard := 0
 global HotStringKeys := []
 global LoadingGui := 0
 global LoadingText := 0
-global LoadingFrames := []
-global LoadingFrameIndex := 1
+global LoadingProgress := 0
+global LoadingShownAt := 0
+global LoadingReadyAt := 0
+global LoadingFadeStartedAt := 0
+global LoadingOpacity := -1
 global TrayMenuObject := 0
 global TraySettingsLabel := ""
 global TrayAutostartLabel := ""
@@ -74,28 +77,27 @@ Initialize() {
     EnsureConfiguredElevation()
     BuildKeySet()
     ApplyGlobalSettings()
+    if ConfigGlobalRead("loadingAnimation") != "0"
+        ShowLoading()
     ; Initialize the plugin store after debug logging is enabled, but before
     ; feature hotkeys are registered, so registration failures are observable.
+    UpdateLoading(25, IsChineseLanguage() ? "正在载入工具" : "Loading tools")
     try QbarPluginHostInitialize()
     try ClipboardHistoryInitialize()
     TrayMenuInitialize()
     DebugLog("Initialize settings")
-    if ConfigGlobalRead("loadingAnimation") != "0"
-        ShowLoading()
-
+    UpdateLoading(65, IsChineseLanguage() ? "正在准备快捷键" : "Preparing shortcuts")
     InitializeWindowBindings()
     InitializeMouseSpeed()
     RebuildHotStringPattern()
+    UpdateLoading(85, IsChineseLanguage() ? "正在启用快捷键" : "Enabling shortcuts")
     RegisterCapsHotkeys()
     RegisterCustomHotkeys()
     RegisterFeatureHotkeys()
     OnClipboardChange(HandleClipboardChange)
     DebugLog("Hotkeys and clipboard watcher registered")
 
-    if ConfigGlobalRead("loadingAnimation") != "0" {
-        Sleep(80)
-        HideLoading()
-    }
+    FinishLoading()
     ; Open the local usage guide once for a clean installation. Use a timer so
     ; the browser launch happens after the app has finished registering its
     ; tray menu, hotkeys and feature state.
@@ -240,9 +242,18 @@ ApplyGlobalSettings() {
 }
 
 DebugLog(message) {
-    global DebugLogFile, DebugLogMaxBytes, DebugLogging
+    global DebugLogging
     if !DebugLogging
         return
+    DebugLogWrite(message)
+}
+
+DiagnosticLogAlways(message) {
+    DebugLogWrite(message)
+}
+
+DebugLogWrite(message) {
+    global DebugLogFile, DebugLogMaxBytes
     line := FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss") . " [" . A_TickCount . "] " . message . "`n"
     try {
         lineBytes := StrPut(line, "UTF-8") - 1
@@ -251,17 +262,6 @@ DebugLog(message) {
         FileAppend(line, DebugLogFile, "UTF-8")
     } catch {
         return
-    }
-}
-
-DiagnosticLogAlways(message) {
-    global DebugLogging
-    previousSetting := DebugLogging
-    DebugLogging := true
-    try {
-        DebugLog(message)
-    } finally {
-        DebugLogging := previousSetting
     }
 }
 
@@ -1069,33 +1069,56 @@ SystemLanguageName() {
 }
 
 ShowLoading() {
-    global LoadingGui, LoadingText, LoadingFrames, LoadingFrameIndex
+    global AppName, LoadingGui, LoadingText, LoadingProgress
+    global LoadingShownAt, LoadingReadyAt, LoadingFadeStartedAt, LoadingOpacity
     if IsObject(LoadingGui)
         return
 
     dark := LoadingIsDarkTheme()
-    background := dark ? "20242B" : "F7F8FC"
-    foreground := dark ? "F4F7FB" : "20242B"
-    muted := dark ? "AAB4C4" : "697386"
-    accent := dark ? "8DB0F5" : "356AE6"
-    LoadingFrames := ["", " ·", " ··", " ···"]
-    LoadingFrameIndex := 1
+    ; Match the shared page theme without creating a WebView during startup.
+    background := dark ? "202328" : "FFFFFF"
+    foreground := dark ? "F1F3F5" : "20242A"
+    muted := dark ? "A4ABB5" : "68717D"
+    accent := dark ? "8BDCA9" : "277A52"
+    line := dark ? "343941" : "E1E4E8"
 
-    LoadingGui := Gui("-Caption +AlwaysOnTop +ToolWindow", "capslock_p2")
+    LoadingGui := Gui("-Caption +AlwaysOnTop +ToolWindow", AppName)
     LoadingGui.OnEvent("Escape", HideLoading)
     LoadingGui.BackColor := background
-    LoadingGui.SetFont("s15 c" . foreground, "Segoe UI Semibold")
-    LoadingGui.AddText("x28 y22 w284 h28", "capslock_p2")
-    LoadingGui.SetFont("s9 c" . muted, "Segoe UI")
-    LoadingGui.AddText("x28 y54 w284 h18", IsChineseLanguage() ? "正在准备工作区" : "Preparing workspace")
-    LoadingGui.SetFont("s9 c" . accent, "Segoe UI")
-    LoadingGui.AddText("x28 y80 w14 h18", "●")
-    LoadingGui.SetFont("s9 c" . muted, "Segoe UI")
-    LoadingText := LoadingGui.AddText("x48 y80 w264 h18", (IsChineseLanguage() ? "正在启动" : "Starting") . LoadingFrames[1])
-    LoadingGui.Show("w340 h126 Center NA")
+    LoadingGui.AddPicture("x24 y24 w44 h44", A_ScriptDir . "\resources\capslock_p2-icon.png")
+    LoadingGui.SetFont("s16 w600 c" . foreground, "Segoe UI")
+    LoadingGui.AddText("x82 y22 w254 h30", AppName)
+    LoadingGui.SetFont("s9 w400 c" . muted, "Segoe UI")
+    LoadingGui.AddText("x82 y55 w254 h20", IsChineseLanguage()
+        ? "快捷键 · 搜索 · 笔记" : "Shortcuts · Search · Notes")
+    LoadingText := LoadingGui.AddText("x24 y94 w312 h20",
+        IsChineseLanguage() ? "正在启动" : "Starting")
+    LoadingProgress := LoadingGui.AddProgress("x24 y124 w312 h4 -Theme -Border +0x1"
+        . " Range0-100 c" . accent . " Background" . line, 0)
+    LoadingShownAt := A_TickCount
+    LoadingReadyAt := 0
+    LoadingFadeStartedAt := 0
+    LoadingOpacity := 0
+    try WinSetTransparent(0, "ahk_id " . LoadingGui.Hwnd)
+    LoadingGui.Show("w360 h152 Center NA")
     LoadingApplyRegion()
-    try WinSetTransparent(248, "ahk_id " . LoadingGui.Hwnd)
-    SetTimer(AnimateLoading, 220)
+    SetTimer(AnimateLoading, 30)
+}
+
+UpdateLoading(progress, message) {
+    global LoadingText, LoadingProgress
+    if !IsObject(LoadingText) || !IsObject(LoadingProgress)
+        return
+    LoadingText.Text := message
+    LoadingProgress.Value := progress
+}
+
+FinishLoading() {
+    global LoadingGui, LoadingReadyAt
+    if !IsObject(LoadingGui)
+        return
+    UpdateLoading(100, IsChineseLanguage() ? "已就绪" : "Ready")
+    LoadingReadyAt := A_TickCount
 }
 
 LoadingIsDarkTheme() {
@@ -1108,7 +1131,16 @@ LoadingApplyRegion() {
     global LoadingGui
     if !IsObject(LoadingGui)
         return
-    region := DllCall("CreateRoundRectRgn", "int", 0, "int", 0, "int", 341, "int", 127, "int", 24, "int", 24, "ptr")
+    ; Window regions use physical pixels; use the actual size and DPI so the
+    ; rounded card is not clipped on displays with enlarged text/scaling.
+    rect := Buffer(16, 0)
+    if !DllCall("GetClientRect", "ptr", LoadingGui.Hwnd, "ptr", rect)
+        return
+    width := NumGet(rect, 8, "int")
+    height := NumGet(rect, 12, "int")
+    diameter := Round(32 * DllCall("GetDpiForWindow", "ptr", LoadingGui.Hwnd, "uint") / 96)
+    region := DllCall("CreateRoundRectRgn", "int", 0, "int", 0,
+        "int", width + 1, "int", height + 1, "int", diameter, "int", diameter, "ptr")
     if !region
         return
     if !DllCall("SetWindowRgn", "ptr", LoadingGui.Hwnd, "ptr", region, "int", 1)
@@ -1116,21 +1148,44 @@ LoadingApplyRegion() {
 }
 
 HideLoading(*) {
-    global LoadingGui, LoadingText
+    global LoadingGui, LoadingText, LoadingProgress
+    global LoadingShownAt, LoadingReadyAt, LoadingFadeStartedAt, LoadingOpacity
     SetTimer(AnimateLoading, 0)
     if IsObject(LoadingGui) {
         try LoadingGui.Destroy()
         LoadingGui := 0
         LoadingText := 0
+        LoadingProgress := 0
     }
+    LoadingShownAt := 0
+    LoadingReadyAt := 0
+    LoadingFadeStartedAt := 0
+    LoadingOpacity := -1
 }
 
 AnimateLoading(*) {
-    global LoadingGui, LoadingText, LoadingFrames, LoadingFrameIndex
-    if !IsObject(LoadingGui) || !IsObject(LoadingText)
+    global LoadingGui, LoadingShownAt, LoadingReadyAt, LoadingFadeStartedAt, LoadingOpacity
+    if !IsObject(LoadingGui)
         return
-    LoadingFrameIndex := Mod(LoadingFrameIndex, LoadingFrames.Length) + 1
-    LoadingText.Text := (IsChineseLanguage() ? "正在启动" : "Starting") . LoadingFrames[LoadingFrameIndex]
+    now := A_TickCount
+    ; Keep the card readable without delaying initialization or hotkeys. Slow
+    ; starts also get a brief ready state before the card fades away.
+    if LoadingReadyAt && !LoadingFadeStartedAt
+        && now - LoadingShownAt >= 1000 && now - LoadingReadyAt >= 250
+        LoadingFadeStartedAt := now
+    if LoadingFadeStartedAt {
+        elapsed := now - LoadingFadeStartedAt
+        if elapsed >= 160 {
+            HideLoading()
+            return
+        }
+        opacity := Round(255 * (1 - elapsed / 160))
+    } else
+        opacity := Round(255 * Min(1, (now - LoadingShownAt) / 160))
+    if opacity != LoadingOpacity {
+        try WinSetTransparent(opacity, "ahk_id " . LoadingGui.Hwnd)
+        LoadingOpacity := opacity
+    }
 }
 
 ; Restore the system pointer without increasing ShowCursor's display count when

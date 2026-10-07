@@ -274,7 +274,9 @@ PanelHostRegister(host) {
 }
 
 PanelHostActivationChanged(wParam, lParam, msg, hwnd) {
-    global PanelHostRegistry
+    global PanelHostRegistry, DebugLogging
+    if !DebugLogging
+        return
     for registryId, host in PanelHostRegistry {
         panelGui := PanelHostGui(host)
         if !IsObject(panelGui)
@@ -290,10 +292,12 @@ PanelHostActivationChanged(wParam, lParam, msg, hwnd) {
     }
 }
 
-; Focus diagnostics contain only panel identity, window handles and state.
-; Keep them available even when debug logging is disabled so a missed hide
-; can be diagnosed without changing settings or logging user content.
+; Focus diagnostics contain only panel identity, window handles and state,
+; and follow the same debug setting as other routine panel logs.
 PanelHostLogFocus(host, stage, details := "") {
+    global DebugLogging
+    if !DebugLogging
+        return
     panelGui := PanelHostGui(host)
     try hwnd := IsObject(panelGui) ? panelGui.Hwnd : 0
     catch
@@ -303,7 +307,7 @@ PanelHostLogFocus(host, stage, details := "") {
     monitoring := host.Has("autoHideMonitor") && IsObject(host["autoHideMonitor"])
     requireActive := host.Has("autoHideRequireActive") && host["autoHideRequireActive"]
     seenActive := host.Has("autoHideSeenActive") && host["autoHideSeenActive"]
-    DiagnosticLogAlways("panel focus panel=" . host["registryId"] . " page=" . pageName
+    DebugLog("panel focus panel=" . host["registryId"] . " page=" . pageName
         . " stage=" . stage . " hwnd=" . hwnd . " foreground=" . foreground
         . " active=" . (hwnd != 0 && hwnd = foreground)
         . " visible=" . host["visible"]
@@ -314,6 +318,9 @@ PanelHostLogFocus(host, stage, details := "") {
 }
 
 PanelHostLogAutoHideState(host, state) {
+    global DebugLogging
+    if !DebugLogging
+        return
     ; The monitor runs every 100 ms; write only changes in its decision.
     if host.Has("autoHideLogState") && host["autoHideLogState"] = state
         return
