@@ -44,6 +44,10 @@
   .button.primary:hover { background: var(--ui-button-hover); }
   .note, .settings { background: var(--ui-accent-quiet); border: 1px solid var(--ui-line); border-radius: 16px; padding: 24px; }
   .note p:last-child, .settings p:last-child, .card p:last-child { margin-bottom: 0; }
+  .practice { margin-top: 16px; }
+  .practice label { display: block; margin-bottom: 8px; font-weight: 600; }
+  .practice-copy { color: var(--ui-muted); margin-bottom: 12px; }
+  .practice textarea { display: block; width: 100%; min-height: 104px; padding: 12px 14px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-bg); color: var(--ui-text); font: inherit; line-height: 1.7; resize: vertical; }
   .steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; counter-reset: step; }
   .steps li { counter-increment: step; padding: 24px; background: var(--ui-surface-soft); border-radius: 14px; }
   .steps li::before { content: "0" counter(step); display: block; color: var(--ui-accent); font-weight: 700; margin-bottom: 12px; }
@@ -121,6 +125,18 @@
       <li><h3><span lang="zh-CN">试着移动光标</span><span lang="en">Move the cursor</span></h3><p><span lang="zh-CN">打开记事本，输入一行字。按住 CapsLock，再按 <kbd>S</kbd> 或 <kbd>F</kbd>，光标就会向左或向右移动。</span><span lang="en">Open Notepad and type a line. Hold CapsLock and press <kbd>S</kbd> or <kbd>F</kbd> to move left or right.</span></p></li>
       <li><h3><span lang="zh-CN">看看设置</span><span lang="en">Explore Settings</span></h3><p><span lang="zh-CN">按 <kbd>CapsLock</kbd> + <kbd>F12</kbd> 打开设置，按自己的习惯调整。基础快捷键可以直接用；翻译和 AI 需要先填写服务信息。</span><span lang="en">Press <kbd>CapsLock</kbd> + <kbd>F12</kbd> to open Settings and make it your own. Basic shortcuts work straight away; online translation and AI need service details first.</span></p></li>
     </ol>
+    <div class="note practice">
+      <div lang="zh-CN">
+        <label for="practice-input-zh">在这里试试移动和选择光标</label>
+        <p class="practice-copy">点击文本框后，按住 <kbd>CapsLock</kbd> 再按 <kbd>S</kbd> / <kbd>F</kbd> 移动光标，按 <kbd>J</kbd> / <kbd>L</kbd> 选择文字。你也可以直接改写这段示例。</p>
+        <textarea id="practice-input-zh" rows="3" spellcheck="false">这是一段练习文字。试着把光标移到句子中间，再向左或向右选中几个字。</textarea>
+      </div>
+      <div lang="en">
+        <label for="practice-input-en">Try moving and selecting text here</label>
+        <p class="practice-copy">Click the text box, then hold <kbd>CapsLock</kbd> and press <kbd>S</kbd> / <kbd>F</kbd> to move the cursor, or <kbd>J</kbd> / <kbd>L</kbd> to select text. You can edit the sample too.</p>
+        <textarea id="practice-input-en" rows="3" spellcheck="false">This is a practice sentence. Move the cursor into it, then try selecting a few words to the left or right.</textarea>
+      </div>
+    </div>
   </section>
 
   <section id="features">
