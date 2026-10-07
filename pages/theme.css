@@ -83,6 +83,81 @@
 
 button, input, select, textarea { font-family: inherit; }
 
+/* Shared settings fields, including the same controls inside tool dialogs. */
+.ui-form-panel { container: ui-form / inline-size; }
+.ui-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 18px;
+}
+.ui-form-grid > .wide { grid-column: 1 / -1; }
+.ui-form-field { min-width: 0; display: grid; gap: 6px; }
+.ui-form-field > span { color: var(--ui-muted); font-size: 12px; line-height: 1.45; }
+.ui-form-control {
+  width: 100%; min-width: 0; height: 38px;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control);
+  padding: 8px 10px; outline: 0;
+  background: var(--ui-surface); color: var(--ui-text);
+  font-size: 12px; line-height: 1.45;
+}
+.ui-form-field textarea.ui-form-control { height: auto; min-height: 120px; resize: vertical; line-height: 1.6; }
+.ui-form-control:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.ui-form-control:disabled { color: var(--ui-muted); background: var(--ui-surface-soft); cursor: default; }
+.ui-form-hint { color: var(--ui-muted); font-size: 11px; line-height: 1.5; }
+.ui-form-check {
+  min-width: 0; min-height: 48px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-control); background: var(--ui-surface-soft);
+  color: var(--ui-text); font-size: 12px; line-height: 1.45; cursor: pointer;
+}
+.ui-form-copy { min-width: 0; display: grid; gap: 3px; }
+.ui-form-check input[type="checkbox"] {
+  appearance: none; position: relative; flex: 0 0 34px;
+  width: 34px; height: 20px; margin: 0; padding: 0;
+  border: 1px solid transparent; border-radius: 20px;
+  background: var(--ui-line-strong); cursor: pointer; box-shadow: none;
+  transition: background .15s ease;
+}
+.ui-form-check input[type="checkbox"]::before {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--ui-button-text);
+  transition: transform .15s ease;
+}
+.ui-form-check input[type="checkbox"]:checked { background: var(--ui-button-bg); }
+.ui-form-check input[type="checkbox"]:checked::before { transform: translateX(14px); }
+.ui-form-check input[type="checkbox"]:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+.ui-form-check input[type="checkbox"]:disabled { opacity: .45; cursor: default; }
+.secret-control {
+  min-width: 0; display: flex; align-items: center; gap: 2px;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control);
+  background: var(--ui-surface); transition: border-color .15s ease, box-shadow .15s ease;
+}
+.secret-control:focus-within { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.secret-control input, .secret-control input:focus {
+  min-width: 0; flex: 1; width: 0; height: 36px; border: 0; border-radius: inherit;
+  padding: 8px 10px; outline: 0; background: transparent; box-shadow: none;
+}
+.secret-control input::placeholder { color: var(--ui-subtle); letter-spacing: .09em; opacity: .9; }
+.secret-control input::-ms-reveal, .secret-control input::-ms-clear { display: none; }
+.secret-actions { flex: none; display: flex; align-items: center; gap: 1px; padding-right: 4px; }
+.secret-action {
+  width: 30px; height: 30px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted);
+}
+.secret-action .lucide { width: 16px; height: 16px; }
+.secret-action:hover:not(:disabled) { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.secret-action:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.secret-action:disabled { opacity: .38; cursor: default; }
+.secret-clear:hover:not(:disabled) { background: var(--ui-danger-soft); color: var(--ui-danger); }
+@container ui-form (max-width: 460px) {
+  .ui-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-form-check input[type="checkbox"], .ui-form-check input[type="checkbox"]::before { transition: none; }
+}
+
 /* Lucide is the shared icon vocabulary. Page-local rules may size an icon,
    but should not redraw it or override its stroke language. */
 .lucide {

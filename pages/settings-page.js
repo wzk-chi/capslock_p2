@@ -349,10 +349,12 @@ function readControl(node) {
 function createSettingsField(schema, value, onChange = null) {
   const checkbox = schema.type === 'bool' || schema.type === 'boolean';
   const numeric = ['int', 'integer', 'optionalNumber', 'optionalPositiveInt'].includes(schema.type);
+  const wide = schema.wide ?? (checkbox || schema.type === 'secret' || schema.multiline === true);
   const field = document.createElement('label');
-  field.className = checkbox ? 'check' : 'field' + (schema.wide ? ' wide' : '');
+  field.className = (checkbox ? 'check ui-form-check' : 'field ui-form-field') + (wide ? ' wide' : '');
   const label = document.createElement('span'); label.textContent = schema.label;
   const input = document.createElement(schema.type === 'enum' ? 'select' : schema.multiline ? 'textarea' : 'input');
+  input.className = 'ui-form-control';
   if (input.tagName === 'INPUT')
     input.type = checkbox ? 'checkbox' : schema.type === 'secret' ? 'password' : numeric ? 'number' : 'text';
   const scale = Number(schema.displayScale) || 1;
@@ -373,11 +375,14 @@ function createSettingsField(schema, value, onChange = null) {
   if (checkbox) input.checked = value === true || value === 1 || value === '1' || value === 'true';
   else input.value = value == null || typeof value === 'object' ? '' : String(numeric ? Number(value) / scale : value);
   input.placeholder = schema.placeholder || '';
-  if (checkbox) field.append(input, label); else field.append(label, input);
+  const copy = checkbox ? document.createElement('span') : field;
+  if (checkbox) { copy.className = 'ui-form-copy'; copy.append(label); }
+  else field.append(label, input);
   if (schema.hint) {
-    const hint = document.createElement('small'); hint.className = 'hint'; hint.textContent = schema.hint;
-    field.append(hint);
+    const hint = document.createElement('small'); hint.className = 'ui-form-hint'; hint.textContent = schema.hint;
+    copy.append(hint);
   }
+  if (checkbox) field.append(copy, input);
   if (onChange) input.addEventListener(checkbox || input.tagName === 'SELECT' ? 'change' : 'input', () => {
     const next = checkbox ? input.checked : numeric && input.value.trim() !== ''
       ? Number(input.value) * scale : input.value;
@@ -385,11 +390,14 @@ function createSettingsField(schema, value, onChange = null) {
   });
   return { field, input };
 }
+function compareSettingsFields(a, b) {
+  return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+}
 function renderSettingsForms() {
   $$('.settings-groups').forEach(root => root.replaceChildren());
   for (const group of state.schema.groups) {
     const root = $('.settings-groups', $('.page[data-page-view="' + group.page + '"]'));
-    const card = document.createElement('section'); card.className = 'card';
+    const card = document.createElement('section'); card.className = 'card ui-form-panel';
     const head = document.createElement('div'); head.className = 'card-head';
     const title = document.createElement('h3'); title.textContent = group.title; head.append(title);
     if (group.action) {
@@ -397,18 +405,20 @@ function renderSettingsForms() {
       action.dataset.settingsAction = group.action;
       action.textContent = group.action === 'openLlm' ? 'LLM 设置' : '测试'; head.append(action);
     }
-    const grid = document.createElement('div'); grid.className = 'grid';
-    for (const [sectionName, fields] of Object.entries(state.schema.fields))
-      for (const [key, schema] of Object.entries(fields)) {
-        if (schema.hidden || schema.group !== group.id) continue;
-        const { field, input } = createSettingsField(schema, section(sectionName)[key]);
-        input.dataset.section = sectionName; input.dataset.key = key;
-        if (schema.when) {
-          field.dataset.visibleSection = sectionName;
-          field.dataset.visibleKey = schema.when.key; field.dataset.visibleValue = schema.when.equals;
-        }
-        grid.append(field);
+    const grid = document.createElement('div'); grid.className = 'grid ui-form-grid';
+    const fields = Object.entries(state.schema.fields).flatMap(([sectionName, definitions]) =>
+      Object.entries(definitions).filter(([, schema]) => !schema.hidden && schema.group === group.id)
+        .map(([key, schema]) => ({ sectionName, key, schema }))
+    ).sort((a, b) => compareSettingsFields(a.schema, b.schema));
+    for (const { sectionName, key, schema } of fields) {
+      const { field, input } = createSettingsField(schema, section(sectionName)[key]);
+      input.dataset.section = sectionName; input.dataset.key = key;
+      if (schema.when) {
+        field.dataset.visibleSection = sectionName;
+        field.dataset.visibleKey = schema.when.key; field.dataset.visibleValue = schema.when.equals;
       }
+      grid.append(field);
+    }
     card.append(head, grid);
     if (group.hint) {
       const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = group.hint;
@@ -1405,11 +1415,12 @@ function openQbarCreateDialog(kind) {
 }
 
 function renderQbarSchemaSettings(plugin, editor, title) {
-  const entries = Object.entries(pluginMeta(plugin).settingsSchema);
+  const entries = Object.entries(pluginMeta(plugin).settingsSchema)
+    .sort(([, a], [, b]) => compareSettingsFields(a, b));
   if (!entries.some(([key, field]) => !field.hidden || !Object.hasOwn(plugin.settings, key))) return;
-  const root = document.createElement('div'); root.className = 'plugin-detail-section';
+  const root = document.createElement('div'); root.className = 'plugin-detail-section ui-form-panel';
   const heading = document.createElement('strong'); heading.textContent = title;
-  const grid = document.createElement('div'); grid.className = 'grid';
+  const grid = document.createElement('div'); grid.className = 'grid ui-form-grid';
   for (const [key, field] of entries)
     if (!field.hidden || !Object.hasOwn(plugin.settings, key)) grid.append(createSettingsField(field, plugin.settings[key],
       value => { plugin.settings[key] = value; }).field);
@@ -1420,16 +1431,13 @@ function renderQbarToolDialog(editor) {
   const plugin = state.qbarPluginDraft;
   if (!plugin) return;
   editor.replaceChildren();
-  const general = document.createElement('div'); general.className = 'grid';
-  const nameField = document.createElement('label'); nameField.className = 'field';
-  const nameLabel = document.createElement('span'); nameLabel.textContent = '工具名称';
-  const nameInput = document.createElement('input'); nameInput.value = qbarToolName(plugin);
-  nameInput.addEventListener('input', () => { plugin.name = nameInput.value; });
-  nameField.append(nameLabel, nameInput); general.append(nameField);
-  const enabledField = document.createElement('label'); enabledField.className = 'check';
-  const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = plugin.enabled !== false;
-  enabled.addEventListener('change', () => { plugin.enabled = enabled.checked; });
-  enabledField.append(enabled, document.createTextNode('启用工具')); general.append(enabledField);
+  const general = document.createElement('div'); general.className = 'grid ui-form-grid';
+  general.append(
+    createSettingsField({ type: 'text', label: '工具名称', wide: true }, qbarToolName(plugin),
+      value => { plugin.name = value; }).field,
+    createSettingsField({ type: 'boolean', label: '启用工具' }, plugin.enabled !== false,
+      value => { plugin.enabled = value; }).field
+  );
   editor.append(general);
   if (pluginMeta(plugin).definitionValid === false || pluginMeta(plugin).settingsValid === false) {
     const warning = document.createElement('div'); warning.className = 'hint';
@@ -1561,9 +1569,10 @@ function renderPlugins() {
 function addPairRow(sectionName, root, initialKey = '', initialValue = '', multiline = false) {
   const row = document.createElement('div');
   row.className = 'pair-row';
-  const keyInput = document.createElement('input'); keyInput.className = 'pair-key'; keyInput.value = initialKey; keyInput.placeholder = '键';
-  const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.className = 'pair-value'; valueInput.value = initialValue; valueInput.placeholder = '值';
+  const keyInput = document.createElement('input'); keyInput.className = 'pair-key'; keyInput.value = initialKey; keyInput.placeholder = '触发词';
+  const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.className = 'pair-value'; valueInput.value = initialValue; valueInput.placeholder = '替换内容';
   const remove = document.createElement('button'); remove.className = 'icon-btn'; remove.type = 'button'; remove.appendChild(createIcon('x'));
+  remove.title = '删除替换'; remove.setAttribute('aria-label', '删除替换');
   row.append(keyInput, valueInput, remove); root.append(row); refreshIcons();
   const update = () => updatePairDraft(sectionName, root);
   keyInput.addEventListener('input', update);

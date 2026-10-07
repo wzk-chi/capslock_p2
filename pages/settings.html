@@ -37,11 +37,11 @@ body.settings-saving { pointer-events: none; }
   height: 76px; flex: none; display: flex; align-items: center; justify-content: space-between;
   gap: 18px; padding: 0 34px; border-bottom: 1px solid var(--ui-line); background: var(--ui-surface);
 }
-.title { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.title { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .title h1 { margin: 0; font-size: 20px; font-weight: 650; white-space: nowrap; }
-.status { margin: 0; min-height: 0; color: var(--ui-muted); font-size: 12px; white-space: nowrap; }
+.status { margin: 0; min-width: 0; color: var(--ui-muted); font-size: 12px; line-height: 1.45; }
 .status.error { color: var(--ui-danger); }
-.actions { display: flex; gap: 8px; }
+.actions { flex: none; display: flex; gap: 8px; }
 .btn {
   border: 0; border-radius: var(--ui-radius-control); padding: 8px 15px; background: var(--ui-button-bg); color: var(--ui-button-text);
   font-size: 12px; font-weight: 650;
@@ -53,39 +53,15 @@ body.settings-saving { pointer-events: none; }
 .page { display: none; max-width: 1020px; margin: 0 auto; }
 .page.active { display: block; }
 .cards { display: grid; gap: 14px; }
-.card {
-  padding: 18px 20px; border: 1px solid var(--ui-line); border-radius: 13px;
-  background: var(--ui-surface); box-shadow: var(--ui-shadow);
+.settings-groups { max-width: 840px; margin-inline: auto; }
+.card, .qbar-plugin-table-card {
+  padding: 20px 22px; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-card);
+  background: var(--ui-surface); box-shadow: var(--ui-shadow-soft);
 }
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
-.card h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.card-head, .qbar-plugin-table-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.card h3, .qbar-plugin-table-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.card > .hint { margin-top: 12px; line-height: 1.5; }
 .card-head .btn { padding: 6px 10px; font-size: 11px; }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
-.field { min-width: 0; display: grid; gap: 5px; }
-.field.wide, .grid.wide { grid-column: 1 / -1; }
-.field label, .field > span { color: var(--ui-muted); font-size: 11px; }
-.secret-control {
-  min-width: 0; display: flex; align-items: center; gap: 2px;
-  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control);
-  background: var(--ui-surface); transition: border-color .15s ease, box-shadow .15s ease;
-}
-.secret-control:focus-within { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.secret-control input, .secret-control input:focus {
-  min-width: 0; flex: 1; width: 0; height: 36px; border: 0; border-radius: inherit;
-  padding: 8px 10px; outline: 0; background: transparent; box-shadow: none;
-}
-.secret-control input::placeholder { color: var(--ui-subtle); letter-spacing: .09em; opacity: .9; }
-.secret-control input::-ms-reveal, .secret-control input::-ms-clear { display: none; }
-.secret-actions { flex: none; display: flex; align-items: center; gap: 1px; padding-right: 4px; }
-.secret-action {
-  width: 30px; height: 30px; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted);
-}
-.secret-action .lucide { width: 16px; height: 16px; }
-.secret-action:hover:not(:disabled) { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
-.secret-action:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
-.secret-action:disabled { opacity: .38; cursor: default; }
-.secret-clear:hover:not(:disabled) { background: var(--ui-danger-soft); color: var(--ui-danger); }
 input, select, textarea {
   width: 100%; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control); padding: 8px 10px;
   outline: none; background: var(--ui-surface); color: var(--ui-text); font-size: 12px;
@@ -93,13 +69,12 @@ input, select, textarea {
 textarea { min-height: 76px; resize: vertical; line-height: 1.45; }
 input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
 [hidden] { display: none !important; }
-.check { display: flex; align-items: center; gap: 8px; min-height: 34px; color: var(--ui-text); font-size: 12px; }
-.check input { width: 15px; height: 15px; accent-color: var(--ui-accent); }
 .hint { color: var(--ui-muted); font-size: 11px; }
 .pair-list, .shortcut-list, .binding-list { display: grid; gap: 7px; }
-.pair-row, .shortcut-row {
+.pair-row, .shortcut-row, .pair-heading {
   display: grid; grid-template-columns: 150px minmax(0, 1fr) 32px; gap: 8px; align-items: center;
 }
+.pair-heading { margin-bottom: 8px; color: var(--ui-muted); font-size: 12px; }
 .pair-row textarea { min-height: 38px; }
 #tabList .pair-row > input, #tabList .pair-row > textarea { height: 38px; min-height: 38px; resize: none; }
 .custom-hotkey-row { grid-template-columns: minmax(0, .9fr) minmax(0, 1.3fr) 32px; gap: 14px; align-items: end; }
@@ -198,9 +173,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
 .plugin-detail-section > strong { font-size: 12px; }
 .plugin-detail-section .hint { margin: 0; }
 .qbar-plugin-tables { display: grid; gap: 14px; }
-.qbar-plugin-table-card { padding: 18px 20px; border: 1px solid var(--ui-line); border-radius: 13px; background: var(--ui-surface); box-shadow: var(--ui-shadow); }
-.qbar-plugin-table-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.qbar-plugin-table-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
 .qbar-plugin-table-wrap { overflow-x: auto; border: 1px solid var(--ui-line); border-radius: 10px; }
 .qbar-plugin-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
 .qbar-plugin-table th, .qbar-plugin-table td { padding: 10px 12px; border-bottom: 1px solid var(--ui-line); text-align: left; }
@@ -253,12 +225,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
   .side { width: 178px; }
   .topbar { padding: 0 20px; }
   .content { padding: 22px 20px 32px; }
-  .grid { grid-template-columns: 1fr; }
-  .field.wide { grid-column: auto; }
   .shortcut-row { grid-template-columns: 135px minmax(0, 1fr) minmax(48px, auto); }
   .custom-hotkey-row { grid-template-columns: minmax(0, 1fr) 32px; }
   .custom-hotkey-field:nth-child(2) { grid-column: 1; }
   .custom-hotkey-remove { grid-column: 2; grid-row: 1 / span 2; }
+  .binding-actions { flex-basis: 100%; margin-left: 0; }
 }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -336,7 +307,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
       </section>
 
       <section class="page" data-page-view="tab">
-        <div class="card"><div id="tabList" class="pair-list"></div><div class="list-actions"><button class="btn mini" data-add-pair="TabHotString">添加替换</button></div></div>
+        <div class="card">
+          <div class="pair-heading"><span>触发词</span><span>替换内容</span></div>
+          <div id="tabList" class="pair-list"></div>
+          <div class="list-actions"><button class="btn mini" data-add-pair="TabHotString">添加替换</button></div>
+        </div>
       </section>
 
       <section class="page" data-page-view="qbar">

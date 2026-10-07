@@ -34,7 +34,7 @@ QbarPluginCatalogDefinitions() {
             "capabilities", ["panel.everything"],
             "settingsSchema", Map(
                 "esMaxResults", Map("type", "integer", "label", "最多结果数",
-                    "default", 50, "min", 1, "max", 500, "step", 1)),
+                    "wide", true, "default", 50, "min", 1, "max", 500, "step", 1)),
             "commands", [Map(
                 "id", "search",
                 "title", "文件搜索",
@@ -71,14 +71,14 @@ QbarPluginCatalogDefinitions() {
             "trustLevel", "trusted-inprocess",
             "capabilities", ["panel.clipboard"],
             "settingsSchema", Map(
-                "enabled", Map("type", "boolean", "label", "记录剪贴板历史", "default", true),
+                "enabled", Map("type", "boolean", "label", "记录剪贴板历史", "order", 10, "default", true),
                 "maxItems", Map("type", "integer", "label", "非收藏历史上限",
-                    "default", 500, "min", 20, "max", 5000, "step", 1),
+                    "order", 20, "default", 500, "min", 20, "max", 5000, "step", 1),
                 "maxCaptureBytes", Map("type", "integer", "label", "单次采集上限（MiB）",
-                    "default", 268435456, "min", 1048576, "max", 268435456,
+                    "order", 40, "wide", true, "default", 268435456, "min", 1048576, "max", 268435456,
                     "step", 1048576, "displayScale", 1048576),
                 "retentionDays", Map("type", "integer", "label", "历史保存天数",
-                    "default", 30, "min", 1, "max", 3650, "step", 1)),
+                    "order", 30, "default", 30, "min", 1, "max", 3650, "step", 1)),
             "commands", [Map(
                 "id", "open",
                 "title", "剪贴板历史",
@@ -170,8 +170,8 @@ QbarPluginCatalogDefinitions() {
             "capabilities", ["browser.open"],
             "settingsSchema", Map(
                 "template", Map("type", "url-template", "label", "搜索网址模板", "wide", true,
-                    "hint", "使用 {q} 代表搜索内容。", "required", true),
-                "encodeQuery", Map("type", "boolean", "label", "编码搜索内容", "default", true)),
+                    "order", 10, "hint", "使用 {q} 代表搜索内容。", "required", true),
+                "encodeQuery", Map("type", "boolean", "label", "编码搜索内容", "order", 20, "default", true)),
             "commands", [Map(
                 "id", "execute",
                 "title", "网址搜索",
@@ -189,9 +189,9 @@ QbarPluginCatalogDefinitions() {
             "trustLevel", "host-declarative",
             "capabilities", ["process.start"],
             "settingsSchema", Map(
-                "command", Map("type", "command-line", "label", "执行命令或程序路径", "wide", true, "required", true),
-                "runAs", Map("type", "boolean", "label", "以管理员身份运行", "default", false),
-                "argumentMode", Map("type", "enum", "label", "参数处理", "hidden", true,
+                "command", Map("type", "command-line", "label", "执行命令或程序路径", "order", 10, "wide", true, "required", true),
+                "runAs", Map("type", "boolean", "label", "以管理员身份运行", "order", 30, "default", false),
+                "argumentMode", Map("type", "enum", "label", "参数处理", "order", 20, "wide", true, "hidden", true,
                     "values", ["append"], "labels", Map("append", "追加输入内容"), "default", "append")),
             "commands", [Map(
                 "id", "execute",
