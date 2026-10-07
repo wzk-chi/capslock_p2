@@ -124,16 +124,21 @@ async function chooseCustomDate() {
 }
 function requestQuery(reset = true, page = state.page) {
   clearTimeout(state.queryTimer);
+  if (!state.sessionId) return;
   state.page = reset ? 1 : Math.max(1, Number(page) || 1);
   if (reset) state.selectedIds.clear();
   const queryId = ++state.querySerial;
   const dateRange = dateRangeForFilter(state.dateFilter);
   state.dateAfter = dateRange.after;
   state.dateBefore = dateRange.before;
-  state.rows = [];
   state.selectedId = '';
-  state.loading = false;
-  render();
+  // Keep the last list visible until its replacement arrives. Disable row
+  // actions during the query so displayed results cannot be used as current.
+  state.loading = true;
+  list.inert = true;
+  list.setAttribute('aria-busy', 'true');
+  hideMenu();
+  updateMultiSelectBar();
   state.queryTimer = setTimeout(() => {
     post({
       type: 'query', sessionId: state.sessionId, queryId,
@@ -649,6 +654,9 @@ window.handleHostMessage=function(message){
   const data=message||{};
   if(data.type==='sessionEnd'){
     if(data.sessionId!==state.sessionId)return;
+    clearTimeout(state.queryTimer);
+    state.querySerial++;
+    state.loading=false; list.inert=true; list.setAttribute('aria-busy','false');
     AppDialog.dismiss();
     hideMenu();
     state.sessionId=''; state.multiSelectMode=false; state.selectedIds.clear(); state.bulkBusy=false;
@@ -660,6 +668,7 @@ window.handleHostMessage=function(message){
     if(state.sessionId&&state.sessionId!==String(data.sessionId||''))AppDialog.dismiss();
     state.nativeDragPending.clear(); state.imagePreviewRequested.clear(); state.pendingFavorites.clear();
     state.multiSelectMode=false; state.selectedIds.clear(); state.bulkBusy=false;
+    state.composing=false; state.contextId='';
     state.sessionId=String(data.sessionId||''); state.search=String(data.search||''); search.value=state.search;
     state.type=String(data.primaryType||'all'); state.favoriteOnly=!!data.favoriteOnly;
     state.dateFilter=String(data.dateFilter||'all'); state.selectedDate=String(data.selectedDate||''); updateDateFilterLabel();
@@ -672,7 +681,8 @@ window.handleHostMessage=function(message){
     const responseQueryId=Number(data.queryId||0); if(responseQueryId&&responseQueryId!==state.querySerial)return;
     state.rows=Array.isArray(data.rows)?data.rows:[]; state.counts=data.counts||{};
     state.page=Number(data.page||state.page)||1; state.pageSize=Number(data.pageSize||state.pageSize)||20;
-    state.pageCount=Math.max(1,Number(data.pageCount||1)); state.loading=false; render();
+    state.pageCount=Math.max(1,Number(data.pageCount||1)); state.loading=false;
+    list.inert=false; list.setAttribute('aria-busy','false'); render();
   } else if(data.type==='imagePreview'){
     if(data.sessionId!==state.sessionId)return; applyImagePreview(data.id,data.data);
   } else if(data.type==='nativeDragFinished'){

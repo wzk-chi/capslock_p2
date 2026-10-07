@@ -7,6 +7,7 @@ global ClipboardHistoryDeferredPanelUpdate := ""
 global ClipboardHistoryDeferredPanelQuery := 0
 global ClipboardHistorySessionSerial := 0
 global ClipboardHistorySessionId := ""
+global ClipboardHistorySentSessionId := ""
 global ClipboardHistoryQuerySerial := 0
 global ClipboardHistoryTargetHwnd := 0
 global ClipboardHistoryTargetPid := 0
@@ -71,7 +72,6 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         return true
     }
     ClipboardHistoryVisible := false
-    refreshPage := IsObject(ClipboardHistoryHost)
 
     ClipboardHistoryResetSession(initialSearch, targetContext, !refreshSession)
 
@@ -79,13 +79,7 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         DebugLog("ClipboardHistoryShow failed ensureWebView")
         return false
     }
-    if refreshPage {
-        PanelHostNavigate(ClipboardHistoryHost)
-        ClipboardHistoryPageReady := false
-        DebugLog("ClipboardHistoryShow reloading hidden page")
-    } else {
-        ClipboardHistoryPageReady := PanelHostPageReady(ClipboardHistoryHost)
-    }
+    ClipboardHistoryPageReady := PanelHostPageReady(ClipboardHistoryHost)
     ClipboardHistoryVisible := true
     PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, true)
     panelGui := PanelHostGui(ClipboardHistoryHost)
@@ -119,6 +113,7 @@ ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget 
     global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
     global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
     global ClipboardHistoryPendingPage, ClipboardHistoryQuerySerial, ClipboardHistoryClearTokens
+    global ClipboardHistoryDeferredPanelQuery, ClipboardHistoryDeferredPanelUpdate
     if !IsObject(targetContext) {
         if targetContext
             targetContext := ClipboardHistoryTargetContextFromHwnd(targetContext)
@@ -138,6 +133,8 @@ ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget 
     ClipboardHistoryPendingPage := 1
     ClipboardHistoryQuerySerial := 0
     ClipboardHistoryClearTokens := Map()
+    ClipboardHistoryDeferredPanelQuery := 0
+    ClipboardHistoryDeferredPanelUpdate := ""
     ClipboardHistorySessionSerial += 1
     ClipboardHistorySessionId := "clipboard-history-" . ClipboardHistorySessionSerial . "-" . A_TickCount
 }
@@ -222,6 +219,8 @@ ClipboardHistoryDisableExternalDrop() {
 
 ClipboardHistoryNavigationCompleted(host, sender, args) {
     global ClipboardHistoryVisible, ClipboardHistoryPageReady
+    global ClipboardHistorySentSessionId
+    ClipboardHistorySentSessionId := ""
     ClipboardHistoryPageReady := PanelHostPageReady(host)
     if !ClipboardHistoryPageReady {
         try ShowMsg("剪贴板历史页面加载失败（" . args.WebErrorStatus . "）。", 4000)
@@ -245,12 +244,16 @@ ClipboardHistorySendState(*) {
     global ClipboardHistoryVisible, ClipboardHistoryPageReady
     global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryCaptureQueue
     global ClipboardHistoryDeferredPanelUpdate
-    global ClipboardHistorySessionId, ClipboardHistoryPendingSearch
+    global ClipboardHistorySessionId, ClipboardHistorySentSessionId, ClipboardHistoryPendingSearch
     global ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
     global ClipboardHistoryPendingDateFilter, ClipboardHistoryPendingSelectedDate
     global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
     global ClipboardHistoryPendingPageSize
     if !ClipboardHistoryVisible || !ClipboardHistoryPageReady
+        return
+    ; Show, page-ready and navigation callbacks can all request initialization.
+    ; Each opening session needs only one successful state message.
+    if ClipboardHistorySentSessionId = ClipboardHistorySessionId
         return
     if ClipboardHistoryActiveCaptureEventId != "" || ClipboardHistoryCaptureQueue.Length {
         ClipboardHistoryDeferredPanelUpdate := "state"
@@ -258,22 +261,34 @@ ClipboardHistorySendState(*) {
         return
     }
     ClipboardHistoryDeferredPanelUpdate := ""
-    ClipboardHistoryPost(Map("type", "hostState", "sessionId", ClipboardHistorySessionId,
+    sessionId := ClipboardHistorySessionId
+    if ClipboardHistoryPost(Map("type", "hostState", "sessionId", sessionId,
         "search", ClipboardHistoryPendingSearch, "primaryType", ClipboardHistoryPendingType,
         "favoriteOnly", ClipboardHistoryPendingFavorite,
         "dateFilter", ClipboardHistoryPendingDateFilter,
         "selectedDate", ClipboardHistoryPendingSelectedDate,
         "dateAfter", ClipboardHistoryPendingDateAfter,
         "dateBefore", ClipboardHistoryPendingDateBefore,
-        "pageSize", ClipboardHistoryPendingPageSize))
+        "pageSize", ClipboardHistoryPendingPageSize)) {
+        ClipboardHistorySentSessionId := sessionId
+        DebugLog("ClipboardHistory state sent session=" . sessionId)
+    }
 }
 
 ClipboardHistoryRefreshVisibleView(*) {
     global ClipboardHistoryVisible, ClipboardHistoryPageReady, ClipboardHistoryHost
+    global ClipboardHistorySessionId, ClipboardHistorySentSessionId
     global ClipboardHistoryActiveCaptureEventId, ClipboardHistoryCaptureQueue
     global ClipboardHistoryDeferredPanelUpdate
     if !ClipboardHistoryVisible || !ClipboardHistoryPageReady
         return false
+    ; A repeat open during capture must keep initialization queued, rather
+    ; than replace it with a refresh for a page that has no session yet.
+    if ClipboardHistorySentSessionId != ClipboardHistorySessionId {
+        ClipboardHistorySendState()
+        return ClipboardHistorySentSessionId = ClipboardHistorySessionId
+            || ClipboardHistoryDeferredPanelUpdate = "state"
+    }
     if ClipboardHistoryActiveCaptureEventId != "" || ClipboardHistoryCaptureQueue.Length {
         ClipboardHistoryDeferredPanelUpdate := "view"
         DebugLog("ClipboardHistoryRefreshVisibleView deferred until capture queue drains")
@@ -305,8 +320,12 @@ ClipboardHistoryPanelCaptureQueueDrained() {
 }
 
 ClipboardHistoryPanelChanged() {
-    global ClipboardHistoryVisible
-    if ClipboardHistoryVisible
+    global ClipboardHistoryVisible, ClipboardHistorySentSessionId, ClipboardHistorySessionId
+    if !ClipboardHistoryVisible
+        return
+    if ClipboardHistorySentSessionId = ClipboardHistorySessionId
+        SetTimer(ClipboardHistoryRefreshVisibleView, -1)
+    else
         SetTimer(ClipboardHistorySendState, -1)
 }
 
@@ -360,7 +379,8 @@ ClipboardHistoryPanelQuery(searchText, primaryType, favoriteOnly, dateFilter, se
         "queryId", actualQueryId, "rows", rows, "counts", counts,
         "page", ClipboardHistoryPendingPage, "pageSize", ClipboardHistoryPendingPageSize,
         "pageCount", pageCount, "append", JSON.false))
-    DebugLog("ClipboardHistory query page=" . ClipboardHistoryPendingPage
+    DebugLog("ClipboardHistory query session=" . sessionId . " query=" . actualQueryId
+        . " page=" . ClipboardHistoryPendingPage
         . " returned=" . rows.Length . " matching=" . counts["matching"])
 }
 

@@ -14,8 +14,17 @@ WindowBarApplyNativeMode(host, nativeWindow, pageSetter := "setNativeWindowMode"
         host["windowBarOriginalExStyle"] := WindowBarGetLong(hwnd, -20) ; GWL_EXSTYLE
         host["windowBarOriginalOwner"] := DllCall("GetWindow", "ptr", hwnd,
             "uint", 4, "ptr") ; GW_OWNER
+        host["windowBarAppliedNative"] := false
     }
     host["windowBarNative"] := !!nativeWindow
+    ; Hide resets the requested mode, but the GUI retains its actual styles.
+    ; Rebuild the frame only when that applied mode really needs to change.
+    if host["windowBarAppliedNative"] = host["windowBarNative"] {
+        if pageSetter != ""
+            PanelHostExecute(host, "window." . pageSetter . "(" . (nativeWindow ? "true" : "false") . ");")
+        PanelHostLogFocus(host, "native-mode-unchanged")
+        return true
+    }
 
     originalStyle := host["windowBarOriginalStyle"]
     originalExStyle := host["windowBarOriginalExStyle"]
@@ -58,6 +67,7 @@ WindowBarApplyNativeMode(host, nativeWindow, pageSetter := "setNativeWindowMode"
         ShowSystemCursor()
     }
 
+    host["windowBarAppliedNative"] := !!nativeWindow
     PanelHostFill(host)
     if pageSetter != ""
         PanelHostExecute(host, "window." . pageSetter . "(" . (nativeWindow ? "true" : "false") . ");")

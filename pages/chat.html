@@ -20,7 +20,7 @@ button.secondary { background: transparent; color: var(--ui-accent); border: 1px
 button.secondary:hover { background: var(--ui-accent-quiet); }
 button#pinPanel.pinned { background: var(--ui-accent-soft); color: var(--ui-accent-strong); border-color: var(--ui-line-strong); }
 button#pinPanel.pinned:hover { background: var(--ui-accent-quiet); }
-#messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
+#messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 18px; }
 .msg { max-width: 86%; padding: 9px 12px; border-radius: var(--ui-radius-card); font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; background: var(--ui-button-bg); color: var(--ui-button-text); border-bottom-right-radius: 4px; }
 .msg.assistant { align-self: flex-start; background: var(--ui-surface); border: 1px solid var(--ui-line-strong); border-bottom-left-radius: 4px; white-space: normal; }
@@ -116,7 +116,7 @@ textarea:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-
 .save-retry-message { flex: 1; min-width: 0; }
 .retry-save { flex: 0 0 auto; padding: 5px 10px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface); color: var(--ui-accent); font-weight: 500; }
 .retry-save:hover { background: var(--ui-accent-quiet); }
-.composer { padding: 0 18px 14px 2px; }
+.composer { padding: 0 18px 14px; }
 @media (max-width: 650px) {
   .sidebar:not(.is-collapsed) { flex-basis: 220px; width: 220px; }
   .chat-head { padding-inline: 12px; }
