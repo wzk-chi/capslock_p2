@@ -55,13 +55,21 @@ SettingsPushSnapshot(*) {
     if !SettingsVisible || !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
         return
     try {
+        captureStartedAt := A_TickCount
+        reused := IsObject(SettingsEditData)
         if !IsObject(SettingsEditData) {
             SettingsEditData := SettingsCaptureEditData()
             SettingsEditGeneration += 1
             SettingsEditSessionId := "settings_" . SettingsEditGeneration . "_" . A_TickCount
             SettingsLastRequestId := 0
         }
-        SettingsPost("snapshot", SettingsBuildSnapshot(SettingsEditData))
+        SettingsLogTiming("capture", captureStartedAt, " reused=" . (reused ? 1 : 0))
+        buildStartedAt := A_TickCount
+        snapshot := SettingsBuildSnapshot(SettingsEditData)
+        SettingsLogTiming("snapshot-build", buildStartedAt)
+        postStartedAt := A_TickCount
+        sent := SettingsPost("snapshot", snapshot)
+        SettingsLogTiming("snapshot-post", postStartedAt, " sent=" . (sent ? 1 : 0))
         SettingsPendingToast := ""
     } catch as loadError {
         DiagnosticLogAlways("Settings snapshot failed errorType=" . Type(loadError)
@@ -97,8 +105,11 @@ SettingsCaptureEditData() {
 }
 
 SettingsReadCurrentData() {
+    readStartedAt := A_TickCount
     if !SettingsStoreLoad(&defaults, &overrides) || !SettingsStoreValidateDefaultSet(defaults, &missing)
         throw Error("无法读取完整的默认设置")
+    loadMs := A_TickCount - readStartedAt
+    phaseStartedAt := A_TickCount
     effective := ConfigCloneDocument(defaults)
     ConfigOverlay(effective, overrides)
     for section in ConfigSchemaSections()
@@ -112,11 +123,22 @@ SettingsReadCurrentData() {
         }
     if !TranslateValidateOptions(effective["TTranslate"], &translationError)
         throw Error("数据库中的翻译选项无效")
-    if !AppProfileStoreRead(&profiles) || !WindowBindingStoreRead(&bindings)
+    validateMs := A_TickCount - phaseStartedAt
+    phaseStartedAt := A_TickCount
+    if !AppProfileStoreRead(&profiles)
         throw Error("无法读取应用快捷键或窗口绑定")
+    profilesMs := A_TickCount - phaseStartedAt
+    phaseStartedAt := A_TickCount
+    if !WindowBindingStoreRead(&bindings)
+        throw Error("无法读取应用快捷键或窗口绑定")
+    bindingsMs := A_TickCount - phaseStartedAt
+    phaseStartedAt := A_TickCount
     if !QbarRegistryBuild(&registry, false)
         throw Error("无法读取工具设置")
     plugins := QbarRegistryPluginSnapshot(registry)
+    registryMs := A_TickCount - phaseStartedAt
+    SettingsLogTiming("store-read", readStartedAt, " loadMs=" . loadMs . " validateMs=" . validateMs
+        . " profilesMs=" . profilesMs . " bindingsMs=" . bindingsMs . " registryMs=" . registryMs)
 
     return Map("effective", effective, "profiles", AppProfilesSnapshot(profiles),
         "bindings", SettingsBindingSnapshot(bindings), "plugins", plugins,
@@ -125,6 +147,7 @@ SettingsReadCurrentData() {
 
 SettingsBuildSnapshot(data) {
     global SettingsPendingPage, SettingsPendingToast, SettingsEditSessionId, AppVersion
+    global SettingsOpenTraceId
     sections := Map(), tools := [], toolMetadata := Map()
     for section in ConfigSchemaSections()
         sections[section] := SettingsSectionSnapshot(section, data["effective"])
@@ -157,7 +180,7 @@ SettingsBuildSnapshot(data) {
             "source", "user", "deletable", JSON.true, "definitionValid", JSON.true,
             "settingsValid", JSON.true, "settingsSchema", definition["settingsSchema"])
     }
-    return Map("sessionId", SettingsEditSessionId, "revision", data["settingsRevision"],
+    return Map("sessionId", SettingsEditSessionId, "revision", data["settingsRevision"], "openTraceId", SettingsOpenTraceId,
         "appVersion", AppVersion, "uiLanguage", LLMUiLanguage(),
         "languageCatalog", TranslateLanguageCatalogSnapshot(), "page", SettingsPendingPage,
         "toast", SettingsPendingToast, "schema", schema,
