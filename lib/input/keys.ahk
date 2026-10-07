@@ -259,6 +259,14 @@ keyFunc_clipboardHistory(*) {
     ClipboardHistoryOpen()
 }
 
+keyFunc_notes(*) {
+    return QbarExecuteRegistered("builtin.notes.search")
+}
+
+keyFunc_aiChat(*) {
+    return QbarExecuteRegistered("builtin.ai.ask")
+}
+
 keyFunc_translate(*) {
     ; "multiline": a real multi-paragraph selection ends with a newline, which
     ; strict mode would discard.
@@ -349,16 +357,6 @@ keyFunc_pageMoveLineUp(count := 1) {
 
 keyFunc_pageMoveLineDown(count := 1) {
     SendRepeatedKey("Down", count, "^")
-}
-
-keyFunc_editSelectedText(*) {
-    selectedText := GetSelectedText()
-    inputResult := InputBox(
-        LLMText("Edit selected text:", "编辑选中文字："),
-        LLMText("Edit selected text", "编辑选中文字"),
-        "w600 h180", selectedText)
-    if inputResult.Result = "OK"
-        SetClipboardText(inputResult.Value)
 }
 
 keyFunc_tabHotString(*) {

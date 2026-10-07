@@ -31,7 +31,6 @@
 | 剪贴板每次容量统计扫描数百 MiB、500 条是硬上限 | length(BLOB) 不必读取整个 BLOB；500 是默认非收藏/非置顶记录上限，运行时可调整。512 MiB 是逻辑字段预算。 |
 | AI checkpoint 增加 WAL 写入，应引入片段日志 | 当前未设置 WAL；完整回答重复保存有成本，但未证明瓶颈。优先调整现有 checkpoint 阈值，不默认新增存储结构。 |
 | 设置全量渲染可能覆盖草稿 | 已有 dirty/draft 快照保护。保留动态列表重复渲染的观察，撤回草稿丢失暗示。 |
-| F8 旧动作名应保留兼容别名 | 与当前“不考虑兼容性、保持简洁”约束不符。建议统一语义命名并同步静态引用。 |
 
 优先级使用规则：
 
@@ -504,22 +503,6 @@ AHK 警告复核发现 `QbarShow()` / `QbarHide()` 对 `QbarCurrentQueryText` �
 
 **实施状态：原文比较已移到解析之前（R08）。** `ConfigReadIni()` 只读取 UTF-8 原文及存在/错误状态；`AppProfilesLoad()` 比较已接受内容，只有变化才建立 INI Map 并构建 profile 候选。同秒不同内容仍可发现，读取失败不更新缓存；`ConfigLoad()` 继续向 profile parser 传递同一次读取的 Map。此优化减少未变轮询的解析和分配，未单独实测收益。
 
-### 36 F8 的旧动作名与现有语义不符——成立，已整改，P3
-
-- 依据：[keys.ahk](../lib/input/keys.ahk) 的 keyFunc_getJSEvalString 只编辑选中文本并复制；默认 INI、demo 和设置标签仍使用旧名/“表达式”文案。
-- 复核意见：这是活动配置 API，不能误删编辑能力。原“保留旧名、新增兼容别名”建议与当前不考虑兼容性约束冲突。
-- 修改意见：统一准确动作名，例如 keyFunc_editSelectedText，界面显示“编辑并复制选中文字”；同步默认配置、demo、设置标签/分类和文档静态引用，不维护双入口。实际实施时明确告知自定义配置的动作名变更。
-
-**具体位置与建议改法**
-
-- 实现 [lib/input/keys.ahk:354](../lib/input/keys.ahk#L354)（354–359）；默认绑定 [capslock_p2-default.ini:144](../capslock_p2-default.ini#L144)，demo [capslock_p2-settingsDemo.ini:164](../capslock_p2-settingsDemo.ini#L164)；设置标签在 [pages/settings-page.js:463](../pages/settings-page.js#L463)，动作分类位于 [507](../pages/settings-page.js#L507) 和 [576](../pages/settings-page.js#L576)。
-- 按当前不考虑兼容性的约定，将函数统一命名为 keyFunc_editSelectedText；同步两个 INI 的 caps_f8 以及页面标签/分类。两个分类规则要同时覆盖新名，不能只改展示名使该动作被分到错误类别。
-- InputBox 第 356 行同时改为“编辑选中文字”/“Edit selected text”，移除旧表达式暗示及不准确的 capslock_p2 Tab 标题，沿用当前 UI 语言判断。
-- 保留 GetSelectedText() 预填、取消时不改剪贴板、确定后通过 SetClipboardText() 写入的行为；原生 AHK InputBox 不是 WebView 弹窗，不需要为本项另外创建面板。
-- 静态确认活动代码/默认/demo/设置分类不再残留旧动作名；该编辑能力仍对用户可配置。自定义 INI 名称变更在发布说明中告知，不增加双入口别名。
-
-**实施状态：已完成动作重命名和文案修正，静态核查通过。** `keyFunc_getJSEvalString` 已改为 `keyFunc_editSelectedText`，默认配置、demo 和设置页动作标签及分类同步更新，不保留旧名别名。InputBox 改为中英文“编辑选中文字”，标题不再提及 Tab；原文预填、取消不改剪贴板、确认后复制的行为保持。未运行程序或测试。
-
 ## 剪贴板与 AI 持久化
 
 ### 25 剪贴板容量统计及较宽 Critical——部分成立，P3 已度量并完成批量清理
@@ -800,7 +783,6 @@ R01–R09 均已按记录修复，并静态复读对应调用链。复审期间�
 | 33 设置局部渲染 | 已完成 | 局部刷新和同范围分组展开保留；普通保存以提交快照合并新基线，不再仅比较旧基线。 |
 | 34 capture/picker 拆分 | 已完成修复 | capture/picker 所有权、快照校验及录制定时器取消/代次守卫已落实，见 R09。 |
 | 35 逐行监听 | 已处理，保留实现 | 结果有上限且监听清楚，未证明瓶颈；保持结果版本和不可交互守卫合理。 |
-| 36 F8 语义命名 | 已完成 | 实现、默认/demo 配置、分类及文案同步，无旧名兼容层。 |
 
 ### R01 [P2] 禁用工具或移除默认别名后，旧别名仍可直接执行
 

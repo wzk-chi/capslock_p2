@@ -257,8 +257,7 @@ QbarScheduleNotes(searchText := "", recordHistory := true) {
 }
 
 QbarScheduleNotesHistory(entry) {
-    global QbarTargetHwnd
-    targetHwnd := QbarTargetHwnd
+    targetHwnd := ClipboardHistoryCurrentExternalTarget()
     QbarHide()
     SetTimer(QbarNotesHistoryAction.Bind(entry, targetHwnd), -1)
     return "deferred"

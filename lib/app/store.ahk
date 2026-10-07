@@ -320,6 +320,8 @@ SettingsStoreUpgradeDefaultSet(db) {
         throw Error("数据库默认设置由较新版本创建")
     if current < SettingsStoreSourceVersion {
         SettingsStoreSyncDefaults(db)
+        if current < 3
+            SettingsStoreRetireSelectedTextAction(db)
         QbarStoreSyncCatalog(db)
         if !db.Exec("INSERT INTO app_meta(key,value) VALUES ('settings_defaults_version',"
             . AppStoreSql(String(SettingsStoreSourceVersion))

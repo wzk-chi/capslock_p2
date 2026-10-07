@@ -673,7 +673,7 @@ const ACTION_LABELS = {
   keyFunc_copy_2: '复制到剪贴板 2', keyFunc_paste_2: '粘贴剪贴板 2', keyFunc_undoRedo: '撤销 / 重做',
   keyFunc_tabPrve: '切换到上一个标签页', keyFunc_tabNext: '切换到下一个标签页', keyFunc_jumpPageTop: '跳到页面顶部',
   keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_clipboardHistory: '打开剪贴板历史', keyFunc_translate: '打开翻译',
-  keyFunc_editSelectedText: '编辑并复制选中文字', keyFunc_tabHotString: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
+  keyFunc_notes: '打开笔记', keyFunc_aiChat: '打开 AI 问答', keyFunc_tabHotString: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
   keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
   keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
   keyFunc_volumeDown: '减小音量', keyFunc_volumeMute: '静音', keyFunc_winbind_activate: '激活绑定窗口',
@@ -776,9 +776,9 @@ function shortcutActionCategory(action) {
   if (/(^|_)select/.test(name)) return 'select';
   if (/(^|_)(move|home|end|pageup|pagedown|jump)/.test(name)) return 'move';
   if (/(^|_)(copy|cut|paste|switchclipboard|clipboardhistory)/.test(name)) return 'clipboard';
-  if (/(^|_)(delete|backspace|forwarddelete|enter|double|sendchar|editselectedtext)/.test(name)) return 'edit';
+  if (/(^|_)(delete|backspace|forwarddelete|enter|double|sendchar)/.test(name)) return 'edit';
   if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
-  if (/(^|_)(qbar|translate|dictionary|opencpasdocs|reload|tabhotstring)/.test(name)) return 'tools';
+  if (/(^|_)(qbar|notes|aichat|translate|dictionary|opencpasdocs|reload|tabhotstring)/.test(name)) return 'tools';
   if (/(^|_)(mousespeed|click|mouse|wheel)/.test(name)) return 'mouse';
   return 'other';
 }
@@ -854,9 +854,9 @@ function shortcutCategory(key, action) {
   if (/(^|_)select/.test(name)) return 'select';
   if (/(^|_)(move|home|end|pageup|pagedown)/.test(name)) return 'move';
   if (/(^|_)(copy|cut|paste|switchclipboard|clipboardhistory)/.test(name)) return 'clipboard';
-  if (/(^|_)(delete|backspace|forwarddelete|enter|editselectedtext)/.test(name)) return 'edit';
+  if (/(^|_)(delete|backspace|forwarddelete|enter)/.test(name)) return 'edit';
   if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
-  if (/(^|_)(qbar|translate|dictionary|opencpasdocs|reload|tabscript)/.test(name)) return 'tools';
+  if (/(^|_)(qbar|notes|aichat|translate|dictionary|opencpasdocs|reload|tabscript)/.test(name)) return 'tools';
   if (/(^|_)mousespeed/.test(name)) return 'mouse';
   return 'other';
 }

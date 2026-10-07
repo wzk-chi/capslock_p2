@@ -32,11 +32,10 @@
 | 打开程序、搜索网页、浏览路径 | CapsLock+Q |
 | 搜索电脑里的文件 | qbar 输入 `e` / `everything` / `find` / `f` |
 | 查单词、翻译选中文字 | CapsLock+T 或 CapsLock+F3 |
-| 问 AI | qbar 输入 `ai` / `q`，后面可直接跟问题 |
-| 记笔记、搜索笔记 | qbar 输入 `n` / `note` / `w` / `write` |
+| 问 AI | CapsLock+F7，或 qbar 输入 `ai` / `q`，后面可直接跟问题 |
+| 记笔记、搜索笔记 | CapsLock+F2，或 qbar 输入 `n` / `note` / `w` / `write` |
 | 找回复制过的内容 | CapsLock+Z，或 qbar 输入 `cv` |
 | 展开常用文字 | CapsLock+Tab |
-| 编辑选中文字 | CapsLock+F8 |
 | 管理设置 | CapsLock+F12，或 qbar 输入 `cl set` / `cl settings` |
 
 ## 常用快捷键
@@ -52,11 +51,12 @@ LAlt 是键盘左边的 Alt。默认按键可在「设置 → 快捷键」中查
 | CapsLock+, | 选当前词 | CapsLock+LAlt+, | 选当前行 |
 | CapsLock+Y / N | 向上 / 下选择 10 行 | CapsLock+W / R | 退格 / 删除 |
 | CapsLock+Backspace | 删除整行文字 | CapsLock+[ | 删到行首 |
-| CapsLock+/ | 删到行尾 | CapsLock+F8 | 编辑选中文字 |
+| CapsLock+/ | 删到行尾 | CapsLock+F2 | 打开笔记 |
 | CapsLock+- / = | 上 / 下翻页 | CapsLock+空格 | 回车 |
 | CapsLock+Enter | 移到行尾后换行 | CapsLock+F5 | 重启程序并重读设置 |
 | CapsLock+C / X / V | 第一组独立剪贴板 | CapsLock+LAlt+C / X / V | 第二组独立剪贴板 |
 | CapsLock+F4 | 短按切换半透明；按住并滚轮调节 | CapsLock+F6 | 切换窗口置顶 |
+| CapsLock+F7 | 打开 AI 问答 | CapsLock+F12 | 打开设置 |
 | CapsLock+1～0 | 激活对应的绑定窗口 | CapsLock+LAlt+1～0 | 绑定窗口 |
 | CapsLock+LAlt+滚轮 | 临时调整鼠标速度，松开恢复 | CapsLock+F1 | 打开使用介绍 |
 
@@ -91,7 +91,7 @@ CapsLock 组合键和单独短按 CapsLock 的动作也可在这里调整。
 
 ### 笔记
 
-输入 `n` 打开，`n 关键词` 搜索笔记。可按标签筛选，右下角按钮新增，点击标题编辑。
+按 CapsLock+F2 打开，或在 qbar 输入 `n`；`n 关键词` 搜索笔记。可按标签筛选，右下角按钮新增，点击标题编辑。
 编辑器支持标题、列表、表格、代码和图片；图片可粘贴或拖入。Ctrl+S 或 Ctrl+Enter 保存。
 
 单击文字预览复制，双击粘贴到之前的窗口；代码块和表格会复制完整内容，图片预览可复制图片。
@@ -106,7 +106,7 @@ CapsLock 组合键和单独短按 CapsLock 的动作也可在这里调整。
 在线翻译需在设置中填写服务信息，支持 LLM、有道和火山引擎。
 默认自动选择已配置的服务，优先 LLM；也可手动指定。翻译可选固定目标语言，或设定两种语言互译，在面板中交换方向。
 
-qbar 输入 `ai` 或 `q` 打开聊天，`ai 问题` 可直接提问。普通输入不会自动交给 AI。
+按 CapsLock+F7 打开聊天，或在 qbar 输入 `ai` 或 `q`；`ai 问题` 可直接提问。普通输入不会自动交给 AI。
 聊天支持追问，可从侧栏继续历史会话，也可重命名、置顶或删除。
 关闭后重新打开进入新对话，已有会话仍保留；切换到其他窗口时聊天不会自动收起。
 

@@ -1,5 +1,15 @@
 ; Configuration defaults, user overrides and secrets in the shared AppStore.
-global SettingsStoreSourceVersion := 2
+global SettingsStoreSourceVersion := 3
+
+SettingsStoreRetireSelectedTextAction(db) {
+    ; Retire saved bindings in the same transaction as the new default layout.
+    sql := "UPDATE cfg_key_overrides SET action_key='keyFunc_doNothing',args_json='[]' "
+        . "WHERE action_key='keyFunc_editSelectedText';"
+        . "UPDATE cfg_custom_hotkeys SET action_value='@block' "
+        . "WHERE action_value='@builtin:shortcut/keyFunc_editSelectedText';"
+    if !db.Exec(sql)
+        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法更新已移除的快捷键动作")
+}
 
 SettingsStoreValidateDefaultSet(defaults, &missingField := "") {
     missingField := ""
