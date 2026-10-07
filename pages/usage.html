@@ -44,7 +44,7 @@
   .button.primary:hover { background: var(--ui-button-hover); }
   .note, .settings { background: var(--ui-accent-quiet); border: 1px solid var(--ui-line); border-radius: 16px; padding: 24px; }
   .note p:last-child, .settings p:last-child, .card p:last-child { margin-bottom: 0; }
-  .practice { margin-top: 16px; }
+  .practice { margin-top: 16px; scroll-margin-top: 130px; }
   .practice label { display: block; margin-bottom: 8px; font-weight: 600; }
   .practice-copy { color: var(--ui-muted); margin-bottom: 12px; }
   .practice textarea { display: block; width: 100%; min-height: 104px; padding: 12px 14px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-bg); color: var(--ui-text); font: inherit; line-height: 1.7; resize: vertical; }
@@ -122,21 +122,9 @@
     <h2><span lang="zh-CN">第一次用，先试这三步</span><span lang="en">Try these three steps first</span></h2>
     <ol class="steps">
       <li><h3><span lang="zh-CN">打开程序</span><span lang="en">Launch the app</span></h3><p><span lang="zh-CN">安装后打开 capslock_p2，看到任务栏右下角的程序图标，就可以开始用了。首次安装启动时，这份使用介绍会自动打开一次；之后按 <kbd>CapsLock</kbd> + <kbd>F1</kbd> 可再次打开。</span><span lang="en">Open capslock_p2 after installing it. Its icon in the Windows system tray means it is running. On the first launch after installation, this guide opens once automatically; press <kbd>CapsLock</kbd> + <kbd>F1</kbd> to open it again later.</span></p></li>
-      <li><h3><span lang="zh-CN">试着移动光标</span><span lang="en">Move the cursor</span></h3><p><span lang="zh-CN">打开记事本，输入一行字。按住 CapsLock，再按 <kbd>S</kbd> 或 <kbd>F</kbd>，光标就会向左或向右移动。</span><span lang="en">Open Notepad and type a line. Hold CapsLock and press <kbd>S</kbd> or <kbd>F</kbd> to move left or right.</span></p></li>
+      <li><h3><span lang="zh-CN">试着移动光标</span><span lang="en">Move the cursor</span></h3><p><span lang="zh-CN">点击下方的<a href="#practice">练习框</a>。按住 CapsLock，再按 <kbd>S</kbd> 或 <kbd>F</kbd>，光标就会向左或向右移动。</span><span lang="en">Click the <a href="#practice">practice box below</a>. Hold CapsLock and press <kbd>S</kbd> or <kbd>F</kbd> to move left or right.</span></p></li>
       <li><h3><span lang="zh-CN">看看设置</span><span lang="en">Explore Settings</span></h3><p><span lang="zh-CN">按 <kbd>CapsLock</kbd> + <kbd>F12</kbd> 打开设置，按自己的习惯调整。基础快捷键可以直接用；翻译和 AI 需要先填写服务信息。</span><span lang="en">Press <kbd>CapsLock</kbd> + <kbd>F12</kbd> to open Settings and make it your own. Basic shortcuts work straight away; online translation and AI need service details first.</span></p></li>
     </ol>
-    <div class="note practice">
-      <div lang="zh-CN">
-        <label for="practice-input-zh">在这里试试移动和选择光标</label>
-        <p class="practice-copy">点击文本框后，按住 <kbd>CapsLock</kbd> 再按 <kbd>S</kbd> / <kbd>F</kbd> 移动光标，按 <kbd>J</kbd> / <kbd>L</kbd> 选择文字。你也可以直接改写这段示例。</p>
-        <textarea id="practice-input-zh" rows="3" spellcheck="false">这是一段练习文字。试着把光标移到句子中间，再向左或向右选中几个字。</textarea>
-      </div>
-      <div lang="en">
-        <label for="practice-input-en">Try moving and selecting text here</label>
-        <p class="practice-copy">Click the text box, then hold <kbd>CapsLock</kbd> and press <kbd>S</kbd> / <kbd>F</kbd> to move the cursor, or <kbd>J</kbd> / <kbd>L</kbd> to select text. You can edit the sample too.</p>
-        <textarea id="practice-input-en" rows="3" spellcheck="false">This is a practice sentence. Move the cursor into it, then try selecting a few words to the left or right.</textarea>
-      </div>
-    </div>
   </section>
 
   <section id="features">
@@ -176,12 +164,30 @@
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>E</kbd> / <kbd>CapsLock</kbd> + <kbd>D</kbd></div><div><span lang="zh-CN">光标向上 / 向下</span><span lang="en">Move up / down</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>A</kbd> / <kbd>CapsLock</kbd> + <kbd>G</kbd></div><div><span lang="zh-CN">向左 / 向右移动一个词</span><span lang="en">Move one word left / right</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>P</kbd> / <kbd>CapsLock</kbd> + <kbd>;</kbd></div><div><span lang="zh-CN">移到行首 / 行尾</span><span lang="en">Go to the start / end of the line</span></div></div>
+      <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>LAlt</kbd> + <kbd>P</kbd> / <kbd>CapsLock</kbd> + <kbd>LAlt</kbd> + <kbd>;</kbd></div><div><span lang="zh-CN">移到全文开头 / 结尾</span><span lang="en">Go to the start / end of the document</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>J</kbd> / <kbd>CapsLock</kbd> + <kbd>L</kbd></div><div><span lang="zh-CN">向左 / 向右选中文字</span><span lang="en">Select to the left / right</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>I</kbd> / <kbd>CapsLock</kbd> + <kbd>K</kbd></div><div><span lang="zh-CN">向上 / 向下选中文字</span><span lang="en">Select upward / downward</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>U</kbd> / <kbd>CapsLock</kbd> + <kbd>O</kbd></div><div><span lang="zh-CN">选到行首 / 行尾</span><span lang="en">Select to the start / end of the line</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>,</kbd> / <kbd>CapsLock</kbd> + <kbd>LAlt</kbd> + <kbd>,</kbd></div><div><span lang="zh-CN">选当前词 / 当前行</span><span lang="en">Select the current word / line</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>W</kbd> / <kbd>CapsLock</kbd> + <kbd>R</kbd></div><div><span lang="zh-CN">退格 / 向后删除一个字符</span><span lang="en">Backspace / Delete</span></div></div>
       <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>Space</kbd> / <kbd>CapsLock</kbd> + <kbd>Enter</kbd></div><div><span lang="zh-CN">回车 / 移到行尾后换行</span><span lang="en">Enter / move to the end of the line and press Enter</span></div></div>
+      <div class="key-row"><div><kbd>CapsLock</kbd> + <kbd>Esc</kbd> / <kbd>CapsLock</kbd> + <kbd>LAlt</kbd> + <kbd>Esc</kbd></div><div><span lang="zh-CN">退出 / 取消当前操作</span><span lang="en">Dismiss or cancel the current action</span></div></div>
+    </div>
+    <div class="note practice" id="practice">
+      <div lang="zh-CN">
+        <label for="practice-input-zh">在这里练习移动光标和选择文字</label>
+        <p class="practice-copy">点击文本框后，按住 <kbd>CapsLock</kbd>，用 <kbd>S</kbd> / <kbd>F</kbd> 左右移动、<kbd>E</kbd> / <kbd>D</kbd> 上下移动；用 <kbd>J</kbd> / <kbd>L</kbd>、<kbd>I</kbd> / <kbd>K</kbd> 选择文字。你也可以直接改写下面的三行文字。</p>
+        <textarea id="practice-input-zh" rows="3" spellcheck="false">第一行：把光标放在这里，试试左右移动。
+第二行：试试上下移动，再选中几个字。
+第三行：也可以练习行首、行尾和删除。</textarea>
+      </div>
+      <div lang="en">
+        <label for="practice-input-en">Practice moving the cursor and selecting text</label>
+        <p class="practice-copy">Click the text box and hold <kbd>CapsLock</kbd>. Use <kbd>S</kbd> / <kbd>F</kbd> to move left / right and <kbd>E</kbd> / <kbd>D</kbd> to move up / down; use <kbd>J</kbd> / <kbd>L</kbd> or <kbd>I</kbd> / <kbd>K</kbd> to select text. You can edit the three lines below too.</p>
+        <textarea id="practice-input-en" rows="3" spellcheck="false">Line one: Try moving left and right.
+Line two: Move up or down and select words.
+Line three: Try Home, End and Delete.</textarea>
+      </div>
     </div>
     <div class="key-group">
       <h3><span lang="zh-CN">工具和窗口</span><span lang="en">Tools and windows</span></h3>

@@ -46,6 +46,7 @@ LAlt 是键盘左边的 Alt。默认按键可在「设置 → 快捷键」中查
 |---|---|---|---|
 | CapsLock+S / F | 左 / 右 | CapsLock+E / D | 上 / 下 |
 | CapsLock+A / G | 向左 / 右移动一个词 | CapsLock+P / ; | 行首 / 行尾 |
+| CapsLock+LAlt+P | 移到全文开头 | CapsLock+LAlt+; | 移到全文结尾 |
 | CapsLock+J / L | 向左 / 右选择 | CapsLock+I / K | 向上 / 下选择 |
 | CapsLock+U / O | 选到行首 / 行尾 | CapsLock+H / . | 向左 / 右选一个词 |
 | CapsLock+, | 选当前词 | CapsLock+LAlt+, | 选当前行 |
@@ -54,6 +55,7 @@ LAlt 是键盘左边的 Alt。默认按键可在「设置 → 快捷键」中查
 | CapsLock+/ | 删到行尾 | CapsLock+F2 | 打开笔记 |
 | CapsLock+- / = | 上 / 下翻页 | CapsLock+空格 | 回车 |
 | CapsLock+Enter | 移到行尾后换行 | CapsLock+F5 | 重启程序并重读设置 |
+| CapsLock+Esc | 退出 / 取消 | CapsLock+LAlt+Esc | 退出 / 取消 |
 | CapsLock+C / X / V | 第一组独立剪贴板 | CapsLock+LAlt+C / X / V | 第二组独立剪贴板 |
 | CapsLock+F4 | 短按切换半透明；按住并滚轮调节 | CapsLock+F6 | 切换窗口置顶 |
 | CapsLock+F7 | 打开 AI 问答 | CapsLock+F12 | 打开设置 |

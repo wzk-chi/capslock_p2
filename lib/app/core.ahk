@@ -1088,20 +1088,18 @@ ShowLoading() {
     LoadingGui.BackColor := background
     LoadingGui.AddPicture("x24 y24 w44 h44", A_ScriptDir . "\resources\capslock_p2-icon.png")
     LoadingGui.SetFont("s16 w600 c" . foreground, "Segoe UI")
-    LoadingGui.AddText("x82 y22 w254 h30", AppName)
+    LoadingGui.AddText("x82 y31 w254 h30", AppName)
     LoadingGui.SetFont("s9 w400 c" . muted, "Segoe UI")
-    LoadingGui.AddText("x82 y55 w254 h20", IsChineseLanguage()
-        ? "快捷键 · 搜索 · 笔记" : "Shortcuts · Search · Notes")
-    LoadingText := LoadingGui.AddText("x24 y94 w312 h20",
+    LoadingText := LoadingGui.AddText("x24 y84 w312 h20",
         IsChineseLanguage() ? "正在启动" : "Starting")
-    LoadingProgress := LoadingGui.AddProgress("x24 y124 w312 h4 -Theme -Border +0x1"
+    LoadingProgress := LoadingGui.AddProgress("x24 y114 w312 h4 -Theme -Border +0x1"
         . " Range0-100 c" . accent . " Background" . line, 0)
     LoadingShownAt := A_TickCount
     LoadingReadyAt := 0
     LoadingFadeStartedAt := 0
     LoadingOpacity := 0
     try WinSetTransparent(0, "ahk_id " . LoadingGui.Hwnd)
-    LoadingGui.Show("w360 h152 Center NA")
+    LoadingGui.Show("w360 h142 Center NA")
     LoadingApplyRegion()
     SetTimer(AnimateLoading, 30)
 }
