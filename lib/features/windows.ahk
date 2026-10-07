@@ -1,6 +1,5 @@
 ; Window binding, transparency and mouse-speed features.
 
-global WindowBindingFile := A_ScriptDir . "\capslock_p2-winsInfosRecorder.ini"
 global WinBindings := Map()
 global PendingBindingNumber := -1
 global PendingBindingCount := 0
@@ -21,52 +20,44 @@ InitializeWindowBindings() {
 }
 
 LoadWindowBindings() {
-    global WinBindings, WindowBindingFile
-    loaded := true
-    try sections := ConfigParseIni(WindowBindingFile, &loaded)
-    catch as loadError {
-        DebugLog("Window binding load failed errorType=" . Type(loadError))
+    global WinBindings
+    if !WindowBindingStoreRead(&candidateBindings, true)
         return false
-    }
-    if !loaded {
-        DebugLog("Window binding load failed: unable to read file")
-        return false
-    }
-
-    candidateBindings := Map()
-    for sectionName, values in sections {
-        if !RegExMatch(sectionName, "^\d+$")
-            continue
-        bindingNumber := WindowBindingNumber(sectionName, 0)
-        if !bindingNumber
-            continue
-
-        bindType := values.Has("bindType") ? WindowBindingType(values["bindType"], 0) : 0
-        if values.Has("bindType") && !bindType
-            DebugLog("Window binding data rejected binding=" . bindingNumber . " field=bindType")
-        applicationPath := values.Has("applicationPath") ? Trim(String(values["applicationPath"])) : ""
-        if bindType = 2 && applicationPath != ""
-            bindType := 3
-        items := []
-        hasCount := values.Has("count")
-        count := 0
-        countValid := !hasCount || WindowBindingParseUnsigned(values["count"], &count)
-        if hasCount && !countValid
-            DebugLog("Window binding data rejected binding=" . bindingNumber . " field=count")
-        if countValid {
-            itemKeys := WindowBindingItemKeys(values, hasCount, count, bindingNumber)
-            for itemKey in itemKeys {
-                item := ReadWindowBindingItem(values, itemKey.suffix, bindingNumber, itemKey.idKey)
-                if item
-                    items.Push(item)
-            }
-        }
-        if bindType = 3 && applicationPath = "" && items.Length
-            applicationPath := items[1].path
-        if bindType && (items.Length || applicationPath != "")
-            candidateBindings[bindingNumber] := {bindType: bindType, applicationPath: applicationPath, items: items}
-    }
     WinBindings := candidateBindings
+    return true
+}
+
+WindowBindingStoreRead(&candidateBindings, resolveWindows := false) {
+    global AppStoreDb
+    if !AppStoreInit()
+        return false
+    candidateBindings := Map()
+    if !AppStoreDb.GetTable("SELECT slot,mode,application_path FROM cfg_window_bindings ORDER BY slot;", &rows) {
+        DebugLog("Window binding database read failed detail=" . AppStoreDb.ErrorMsg)
+        return false
+    }
+    for row in rows.Rows {
+        bindingNumber := WindowBindingNumber(row[1], 0)
+        bindType := WindowBindingType(row[2], 0)
+        if !bindingNumber || !bindType
+            continue
+        candidateBindings[bindingNumber] := {bindType: bindType,
+            applicationPath: String(row[3]), items: []}
+    }
+    if !AppStoreDb.GetTable("SELECT slot,ordinal,exe_path,exe_name,window_class "
+        . "FROM cfg_window_targets ORDER BY slot,ordinal;", &rows) {
+        DebugLog("Window target database read failed detail=" . AppStoreDb.ErrorMsg)
+        return false
+    }
+    for row in rows.Rows {
+        slot := WindowBindingNumber(row[1], 0)
+        if !candidateBindings.Has(slot)
+            continue
+        item := {id: 0, path: String(row[3]), exe: String(row[4]), windowClass: String(row[5])}
+        if resolveWindows
+            item.id := FindReplacementWindow(item)
+        candidateBindings[slot].items.Push(item)
+    }
     return true
 }
 
@@ -276,8 +267,9 @@ WindowIsAlive(hwnd) {
     return hwnd && WinExist("ahk_id " . hwnd)
 }
 
-SaveWindowBinding(bindingNumber, binding) {
-    global WindowBindingFile
+SaveWindowBinding(bindingNumber, binding, configurationChange := true) {
+    if !configurationChange
+        return true
     bindingNumber := WindowBindingNumber(bindingNumber)
     if !binding || !bindingNumber
         return false
@@ -290,34 +282,20 @@ SaveWindowBinding(bindingNumber, binding) {
         if InStr(applicationPath, Chr(10)) || InStr(applicationPath, Chr(13))
             throw ValueError("Invalid application path")
 
-        lines := ["[" . bindingNumber . "]",
-            "bindType=" . bindType,
-            "applicationPath=" . applicationPath,
-            "count=" . binding.items.Length]
         for index, item in binding.items {
-            if !IsObject(item) || !ObjHasOwnProp(item, "id")
+            if !IsObject(item)
                 throw ValueError("Invalid window binding item")
-            if !WindowBindingParsePointer(item.id, &id)
-                throw ValueError("Invalid window handle")
             className := ObjHasOwnProp(item, "windowClass") ? String(item.windowClass) : ""
             exeName := ObjHasOwnProp(item, "exe") ? String(item.exe) : ""
             path := ObjHasOwnProp(item, "path") ? String(item.path) : exeName
             metadata := className . exeName . path
             if InStr(metadata, Chr(10)) || InStr(metadata, Chr(13))
                 throw ValueError("Invalid window metadata")
-            lines.Push("id_" . index . "=" . id)
-            lines.Push("class_" . index . "=" . className)
-            lines.Push("exe_" . index . "=" . exeName)
-            lines.Push("path_" . index . "=" . path)
+            if path = "" && exeName = "" && className = ""
+                throw ValueError("Window target has no stable description")
         }
-        content := FileExist(WindowBindingFile) ? FileRead(WindowBindingFile, "UTF-8") : ""
-        content := ConfigDeleteIniSection(content, String(bindingNumber))
-        content := RTrim(StrReplace(content, Chr(13), ""), Chr(10))
-        if content != ""
-            content .= Chr(10) . Chr(10)
-        content .= ConfigJoinIniLines(lines)
-        ConfigAtomicWrite(WindowBindingFile, content)
-        return true
+        return AppStoreTransaction("window-binding", (*) => WindowBindingStoreCommit(
+            bindingNumber, bindType, applicationPath, binding.items, configurationChange))
     } catch as bindingError {
         DebugLog("Window binding save failed number=" . bindingNumber
             . " errorType=" . Type(bindingError))
@@ -326,6 +304,56 @@ SaveWindowBinding(bindingNumber, binding) {
             "无法保存此窗口绑定。请确认安装目录可写后重试。"), 2500)
         return false
     }
+}
+
+WindowBindingStoreCommit(slot, mode, applicationPath, items, configurationChange) {
+    global AppStoreDb
+    if !WindowBindingStoreWrite(slot, mode, applicationPath, items)
+        return false
+    return !configurationChange || AppStoreIncrementSettingsRevision(AppStoreDb)
+}
+
+WindowBindingStoreWrite(slot, mode, applicationPath, items) {
+    global AppStoreDb
+    if !AppStoreDb.Exec("DELETE FROM cfg_window_bindings WHERE slot=" . slot . ";")
+        return false
+    if !AppStoreDb.Exec("INSERT INTO cfg_window_bindings(slot,mode,application_path) VALUES ("
+        . slot . "," . mode . "," . AppStoreSql(applicationPath) . ");")
+        return false
+    for index, item in items {
+        exePath := ObjHasOwnProp(item, "path") ? String(item.path) : ""
+        exeName := ObjHasOwnProp(item, "exe") ? String(item.exe) : ""
+        className := ObjHasOwnProp(item, "windowClass") ? String(item.windowClass) : ""
+        if !AppStoreDb.Exec("INSERT INTO cfg_window_targets(slot,ordinal,exe_path,exe_name,window_class) VALUES ("
+            . slot . "," . index . "," . AppStoreSql(exePath) . "," . AppStoreSql(exeName)
+            . "," . AppStoreSql(className) . ");")
+            return false
+    }
+    return true
+}
+
+WindowBindingStoreApplyDraft(rows) {
+    global AppStoreDb
+    if Type(rows) != "Array"
+        return false
+    for row in rows {
+        if Type(row) != "Map" || !row.Has("number") || !row.Has("binding")
+            return false
+        slot := WindowBindingNumber(row["number"], 0)
+        if !slot
+            return false
+        binding := row["binding"]
+        if !IsObject(binding) {
+            if !AppStoreDb.Exec("DELETE FROM cfg_window_bindings WHERE slot=" . slot . ";")
+                return false
+            continue
+        }
+        mode := WindowBindingType(binding.bindType, 0)
+        if !slot || !mode || !WindowBindingStoreWrite(slot, mode,
+            WindowBindingApplicationPath(binding), binding.items)
+            return false
+    }
+    return true
 }
 
 BindingTap(bindingNumber) {
@@ -402,6 +430,8 @@ CloneWindowBindingItems(items) {
         clone := {id: item.id, windowClass: item.windowClass, exe: item.exe, path: item.path}
         if ObjHasOwnProp(item, "title")
             clone.title := item.title
+        if ObjHasOwnProp(item, "selectionPid")
+            clone.selectionPid := item.selectionPid
         result.Push(clone)
     }
     return result
@@ -437,6 +467,14 @@ AddWindowToGroup(bindingNumber, item) {
     WinBindings[bindingNumber] := binding
     ShowMsg("Window binding " . bindingNumber . " saved (group)", 1200)
     return true
+}
+
+CloneWindowBinding(binding) {
+    if !IsObject(binding)
+        return 0
+    return {bindType: binding.bindType,
+        applicationPath: WindowBindingApplicationPath(binding),
+        items: CloneWindowBindingItems(binding.items)}
 }
 
 BindWindowToApplication(bindingNumber, applicationPath) {
@@ -533,7 +571,7 @@ activateWinAction(bindingNumber) {
         }
         bindingChanged := item.id != replacement
         item.id := replacement
-        if bindingChanged && !SaveWindowBinding(bindingNumber, binding)
+        if bindingChanged && !SaveWindowBinding(bindingNumber, binding, false)
             DebugLog("Window binding refresh persistence failed number=" . bindingNumber)
         if WinActive("ahk_id " . replacement) {
             WinMinimize("ahk_id " . replacement)
@@ -547,7 +585,7 @@ activateWinAction(bindingNumber) {
     }
 
     bindingChanged := binding.bindType = 3 ? RefreshWindowGroup(binding) : PruneBindingItems(binding)
-    if bindingChanged && !SaveWindowBinding(bindingNumber, binding)
+    if bindingChanged && !SaveWindowBinding(bindingNumber, binding, false)
         DebugLog("Window binding refresh persistence failed number=" . bindingNumber)
     if !binding.items.Length {
         applicationPath := WindowBindingApplicationPath(binding)

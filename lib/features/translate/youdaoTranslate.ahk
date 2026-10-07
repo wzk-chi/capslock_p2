@@ -268,10 +268,12 @@ TranslateProviderYoudaoTranslate(text, onDelta, onFinished, overrides := 0) {
 }
 
 TranslateProviderYoudaoTest(msg, onFinished) {
-    overrides := Map(
-        "appPaidID", Trim(LLMMsgField(msg, "appId")),
-        "appPaidKey", LLMMsgField(msg, "appKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
+    overrides := Map("targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
+    ; Missing credentials keep the saved value; an explicit empty value clears it.
+    if msg.Has("appId")
+        overrides["appPaidID"] := Trim(LLMMsgField(msg, "appId"))
+    if msg.Has("appKey")
+        overrides["appPaidKey"] := LLMMsgField(msg, "appKey")
     return YoudaoTranslateAsync("Hello", TranslateProviderYoudaoTestFinished.Bind(onFinished), overrides)
 }
 

@@ -37,6 +37,8 @@ SettingsStartShortcutCapture(message, generation, captureId, *) {
     if generation != SettingsShortcutCaptureGeneration || !SettingsShortcutCapturePending
         return
     msg := LLMMessageParse(message)
+    if !SettingsIsEditMessage(msg)
+        return
     target := LLMMsgField(msg, "key")
     if target = "" {
         if generation = SettingsShortcutCaptureGeneration
@@ -229,7 +231,7 @@ SettingsShortcutKeyInfo(vk, sc) {
 }
 
 SettingsSendShortcutCapture(generation, captureId, target, value, label) {
-    global SettingsHost
+    global SettingsHost, SettingsEditSessionId
     global SettingsShortcutCaptureGeneration, SettingsShortcutCaptureId, SettingsVisible
     if target = ""
         return
@@ -239,16 +241,16 @@ SettingsSendShortcutCapture(generation, captureId, target, value, label) {
             || captureId != SettingsShortcutCaptureId || !SettingsVisible
             || !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
             return
-        payload := Map("key", target, "captureId", captureId,
+        payload := Map("sessionId", SettingsEditSessionId, "key", target, "captureId", captureId,
             "value", value, "label", label)
-        PanelHostExecute(SettingsHost, "window.receiveShortcutCapture(" . JSON.stringify(payload, 0) . ");")
+        SettingsPost("shortcutCapture", payload)
     } finally {
         Critical(criticalState)
     }
 }
 
 SettingsSendShortcutCaptureFailure(captureId, generation) {
-    global SettingsHost, SettingsShortcutCaptureGeneration, SettingsShortcutCaptureId
+    global SettingsHost, SettingsEditSessionId, SettingsShortcutCaptureGeneration, SettingsShortcutCaptureId
     global SettingsVisible
     criticalState := Critical("On")
     try {
@@ -256,9 +258,8 @@ SettingsSendShortcutCaptureFailure(captureId, generation) {
             || captureId != SettingsShortcutCaptureId || !SettingsVisible
             || !IsObject(SettingsHost) || !PanelHostPageReady(SettingsHost)
             return
-        payload := Map("captureId", captureId)
-        PanelHostExecute(SettingsHost,
-            "window.shortcutCaptureFailed(" . JSON.stringify(payload, 0) . ");")
+        payload := Map("sessionId", SettingsEditSessionId, "captureId", captureId)
+        SettingsPost("shortcutCaptureFailed", payload)
     } finally {
         Critical(criticalState)
     }

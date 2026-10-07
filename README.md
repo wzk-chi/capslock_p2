@@ -41,7 +41,7 @@
 
 ## 常用快捷键
 
-LAlt 是键盘左边的 Alt。更多默认按键见 [capslock_p2-default.ini](capslock_p2-default.ini)。
+LAlt 是键盘左边的 Alt。默认按键可在「设置 → 快捷键」中查看和修改。
 
 | 按键 | 功能 | 按键 | 功能 |
 |---|---|---|---|
@@ -146,25 +146,22 @@ CapsLock+LAlt+数字单击、双击、三击，分别绑定窗口、窗口组、
 
 ## 设置与数据保存
 
-设置保存在安装文件夹中的 `capslock_p2.ini`，同目录升级或重装会保留。
-一般设置保存后立即生效；手动修改配置文件后也会自动读取，以管理员身份运行的选项需重启。
+默认设置、个人修改、应用快捷键、工具配置与使用数据统一保存在安装文件夹的 `data\capslock_p2.db`。
+设置页中的修改点击右上角“保存”后生效；以管理员身份运行的选项需重启。
 
 聊天、笔记和剪贴板历史保存在安装文件夹的 `data` 中，升级和卸载会保留。
 换目录或换电脑时，先退出程序，复制以下内容：
 
 | 内容 | 要复制的文件或文件夹 |
 |---|---|
-| 个人设置和应用快捷键 | `capslock_p2.ini` |
-| 窗口绑定 | `capslock_p2-winsInfosRecorder.ini` |
-| qbar 设置与使用记录 | `data\qbar` |
-| 笔记和图片 | `data\qbar-notes` |
-| AI 会话 | `data\ai-chat` |
-| 剪贴板历史 | `data\clipboard-history` |
+| 所有设置和应用数据 | `data\capslock_p2.db` |
+| 笔记图片 | `data\qbar-notes\media` |
 
 可以直接复制整个 `data` 文件夹。独立剪贴板的两组临时内容不在其中。
 
-需要手动配置时，默认值见 [capslock_p2-default.ini](capslock_p2-default.ini)，参考示例见
-[capslock_p2-settingsDemo.ini](capslock_p2-settingsDemo.ini)。只在个人配置中填写需要修改的项目，注释请单独成行。
+换电脑或 Windows 用户后，需要重新填写 API 凭据；它们受当前 Windows 用户的加密保护。
+
+首次使用会创建主数据库并写入默认设置。已有主库时直接加载，不读取旧 INI 或旧功能数据库；当前开发环境的旧数据已手动迁移，旧文件保留。程序不提供启动迁移或自动清理功能。
 
 ## 遇到问题
 

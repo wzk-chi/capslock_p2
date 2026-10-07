@@ -6,114 +6,112 @@
 global AppProfiles := Map()
 global AppProfilesStamp := ""
 global AppProfilesLastLoadFailure := ""
-global AppProfilesSourceContent := ""
-global AppProfilesSourceExists := false
-global AppProfilesSourceKnown := false
 
-; Builds a profile candidate from a fresh read or a supplied INI snapshot.
-; `changed` compares it to the published stamp; `publish` controls replacement.
-AppProfilesLoad(&changed := false, publish := true, source := 0) {
-    global AppProfiles, AppProfilesStamp, SettingsFile, AppProfilesLastLoadFailure
-    global AppProfilesSourceContent, AppProfilesSourceExists, AppProfilesSourceKnown
+; Loads runtime profiles from the prepared application database.
+AppProfilesLoad(&changed := false, publish := true) {
+    global AppProfiles, AppProfilesStamp, AppProfilesLastLoadFailure
     changed := false
     previousStamp := AppProfilesStamp
-    sourceProvided := IsObject(source)
-    sourceContent := ""
-    sourceExists := false
-    if sourceProvided {
-        sections := source
-    } else {
-        sourceContent := ConfigReadIni(SettingsFile, &loaded, &sourceExists)
-        if !loaded {
-            if AppProfilesLastLoadFailure != "read"
-                DebugLog("Application profiles load failed stage=read")
-            AppProfilesLastLoadFailure := "read"
-            return false
-        }
-        if (AppProfilesSourceKnown
-            && sourceExists = AppProfilesSourceExists
-            && sourceContent == AppProfilesSourceContent) {
-            AppProfilesLastLoadFailure := ""
-            return true
-        }
-        sections := ConfigParseIniText(sourceContent)
-    }
-    try {
-        candidateProfiles := Map()
-
-        for sectionName, values in sections {
-            if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+)$", &match)
-                continue
-            profileId := String(match[1])
-            if !AppProfileIsValidId(profileId)
-                continue
-            exePath := values.Has("exePath") ? AppProfileNormalizePath(values["exePath"]) : ""
-            if exePath = ""
-                continue
-            displayName := values.Has("displayName") ? Trim(String(values["displayName"])) : ""
-            if displayName = ""
-                displayName := AppProfileDisplayName(exePath)
-            enabled := values.Has("enabled") ? AppProfileBoolean(values["enabled"], true) : true
-            candidateProfiles[profileId] := Map(
-                "id", profileId,
-                "displayName", displayName,
-                "exePath", exePath,
-                "enabled", enabled ? "1" : "0",
-                "sections", Map("Keys", Map(), "CustomHotkey", Map()))
-        }
-
-        for sectionName, values in sections {
-            if !RegExMatch(String(sectionName), "^KeyProfile:([^:]+):(Keys|CustomHotkey)$", &match)
-                continue
-            profileId := String(match[1])
-            sectionName := String(match[2])
-            if !candidateProfiles.Has(profileId)
-                continue
-            for key, value in values {
-                if !ConfigValidateKey(sectionName, key)
-                    continue
-                if !ConfigValidateValue(sectionName, key, value, &normalized)
-                    continue
-                if Trim(String(normalized)) = ""
-                    continue
-                candidateProfiles[profileId]["sections"][sectionName][String(key)] := String(normalized)
-            }
-        }
-        candidateStamp := AppProfilesCurrentStamp(candidateProfiles)
-    } catch {
-        if AppProfilesLastLoadFailure != "candidate"
-            DebugLog("Application profiles load failed stage=candidate")
-        AppProfilesLastLoadFailure := "candidate"
+    if !AppProfileStoreRead(&candidateProfiles)
         return false
-    }
-
     AppProfilesLastLoadFailure := ""
+    candidateStamp := AppProfilesCurrentStamp(candidateProfiles)
     changed := previousStamp != candidateStamp
     if publish {
         AppProfiles := candidateProfiles
         AppProfilesStamp := candidateStamp
-        if sourceProvided {
-            ; The supplied INI Map has no raw-text baseline. Force one content
-            ; read before later probes can take the unchanged fast path.
-            AppProfilesSourceKnown := false
-        } else {
-            AppProfilesSourceContent := sourceContent
-            AppProfilesSourceExists := sourceExists
-            AppProfilesSourceKnown := true
+    }
+    return true
+}
+
+AppProfileStoreRead(&profiles) {
+    global AppStoreDb, AppStoreReady
+    profiles := Map()
+    if !AppStoreReady || !IsObject(AppStoreDb)
+        return false
+    if !AppStoreDb.GetTable("SELECT id,display_name,exe_path,enabled FROM cfg_hotkey_scopes "
+        . "WHERE kind='application' ORDER BY id;", &rows) {
+        DiagnosticLogAlways("Application profiles database read failed stage=scopes detail="
+            . AppStoreDb.ErrorMsg)
+        return false
+    }
+    for row in rows.Rows {
+        profileId := String(row[1])
+        exePath := AppProfileNormalizePath(row[3])
+        if !AppProfileIsValidId(profileId) || exePath = ""
+            continue
+        profiles[profileId] := Map("id", profileId,
+            "displayName", String(row[2]), "exePath", exePath,
+            "enabled", String(row[4]) = "1" ? "1" : "0",
+            "sections", Map("Keys", Map(), "CustomHotkey", Map()))
+    }
+    if !AppStoreDb.GetTable("SELECT scope_id,trigger,action_key,args_json FROM cfg_key_overrides;", &rows) {
+        DiagnosticLogAlways("Application profiles database read failed stage=key-overrides detail="
+            . AppStoreDb.ErrorMsg)
+        return false
+    }
+    for row in rows.Rows {
+        profileId := String(row[1])
+        if profiles.Has(profileId)
+            profiles[profileId]["sections"]["Keys"][String(row[2])] :=
+                SettingsStoreComposeAction(String(row[3]), String(row[4]))
+    }
+    if !AppStoreDb.GetTable("SELECT scope_id,trigger,action_value FROM cfg_custom_hotkeys;", &rows) {
+        DiagnosticLogAlways("Application profiles database read failed stage=custom-hotkeys detail="
+            . AppStoreDb.ErrorMsg)
+        return false
+    }
+    for row in rows.Rows {
+        profileId := String(row[1])
+        if profiles.Has(profileId)
+            profiles[profileId]["sections"]["CustomHotkey"][String(row[2])] := String(row[3])
+    }
+    return true
+}
+
+AppProfileStoreReplace(profiles, db := 0) {
+    global AppStoreDb
+    if !IsObject(db)
+        db := AppStoreDb
+    if Type(profiles) != "Array"
+        return false
+    if !db.Exec("DELETE FROM cfg_hotkey_scopes WHERE kind='application';")
+        return false
+    for profile in profiles {
+        if Type(profile) != "Map" || !AppProfileIsValidId(profile["id"])
+            || AppProfileNormalizePath(profile["exePath"]) = ""
+            return false
+        exePath := AppProfileNormalizePath(profile["exePath"])
+        enabled := AppProfileBoolean(profile["enabled"], true) ? 1 : 0
+        sql := "INSERT INTO cfg_hotkey_scopes(id,kind,exe_path,normalized_path,display_name,enabled) VALUES ("
+            . AppStoreSql(profile["id"]) . ",'application'," . AppStoreSql(exePath) . ","
+            . AppStoreSql(exePath) . "," . AppStoreSql(profile["displayName"]) . "," . enabled . ");"
+        if !db.Exec(sql)
+            return false
+        for key, action in profile["sections"]["Keys"] {
+            if !ConfigValidateKey("Keys", key)
+                return false
+            if !SettingsStoreParseAction(action, &actionKey, &actionArgs)
+                return false
+            if !db.Exec("INSERT INTO cfg_key_overrides(scope_id,trigger,action_key,args_json) VALUES ("
+                . AppStoreSql(profile["id"]) . "," . AppStoreSql(key) . ","
+                . AppStoreSql(actionKey) . "," . AppStoreSql(JSON.stringify(actionArgs, 0)) . ");")
+                return false
         }
-    } else if !sourceProvided && candidateStamp = previousStamp {
-        ; A comment/format-only edit does not change published profiles, but
-        ; accepting its text avoids reparsing the same file on every probe.
-        AppProfilesSourceContent := sourceContent
-        AppProfilesSourceExists := sourceExists
-        AppProfilesSourceKnown := true
+        for trigger, action in profile["sections"]["CustomHotkey"] {
+            if !ConfigValidateKey("CustomHotkey", trigger)
+                return false
+            if !db.Exec("INSERT INTO cfg_custom_hotkeys(scope_id,trigger,action_kind,action_value) VALUES ("
+                . AppStoreSql(profile["id"]) . "," . AppStoreSql(trigger)
+                . ",'serialized'," . AppStoreSql(action) . ");")
+                return false
+        }
     }
     return true
 }
 
 AppProfilesCurrentStamp(profiles := 0) {
-    ; File timestamps are only precise to whole seconds, so compare the parsed
-    ; profile data to detect fast external edits.
+    ; Compare profile data to detect changes in the database.
     global AppProfiles
     if !IsObject(profiles)
         profiles := AppProfiles
@@ -218,10 +216,12 @@ AppProfileDraftFromPath(path) {
         "sections", Map("Keys", Map(), "CustomHotkey", Map()))
 }
 
-AppProfilesSnapshot() {
+AppProfilesSnapshot(profiles := 0) {
     global AppProfiles
+    if !IsObject(profiles)
+        profiles := AppProfiles
     result := []
-    for profileId, profile in AppProfiles
+    for profileId, profile in profiles
         result.Push(AppProfileSnapshotOne(profile))
     return result
 }
@@ -336,6 +336,8 @@ AppProfilesNormalizeDraft(profiles, &normalizedProfiles := 0, &errorText := "") 
                 continue
             for key, value in sections[sectionName] {
                 normalized := ""
+                if sectionName = "CustomHotkey"
+                    key := ConfigNormalizeCustomHotkeyTrigger(key)
                 if !ConfigValidateKey(sectionName, key) {
                     errorText := "应用快捷键触发键无效：" . displayName . "/" . key
                     return false
@@ -348,6 +350,10 @@ AppProfilesNormalizeDraft(profiles, &normalizedProfiles := 0, &errorText := "") 
                     errorText := "CapsLock 层不支持保留应用原键：" . displayName . "/" . key
                     return false
                 }
+                if normalizedProfile["sections"][sectionName].Has(key) {
+                    errorText := "应用快捷键触发键重复：" . displayName . "/" . key
+                    return false
+                }
                 if Trim(String(normalized)) != ""
                     normalizedProfile["sections"][sectionName][String(key)] := String(normalized)
             }
@@ -355,92 +361,4 @@ AppProfilesNormalizeDraft(profiles, &normalizedProfiles := 0, &errorText := "") 
         normalizedProfiles.Push(normalizedProfile)
     }
     return true
-}
-
-AppProfilePrepareDraftContent(normalizedProfiles, baseContent,
-    &outputContent := "", &errorText := "") {
-    errorText := ""
-    outputContent := ""
-    if Type(normalizedProfiles) != "Array" {
-        errorText := "应用配置数据无效。"
-        return false
-    }
-
-    original := StrReplace(String(baseContent), "`r`n", "`n")
-    content := original
-    existingSections := ConfigParseIniText(original)
-    profilesById := Map()
-    for profile in normalizedProfiles
-        profilesById[profile["id"]] := profile
-    preservedMetadata := Map()
-    preservedSections := Map()
-    preservedExtraSections := []
-    for sectionName, values in existingSections {
-        if RegExMatch(String(sectionName), "^KeyProfile:([^:]+)$", &metadataMatch) {
-            profileId := String(metadataMatch[1])
-            if !profilesById.Has(profileId)
-                continue
-            unknown := Map()
-            for key, value in values
-                if key != "displayName" && key != "enabled" && key != "exePath"
-                    unknown[key] := value
-            if unknown.Count
-                preservedMetadata[profileId] := unknown
-        } else if RegExMatch(String(sectionName), "^KeyProfile:([^:]+):(Keys|CustomHotkey)$", &knownMatch) {
-            profileId := String(knownMatch[1])
-            sectionKind := String(knownMatch[2])
-            if !profilesById.Has(profileId)
-                continue
-            unknown := Map()
-            for key, value in values
-                if !ConfigValidateKey(sectionKind, key)
-                    unknown[key] := value
-            if unknown.Count
-                preservedSections[profileId . "|" . sectionKind] := unknown
-        } else if RegExMatch(String(sectionName), "^KeyProfile:([^:]+):", &extraMatch) {
-            if profilesById.Has(String(extraMatch[1]))
-                preservedExtraSections.Push(Map("name", sectionName, "values", values))
-        }
-    }
-    for sectionName, values in existingSections {
-        if RegExMatch(String(sectionName), "^KeyProfile:")
-            content := ConfigDeleteIniSection(content, sectionName)
-    }
-    for profile in normalizedProfiles {
-        baseSection := "KeyProfile:" . profile["id"]
-        metadata := Map(
-            "displayName", profile["displayName"],
-            "enabled", profile["enabled"],
-            "exePath", profile["exePath"])
-        if preservedMetadata.Has(profile["id"])
-            for key, value in preservedMetadata[profile["id"]]
-                metadata[key] := value
-        content := AppProfileAppendSection(content, baseSection, metadata)
-        for sectionName in ["Keys", "CustomHotkey"] {
-            values := Map()
-            for key, value in profile["sections"][sectionName]
-                values[key] := value
-            preservedKey := profile["id"] . "|" . sectionName
-            if preservedSections.Has(preservedKey)
-                for key, value in preservedSections[preservedKey]
-                    if !values.Has(key)
-                        values[key] := value
-            if values.Count
-                content := AppProfileAppendSection(content, baseSection . ":" . sectionName, values)
-        }
-    }
-    for extra in preservedExtraSections
-        content := AppProfileAppendSection(content, extra["name"], extra["values"])
-    outputContent := content
-    return true
-}
-
-AppProfileAppendSection(content, sectionName, values) {
-    content := RTrim(StrReplace(String(content), "`r", ""), "`n")
-    if content != ""
-        content .= "`n`n"
-    content .= "[" . sectionName . "]`n"
-    for key, value in values
-        content .= String(key) . "=" . String(value) . "`n"
-    return content
 }

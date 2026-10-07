@@ -568,7 +568,10 @@ QbarEsInstanceName() {
 }
 
 QbarEsMaxResults() {
-    return SettingInteger("Qbar", "esMaxResults", 50, 1, 500)
+    settings := QbarRegistryPluginSettings("builtin.everything")
+    if !IsObject(settings) || !settings.Has("esMaxResults")
+        throw Error("文件搜索设置缺失")
+    return Integer(settings["esMaxResults"])
 }
 
 QbarEsHint(text, seq, querySeq) {

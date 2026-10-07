@@ -1,27 +1,57 @@
+(() => {
+'use strict';
 
 const state = {
-  draft: null, baseSections: null, baseProfiles: [], basePlugins: [],
-  page: 'general', dirty: false, pluginsDirty: false,
-  dirtyFields: new Set(), windowPickerDialog: null,
-  saveSequence: 0, latestAppliedSaveId: 0, pendingSaveSections: new Map(),
-  qbarPluginDraft: null, qbarPluginToolSettings: {}, qbarPluginSaving: false,
-  qbarDeleteTarget: null, qbarDeleteSaving: false, qbarDeleteDialog: null,
-  qbarPluginDialog: null, qbarCreateKind: '', qbarCreateDraft: null,
-  qbarCreateSaving: false, qbarCreateDialog: null,
-  hotkeyProfileId: '', baseProfileStamp: '', profilesDirty: false, overridesOnly: false,
-  hotkeyApplicationDialog: null, customHotkeyActions: []
+  schema: null, base: null, draft: null, status: 'loading', sessionId: '', revision: 0,
+  page: 'general', windowPickerDialog: null,
+  qbarPluginDraft: null, qbarDeleteTarget: null, qbarDeleteDialog: null,
+  qbarPluginDialog: null, qbarCreateDraft: null, qbarCreateDialog: null,
+  hotkeyProfileId: '', overridesOnly: false, hotkeyApplicationDialog: null,
+  customHotkeyActions: [], bindingModes: []
 };
+
+const pendingRequests = new Map();
+let requestSequence = 0;
 let shortcutRecording = null;
 let shortcutCaptureSequence = 0;
 const CUSTOM_HOTKEY_BUILTIN_PREFIX = '@builtin:shortcut/';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const post = payload => {
-  if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload));
+  if (!window.chrome?.webview) return false;
+  try {
+    chrome.webview.postMessage(JSON.stringify({ ...payload, requestId: payload.requestId ?? ++requestSequence, sessionId: state.sessionId }));
+    return true;
+  } catch { return false; }
 };
+function cancelRequest(id) {
+  const pending = pendingRequests.get(Number(id));
+  if (pending) clearTimeout(pending.timer);
+  pendingRequests.delete(Number(id));
+}
+function clearPendingRequests() {
+  for (const id of pendingRequests.keys()) cancelRequest(id);
+}
+function request(payload, responseType, onReply) {
+  const requestId = ++requestSequence, sessionId = state.sessionId;
+  const timer = setTimeout(() => {
+    if (!pendingRequests.has(requestId)) return;
+    cancelRequest(requestId);
+    onReply({ requestId, sessionId, ok: false, timedOut: true });
+  }, 30000);
+  pendingRequests.set(requestId, { sessionId, responseType, onReply, timer });
+  if (!post({ ...payload, requestId })) { cancelRequest(requestId); return 0; }
+  return requestId;
+}
+
+const stableJson = value => JSON.stringify(value, (key, entry) => {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+  const sorted = Object.create(null);
+  Object.keys(entry).sort().forEach(name => { sorted[name] = entry[name]; });
+  return sorted;
+});
 const clone = value => JSON.parse(JSON.stringify(value || {}));
 const pickerState = { selectedIndex: 0, kind: '', root: null, rows: [] };
-let translationLanguageCodes = [];
 let translationLanguageByCode = new Map();
 const section = name => (state.draft && state.draft.sections && state.draft.sections[name]) || {};
 function hotkeyProfile() {
@@ -123,11 +153,7 @@ function shortcutOverrideExists(sectionName, key) {
   return Object.keys(profile.sections[sectionName]).some(raw =>
     (sectionName === 'CustomHotkey' ? normalizeCustomTrigger(raw) : raw) === target);
 }
-function markHotkeyProfileDirty() {
-  state.dirty = true;
-  state.profilesDirty = true;
-  setStatus('未保存');
-}
+
 function setShortcutDraftValue(sectionName, key, value) {
   const normalizedKey = sectionName === 'CustomHotkey' ? normalizeCustomTrigger(key) : key;
   const profile = hotkeyProfile();
@@ -136,7 +162,7 @@ function setShortcutDraftValue(sectionName, key, value) {
     Object.keys(values).forEach(raw => {
       if (raw !== normalizedKey && sectionName === 'CustomHotkey'
         && normalizeCustomTrigger(raw) === normalizedKey) {
-        delete values[raw]; markDirty(sectionName, raw);
+        delete values[raw]; updateDirtyStatus(sectionName, raw);
       }
     });
     setDraftValue(sectionName, normalizedKey, value);
@@ -149,7 +175,7 @@ function setShortcutDraftValue(sectionName, key, value) {
       && normalizeCustomTrigger(raw) === normalizedKey) delete profile.sections[sectionName][raw];
   });
   profile.sections[sectionName][normalizedKey] = value;
-  markHotkeyProfileDirty();
+  updateDirtyStatus();
 }
 function removeShortcutDraftValue(sectionName, key) {
   const normalizedKey = sectionName === 'CustomHotkey' ? normalizeCustomTrigger(key) : key;
@@ -159,12 +185,11 @@ function removeShortcutDraftValue(sectionName, key) {
     let matched = false;
     Object.keys(values).forEach(raw => {
       if ((sectionName === 'CustomHotkey' ? normalizeCustomTrigger(raw) : raw) === normalizedKey) {
-        values[raw] = '';
-        markDirty(sectionName, raw);
+        delete values[raw];
+        updateDirtyStatus(sectionName, raw);
         matched = true;
       }
     });
-    if (!matched) setDraftValue(sectionName, normalizedKey, '');
     return;
   }
   if (profile.sections && profile.sections[sectionName]) {
@@ -173,7 +198,7 @@ function removeShortcutDraftValue(sectionName, key) {
         delete profile.sections[sectionName][raw];
     });
   }
-  markHotkeyProfileDirty();
+  updateDirtyStatus();
 }
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const compactWindowText = value => {
@@ -208,7 +233,8 @@ function closeWindowPickerDialog() {
   dialog.close({ action: 'host' });
 }
 
-window.receiveWindowPicker = function (payload) {
+function receiveWindowPicker(payload) {
+  if (!isLoaded() || isSaving() || payload?.sessionId !== state.sessionId) return;
   closeWindowPickerDialog();
   const isApplication = payload && (payload.kind === 'application' || payload.kind === 'hotkeyApplication');
   const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
@@ -279,8 +305,6 @@ window.receiveWindowPicker = function (payload) {
     post({ type: 'hotkeyPickerTrace', stage: 'picker_shown', rowCount: rows.length });
 };
 
-window.closeWindowPicker = closeWindowPickerDialog;
-
 function confirmWindowPickerSelection() {
   if (pickerState.selectedIndex < 1) {
     if (pickerState.kind === 'hotkeyApplication')
@@ -303,33 +327,119 @@ function setStatus(text, error = false) {
   const node = $('#status');
   node.textContent = text || '';
   node.classList.toggle('error', !!error);
+  $('#saveBtn').disabled = state.status !== 'editing' || !hasChanges();
 }
-function markDirty(sectionName = '', key = '') {
-  const value = true;
-  state.dirty = value;
-  if (sectionName && key) state.dirtyFields.add(sectionName + '\u0000' + key);
-  if (value) setStatus('未保存');
-}
-function markPluginsDirty() {
-  state.pluginsDirty = true;
-  state.dirty = true;
-  setStatus('未保存');
+function updateDirtyStatus() {
+
+  setStatus(hasChanges() ? '未保存' : '');
 }
 function setDraftValue(sectionName, key, value) {
   if (!state.draft.sections[sectionName]) state.draft.sections[sectionName] = {};
-  state.draft.sections[sectionName][key] = value;
-  markDirty(sectionName, key);
+  state.draft.sections[sectionName][key] = isSecretSetting(sectionName, key) && typeof value !== 'object'
+    ? { op: value ? 'set' : 'clear', ...(value ? { value } : {}) } : value;
+  updateDirtyStatus(sectionName, key);
 }
 function readControl(node) {
+  if (isSecretSetting(node.dataset.section, node.dataset.key)
+    && node.dataset.secretSaved === 'true' && node.dataset.secretEdited !== 'true')
+    return section(node.dataset.section)[node.dataset.key];
   return node.type === 'checkbox' ? (node.checked ? '1' : '0') : node.value;
 }
-function translationLanguageLabel(entry) {
-  return entry.labelZh;
+
+function createSettingsField(schema, value, onChange = null) {
+  const checkbox = schema.type === 'bool' || schema.type === 'boolean';
+  const numeric = ['int', 'integer', 'optionalNumber', 'optionalPositiveInt'].includes(schema.type);
+  const field = document.createElement('label');
+  field.className = checkbox ? 'check' : 'field' + (schema.wide ? ' wide' : '');
+  const label = document.createElement('span'); label.textContent = schema.label;
+  const input = document.createElement(schema.type === 'enum' ? 'select' : schema.multiline ? 'textarea' : 'input');
+  if (input.tagName === 'INPUT')
+    input.type = checkbox ? 'checkbox' : schema.type === 'secret' ? 'password' : numeric ? 'number' : 'text';
+  const scale = Number(schema.displayScale) || 1;
+  if (numeric) {
+    for (const name of ['min', 'max', 'step'])
+      if (schema[name] != null) input[name] = String(Number(schema[name]) / scale);
+    if (!schema.step) input.step = schema.type === 'optionalNumber' ? 'any' : '1';
+    if (schema.type === 'optionalPositiveInt') input.min = '1';
+  }
+  if (schema.type === 'enum')
+    for (const candidate of schema.values) {
+      const option = document.createElement('option');
+      option.value = String(candidate);
+      option.textContent = schema.labels?.[candidate]
+        || translationLanguageByCode.get(String(candidate).toLowerCase())?.labelZh || String(candidate);
+      input.append(option);
+    }
+  if (checkbox) input.checked = value === true || value === 1 || value === '1' || value === 'true';
+  else input.value = value == null || typeof value === 'object' ? '' : String(numeric ? Number(value) / scale : value);
+  input.placeholder = schema.placeholder || '';
+  if (checkbox) field.append(input, label); else field.append(label, input);
+  if (schema.hint) {
+    const hint = document.createElement('small'); hint.className = 'hint'; hint.textContent = schema.hint;
+    field.append(hint);
+  }
+  if (onChange) input.addEventListener(checkbox || input.tagName === 'SELECT' ? 'change' : 'input', () => {
+    const next = checkbox ? input.checked : numeric && input.value.trim() !== ''
+      ? Number(input.value) * scale : input.value;
+    onChange(next);
+  });
+  return { field, input };
+}
+function renderSettingsForms() {
+  $$('.settings-groups').forEach(root => root.replaceChildren());
+  for (const group of state.schema.groups) {
+    const root = $('.settings-groups', $('.page[data-page-view="' + group.page + '"]'));
+    const card = document.createElement('section'); card.className = 'card';
+    const head = document.createElement('div'); head.className = 'card-head';
+    const title = document.createElement('h3'); title.textContent = group.title; head.append(title);
+    if (group.action) {
+      const action = document.createElement('button'); action.type = 'button'; action.className = 'btn';
+      action.dataset.settingsAction = group.action;
+      action.textContent = group.action === 'openLlm' ? 'LLM 设置' : '测试'; head.append(action);
+    }
+    const grid = document.createElement('div'); grid.className = 'grid';
+    for (const [sectionName, fields] of Object.entries(state.schema.fields))
+      for (const [key, schema] of Object.entries(fields)) {
+        if (schema.hidden || schema.group !== group.id) continue;
+        const { field, input } = createSettingsField(schema, section(sectionName)[key]);
+        input.dataset.section = sectionName; input.dataset.key = key;
+        if (schema.when) {
+          field.dataset.visibleSection = sectionName;
+          field.dataset.visibleKey = schema.when.key; field.dataset.visibleValue = schema.when.equals;
+        }
+        grid.append(field);
+      }
+    card.append(head, grid);
+    if (group.hint) {
+      const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = group.hint;
+      card.append(hint);
+    }
+    root.append(card);
+  }
+  bindStaticControls();
+  refreshIcons();
+}
+
+const isLoaded = () => state.status === 'editing' || state.status === 'saving';
+const isSaving = () => state.status === 'saving';
+function setEditorStatus(status) {
+  state.status = status;
+  document.body.classList.toggle('settings-saving', status === 'saving');
+  const blocked = status !== 'editing';
+  $('.content').inert = blocked;
+  $('#saveBtn').disabled = blocked || !hasChanges();
+  $('#cancelBtn').disabled = status === 'saving';
+  $$('[data-section][data-key]').forEach(node => { node.disabled = blocked; });
+  $$('.secret-control input').forEach(updateSecretActions);
+}
+function setSettingsSaving(saving) {
+  if (saving) { setEditorStatus('saving'); setStatus('保存中…'); }
+  else if (state.status !== 'error') setEditorStatus(state.draft ? 'editing' : 'loading');
 }
 function setSettingsLoaded(loaded) {
-  $$('[data-section][data-key]').forEach(node => { node.disabled = !loaded; });
-  $('#saveBtn').disabled = !loaded;
+  setEditorStatus(loaded ? (isSaving() ? 'saving' : 'editing') : 'error');
 }
+
 function setTranslationLanguageCatalog(value) {
   if (!Array.isArray(value) || value.length === 0) return false;
   const seen = new Set();
@@ -345,69 +455,74 @@ function setTranslationLanguageCatalog(value) {
     seen.add(key);
     catalog.push({ code, labelZh, labelEn });
   }
-  translationLanguageCodes = catalog.map(entry => entry.code);
   translationLanguageByCode = new Map(catalog.map(entry => [entry.code.toLowerCase(), entry]));
-  $$('select[data-translation-language-select]').forEach(select => {
-    const previous = select.value;
-    const options = [];
-    if (select.hasAttribute('data-language-select')) {
-      const system = document.createElement('option');
-      system.value = 'system';
-      system.textContent = document.documentElement.lang === 'en' ? 'System language' : '系统语言';
-      options.push(system);
-    }
-    for (const entry of catalog) {
-      const option = document.createElement('option');
-      option.value = entry.code;
-      option.textContent = translationLanguageLabel(entry);
-      options.push(option);
-    }
-    select.replaceChildren(...options);
-    if (options.some(option => option.value === previous)) select.value = previous;
-    select.disabled = false;
-  });
+
   return true;
 }
-function normalizeTranslationLanguage(value, fallback = '') {
-  const raw = String(value ?? '').trim().toLowerCase();
-  const match = translationLanguageByCode.get(raw);
-  return match ? match.code : fallback;
-}
-function normalizeTargetLanguageValue(value) {
-  const raw = String(value ?? '').trim();
-  return raw.toLowerCase() === 'system' ? 'system' : normalizeTranslationLanguage(raw, 'system');
-}
-function normalizeTranslationModeValue(value) {
-  return String(value ?? '').trim().toLowerCase() === 'bidirectional' ? 'bidirectional' : 'fixed';
-}
-function normalizePairLanguageValue(value, fallback) {
-  return normalizeTranslationLanguage(value, normalizeTranslationLanguage(fallback,
-    translationLanguageCodes[0] || ''));
-}
+
 function updateTranslateModeFields() {
-  const mode = normalizeTranslationModeValue(section('TTranslate').mode);
-  const pairFields = $('#bidirectionalLanguageFields');
-  const fixedField = $('#fixedTargetLanguageField');
-  if (pairFields) pairFields.hidden = mode !== 'bidirectional';
-  if (fixedField) fixedField.hidden = mode === 'bidirectional';
-}
-function updateLanguageSelectLabels() {
-  $$('select[data-translation-language-select] option').forEach(option => {
-    const entry = translationLanguageByCode.get(option.value.toLowerCase());
-    option.textContent = option.value === 'system'
-      ? (document.documentElement.lang === 'en' ? 'System language' : '系统语言')
-      : entry ? translationLanguageLabel(entry) : option.value;
+  $$('[data-visible-key]').forEach(field => {
+    field.hidden = section(field.dataset.visibleSection)[field.dataset.visibleKey] !== field.dataset.visibleValue;
   });
 }
+
 function writeControl(node) {
-  const rawValue = section(node.dataset.section)[node.dataset.key] ?? '';
-  const value = node.hasAttribute('data-language-select') ? normalizeTargetLanguageValue(rawValue) : rawValue;
-  if (node.type === 'checkbox') node.checked = value !== '' && value !== '0';
+  const value = section(node.dataset.section)[node.dataset.key];
+  const secret = isSecretSetting(node.dataset.section, node.dataset.key);
+  if (secret) {
+    const saved = value.op === 'keep' && value.present;
+    node.type = 'password';
+    node.placeholder = saved ? '••••••••••••' : '';
+    node.dataset.secretSaved = saved ? 'true' : 'false';
+    node.dataset.secretEdited = value.op === 'keep' ? 'false' : 'true';
+    node.dataset.secretLoaded = 'false';
+    node.value = value.op === 'set' ? value.value : '';
+    updateSecretActions(node);
+  } else if (node.type === 'checkbox') node.checked = value !== '' && value !== '0';
   else node.value = value;
 }
+function isSecretSetting(sectionName, key) {
+  return state.schema?.fields?.[sectionName]?.[key]?.type === 'secret';
+}
+
 function bindStaticControls() {
   $$('[data-section][data-key]').forEach(node => {
+    if (isSecretSetting(node.dataset.section, node.dataset.key)) {
+      node.autocomplete = 'off';
+      node.spellcheck = false;
+      const control = document.createElement('div');
+      control.className = 'secret-control';
+      node.parentElement.insertBefore(control, node);
+      control.append(node);
+
+      const actions = document.createElement('div');
+      actions.className = 'secret-actions';
+      control.append(actions);
+      const viewButton = createSecretAction('eye', '查看密钥', 'secret-view');
+      const copyButton = createSecretAction('copy', '复制密钥', 'secret-copy');
+      const clearButton = createSecretAction('trash-2', '清除密钥', 'secret-clear');
+      actions.append(viewButton, copyButton, clearButton);
+
+      viewButton.addEventListener('click', () => toggleSecretVisibility(node, viewButton));
+      copyButton.addEventListener('click', () => copySecret(node, copyButton));
+      clearButton.addEventListener('click', () => {
+        cancelSecretRequest(node);
+        node.value = '';
+        node.placeholder = '';
+        node.type = 'password';
+        node.dataset.secretEdited = 'true';
+        node.dataset.secretLoaded = 'false';
+        setDraftValue(node.dataset.section, node.dataset.key, '');
+        updateSecretActions(node);
+      });
+    }
     const update = () => {
+      if (isSecretSetting(node.dataset.section, node.dataset.key)) {
+        cancelSecretRequest(node);
+        node.dataset.secretEdited = 'true';
+        node.dataset.secretLoaded = 'false';
+        updateSecretActions(node);
+      }
       setDraftValue(node.dataset.section, node.dataset.key, readControl(node));
       if (node.dataset.section === 'TTranslate' && node.dataset.key === 'mode')
         updateTranslateModeFields();
@@ -416,6 +531,91 @@ function bindStaticControls() {
     node.addEventListener('change', update);
   });
 }
+function createSecretAction(icon, label, className) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'secret-action ' + className;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.append(createIcon(icon));
+  return button;
+}
+function updateSecretActions(input) {
+  const control = input.closest('.secret-control');
+  if (!control) return;
+  const hasValue = !!input.value
+    || (input.dataset.secretSaved === 'true' && input.dataset.secretEdited !== 'true');
+  const view = $('.secret-view', control);
+  const copy = $('.secret-copy', control);
+  const clear = $('.secret-clear', control);
+  const pending = !!input.dataset.secretPendingId;
+  [view, copy, clear].forEach(button => {
+    if (button) button.disabled = !isLoaded() || isSaving() || !hasValue || pending;
+  });
+  if (view) {
+    const revealed = input.type === 'text';
+    view.setAttribute('aria-label', revealed ? '隐藏密钥' : '查看密钥');
+    view.title = revealed ? '隐藏密钥' : '查看密钥';
+    const icon = view.querySelector('[data-lucide]');
+    const name = revealed ? 'eye-off' : 'eye';
+    if (icon && icon.dataset.lucide !== name) {
+      icon.dataset.lucide = name;
+      refreshIcons();
+    }
+  }
+}
+function cancelSecretRequest(input) {
+  const requestId = input.dataset.secretPendingId;
+  if (!requestId) return;
+  cancelRequest(requestId);
+  delete input.dataset.secretPendingId;
+  updateSecretActions(input);
+}
+function toggleSecretVisibility(input) {
+  if (input.type === 'text') { input.type = 'password'; updateSecretActions(input); return; }
+  if (input.value) { input.type = 'text'; updateSecretActions(input); return; }
+  if (input.dataset.secretSaved !== 'true' || input.dataset.secretPendingId) return;
+  const id = request({ type: 'revealSecret', section: input.dataset.section, key: input.dataset.key }, 'secretResult',
+    result => applySecretResult(input, 'reveal', result));
+  if (id) input.dataset.secretPendingId = String(id);
+  else showToast('无法发送查看请求，请重试。', 'error');
+  updateSecretActions(input);
+}
+function copySecret(input) {
+  if (!input.value && !(input.dataset.secretSaved === 'true' && input.dataset.secretEdited !== 'true')) return;
+  if (input.dataset.secretPendingId) return;
+  const payload = { type: 'copySecret', section: input.dataset.section, key: input.dataset.key };
+  if (input.value && input.dataset.secretEdited === 'true') payload.value = input.value;
+  const id = request(payload, 'secretResult', result => applySecretResult(input, 'copy', result));
+  if (id) input.dataset.secretPendingId = String(id);
+  else showToast('无法发送复制请求，请重试。', 'error');
+  updateSecretActions(input);
+}
+function applySecretResult(input, action, result) {
+  if (input.dataset.secretPendingId !== String(result.requestId)) return;
+  delete input.dataset.secretPendingId;
+  if (!result.ok) {
+    updateSecretActions(input);
+    showToast(action === 'copy' ? '无法复制密钥，请重试。' : '无法查看密钥，请重试。', 'error');
+    return;
+  }
+  if (action === 'reveal' && input.dataset.secretEdited !== 'true') {
+    input.value = String(result.value); input.type = 'text';
+  } else if (action === 'copy') showToast('已复制到剪贴板。', 'success');
+  updateSecretActions(input);
+}
+
+function lockDisplayedSecrets() {
+  $$('[data-section][data-key]').forEach(input => {
+    if (!isSecretSetting(input.dataset.section, input.dataset.key)) return;
+    cancelSecretRequest(input);
+    input.value = '';
+    input.type = 'password';
+    input.dataset.secretLoaded = 'false';
+    input.placeholder = input.dataset.secretSaved === 'true' ? '••••••••••••' : '';
+    updateSecretActions(input);
+  });
+};
 function refreshStaticControls() {
   $$('[data-section][data-key]').forEach(writeControl);
   updateTranslateModeFields();
@@ -600,8 +800,9 @@ function ensureShortcutOption(select, action) {
   option.textContent = shortcutActionLabel(action);
   select.append(option);
 }
-window.receiveShortcutCapture = function (capture) {
+function receiveShortcutCapture(capture) {
   if (!shortcutRecording || !capture || !capture.value
+    || capture.sessionId !== state.sessionId || isSaving()
     || Number(capture.captureId) !== shortcutRecording.captureId) return;
   if (shortcutRecording.kind === 'custom') {
     if (shortcutRecording.field === 'trigger') {
@@ -610,11 +811,9 @@ window.receiveShortcutCapture = function (capture) {
     } else {
       shortcutRecording.input.value = capture.label || formatCustomSend(capture.value);
       shortcutRecording.row.dataset.sendValue = normalizeCustomSend(capture.value);
-      if (shortcutRecording.row.dataset.key) {
-        setShortcutDraftValue('CustomHotkey', shortcutRecording.row.dataset.key,
-          customHotkeyActionValue(shortcutRecording.row));
-        syncCustomHotkeyRemove(shortcutRecording.row);
-      }
+      shortcutRecording.row.dataset.overridden = 'true';
+      syncCustomHotkeyDraft();
+      syncCustomHotkeyRemove(shortcutRecording.row);
     }
     stopShortcutRecording(false);
     setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
@@ -629,8 +828,9 @@ window.receiveShortcutCapture = function (capture) {
   stopShortcutRecording(false);
   setStatus('已录制 ' + (capture.label || capture.value) + '，请保存');
 };
-window.shortcutCaptureFailed = function (capture) {
+function shortcutCaptureFailed(capture) {
   if (!shortcutRecording || !capture
+    || capture.sessionId !== state.sessionId || isSaving()
     || Number(capture.captureId) !== shortcutRecording.captureId) return;
   stopShortcutRecording(false);
   setStatus(document.documentElement.lang === 'en'
@@ -821,18 +1021,13 @@ function renderShortcuts(preserveExpandedGroups = true) {
   refreshIcons();
 }
 function updateCustomHotkeyKey(row, triggerInput, formatValue = false) {
-  const oldKey = row.dataset.key;
   const newKey = normalizeCustomTrigger(triggerInput.value);
   let suffix = newKey;
   while (suffix && '^!+#'.includes(suffix[0])) suffix = suffix.slice(1);
   if (formatValue && suffix) triggerInput.value = formatCustomTrigger(newKey);
-  if (oldKey && oldKey !== newKey) {
-    removeShortcutDraftValue('CustomHotkey', oldKey);
-  }
   row.dataset.key = newKey;
-  if (newKey) {
-    setShortcutDraftValue('CustomHotkey', newKey, customHotkeyActionValue(row));
-  }
+  row.dataset.overridden = 'true';
+  syncCustomHotkeyDraft();
   syncCustomHotkeyRemove(row);
 }
 function customHotkeyActionValue(row) {
@@ -863,15 +1058,14 @@ function updateCustomHotkeyMode(row, modeSelect, sendInput, actionSelect, sendRe
   sendInput.placeholder = isSending ? '例如 Ctrl+C' : '';
   sendRecord.hidden = !isSending;
   sendRecord.disabled = !isSending;
-  if (row.dataset.key)
-    setShortcutDraftValue('CustomHotkey', row.dataset.key, customHotkeyActionValue(row));
+  row.dataset.overridden = 'true';
+  syncCustomHotkeyDraft();
   syncCustomHotkeyRemove(row);
 }
 function syncCustomHotkeyRemove(row) {
   const remove = row.querySelector('.custom-hotkey-remove');
   const profile = hotkeyProfile();
-  const overridden = !!row.dataset.key && shortcutOverrideExists('CustomHotkey', row.dataset.key);
-  row.dataset.overridden = !profile || !row.dataset.key || overridden ? 'true' : 'false';
+  const overridden = row.dataset.overridden === 'true';
   if (remove) remove.hidden = !!profile && !!row.dataset.key && !overridden;
 }
 function startCustomHotkeyRecording(row, input, field, button) {
@@ -893,6 +1087,8 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   const row = document.createElement('div');
   row.className = 'pair-row custom-hotkey-row';
   row.dataset.key = normalizeCustomTrigger(initialTrigger);
+  row.dataset.overridden = !hotkeyProfile() || !initialTrigger
+    || shortcutOverrideExists('CustomHotkey', initialTrigger) ? 'true' : 'false';
   row.dataset.mode = initialSend === '@native' ? 'native'
     : initialSend === '@block' ? 'block'
       : String(initialSend).startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX) ? 'builtin' : 'send';
@@ -907,6 +1103,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   const triggerControl = document.createElement('div');
   triggerControl.className = 'custom-hotkey-control';
   const triggerInput = document.createElement('input');
+  triggerInput.className = 'custom-hotkey-trigger';
   triggerInput.value = formatCustomTrigger(initialTrigger);
   triggerInput.placeholder = '例如 Alt+C';
   triggerInput.setAttribute('aria-label', '触发键');
@@ -938,6 +1135,7 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   });
   modeSelect.value = row.dataset.mode;
   const sendInput = document.createElement('input');
+  sendInput.className = 'custom-hotkey-send';
   sendInput.value = row.dataset.mode === 'send' ? formatCustomSend(initialSend)
     : row.dataset.mode === 'native' ? '保留原有功能' : '已禁用此快捷键';
   sendInput.placeholder = row.dataset.mode === 'send' ? '例如 Ctrl+C' : '';
@@ -967,8 +1165,8 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   });
   actionSelect.addEventListener('change', () => {
     row.dataset.builtinAction = actionSelect.value;
-    if (row.dataset.key)
-      setShortcutDraftValue('CustomHotkey', row.dataset.key, customHotkeyActionValue(row));
+    row.dataset.overridden = 'true';
+    syncCustomHotkeyDraft();
     syncCustomHotkeyRemove(row);
   });
   sendControl.append(modeSelect, sendInput, actionSelect, sendRecord);
@@ -982,32 +1180,67 @@ function addCustomHotkeyRow(root, initialTrigger = '', initialSend = '') {
   remove.setAttribute('aria-label', '删除自定义快捷键');
   remove.addEventListener('click', () => {
     const root = row.parentElement;
-    const hadTrigger = !!row.dataset.key;
-    if (row.dataset.key) {
-      removeShortcutDraftValue('CustomHotkey', row.dataset.key);
-    }
+    const key = row.dataset.key;
+    const inherited = hotkeyProfile() ? Object.entries(section('CustomHotkey'))
+      .find(([trigger]) => normalizeCustomTrigger(trigger) === key)?.[1] : '';
     if (shortcutRecording && shortcutRecording.row === row) stopShortcutRecording();
     row.remove();
-    if (hadTrigger || !root.querySelector('.custom-hotkey-row')) renderCustomHotkeys();
+    syncCustomHotkeyDraft();
+    if (inherited && !$$('.custom-hotkey-row', root).some(item => item.dataset.key === key))
+      addCustomHotkeyRow(root, key, inherited);
+    if (!root.querySelector('.custom-hotkey-row')) renderCustomHotkeys();
   });
 
-  triggerInput.addEventListener('input', () => {
-    state.dirty = true;
-    setStatus('未保存');
-  });
+  triggerInput.addEventListener('input', () => updateCustomHotkeyKey(row, triggerInput));
   triggerInput.addEventListener('change', () => updateCustomHotkeyKey(row, triggerInput, true));
   sendInput.addEventListener('input', () => {
     row.dataset.sendValue = normalizeCustomSend(sendInput.value);
-    if (row.dataset.key) {
-      setShortcutDraftValue('CustomHotkey', row.dataset.key, customHotkeyActionValue(row));
-      syncCustomHotkeyRemove(row);
-    }
+    row.dataset.overridden = 'true';
+    syncCustomHotkeyDraft();
+    syncCustomHotkeyRemove(row);
   });
   row.append(triggerField, sendField, remove);
   root.append(row);
   syncCustomHotkeyRemove(row);
   refreshIcons();
   return row;
+}
+function syncCustomHotkeyDraft() {
+  if (!state.draft || isSaving()) return;
+  const values = Object.create(null);
+  const profile = hotkeyProfile();
+  $$('.custom-hotkey-row', $('#customHotkeyList')).forEach(row => {
+    const key = normalizeCustomTrigger($('.custom-hotkey-trigger', row).value);
+    row.dataset.key = key;
+    if (key && (!profile || row.dataset.overridden === 'true'))
+      values[key] = customHotkeyActionValue(row);
+  });
+  if (profile) profile.sections.CustomHotkey = values;
+  else state.draft.sections.CustomHotkey = values;
+
+  setStatus(hasChanges() ? '未保存' : '');
+}
+function findCustomHotkeyError() {
+  const seen = new Set();
+  for (const row of $$('.custom-hotkey-row', $('#customHotkeyList'))) {
+    const input = $('.custom-hotkey-trigger', row);
+    const key = normalizeCustomTrigger(input.value);
+    const action = customHotkeyActionValue(row);
+    if (!input.value.trim() && !action && row.dataset.mode === 'send') continue;
+    if (!key || !key.replace(/^[\^!+#]+/, ''))
+      return { message: '请填写完整的触发键。', target: input };
+    if (!action) return { message: '请填写映射目标。', target: $('.custom-hotkey-send', row) };
+    if (seen.has(key)) return { message: '触发键重复，请编辑已有项。', target: input };
+    seen.add(key);
+  }
+  return null;
+}
+function validateCustomHotkeyRows() {
+  const error = findCustomHotkeyError();
+  if (!error) return true;
+  showToast(error.message, 'warning');
+  error.target.focus();
+  return false;
 }
 function renderCustomHotkeys() {
   const root = $('#customHotkeyList');
@@ -1033,21 +1266,24 @@ function renderPairs(sectionName, rootId, multiline = false) {
   if (!entries.length) entries.push(['', '']);
   entries.forEach(([key, value]) => addPairRow(sectionName, root, key, value, multiline));
 }
+function qbarToolIdentity(plugin) { return plugin.pluginId || plugin.draftId; }
+function pluginMeta(plugin) {
+  return plugin.draftId ? state.schema.creatableTools[plugin.kind]
+    : state.schema.tools[plugin.pluginId];
+}
 function qbarToolCommands(plugin) {
-  return plugin && Array.isArray(plugin.commands) ? plugin.commands : [];
+  return plugin.draftId ? [{ aliases: plugin.aliases }] : plugin.commands;
 }
 function qbarToolVisible(plugin) {
-  if (!plugin) return false;
-  if (plugin.definitionId === 'builtin.search' || plugin.definitionId === 'builtin.run') return true;
-  if (plugin.source && plugin.source !== 'builtin') return true;
-  return qbarToolCommands(plugin).some(command =>
-    Array.isArray(command.aliases) && command.aliases.some(alias => String(alias || '').trim()));
+  const meta = pluginMeta(plugin);
+  return meta.definitionId === 'builtin.search' || meta.definitionId === 'builtin.run'
+    || meta.source !== 'builtin' || qbarToolCommands(plugin).some(command => command.aliases.length);
 }
 function qbarToolGroup(plugin) {
-  if (plugin.definitionId === 'builtin.search') return 'search';
-  if (plugin.definitionId === 'builtin.run') return 'run';
-  return 'builtin';
+  const definitionId = pluginMeta(plugin).definitionId;
+  return definitionId === 'builtin.search' ? 'search' : definitionId === 'builtin.run' ? 'run' : 'builtin';
 }
+
 function qbarToolName(plugin) {
   return String(plugin.name || '').trim() || '未命名工具';
 }
@@ -1058,12 +1294,13 @@ function qbarToolCommandText(plugin) {
     if (value && !aliases.includes(value)) aliases.push(value);
   }));
   if (aliases.length) return aliases.join(' / ');
-  return plugin.source && plugin.source !== 'builtin'
-    || plugin.definitionId === 'builtin.search' || plugin.definitionId === 'builtin.run'
+  return pluginMeta(plugin).source && pluginMeta(plugin).source !== 'builtin'
+    || pluginMeta(plugin).definitionId === 'builtin.search' || pluginMeta(plugin).definitionId === 'builtin.run'
     ? '使用工具名称' : '未设置命令';
 }
 function qbarToolEnabled(plugin) {
-  return plugin.enabled !== false && qbarToolCommands(plugin).some(command => command.enabled !== false);
+  return plugin.enabled !== false && pluginMeta(plugin).definitionValid !== false && pluginMeta(plugin).settingsValid !== false
+    && (plugin.draftId || pluginMeta(plugin).commandEnabled);
 }
 function renderQbarToolAliases(command, root) {
   command.aliases = Array.isArray(command.aliases) ? command.aliases : [];
@@ -1087,41 +1324,25 @@ function renderQbarToolAliases(command, root) {
 }
 function openQbarToolDialog(plugin) {
   state.qbarPluginDraft = clone(plugin);
-  state.qbarPluginToolSettings = clone(plugin.toolSettings || {});
-  state.qbarPluginSaving = false;
   state.qbarPluginDialog = AppDialog.open({
     title: qbarToolName(plugin) + '设置',
     actions: [
       { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
-      { id: 'save', text: '保存' }
+      { id: 'confirm', text: '确认' }
     ],
     render(root) { renderQbarToolDialog(root); },
     onAction(id, api) {
-      if (id === 'save') {
-        saveQbarToolDialog(api);
-        return api.keepOpen();
-      }
+      if (id === 'confirm' && !confirmQbarToolDialog()) return api.keepOpen();
     },
     onClose() {
       state.qbarPluginDraft = null;
-      state.qbarPluginToolSettings = {};
-      state.qbarPluginSaving = false;
       state.qbarPluginDialog = null;
     }
   });
 }
-function closeQbarToolDialog() {
-  const dialog = state.qbarPluginDialog;
-  state.qbarPluginDialog = null;
-  if (dialog) dialog.close({ action: 'cancel' });
-  state.qbarPluginDraft = null;
-  state.qbarPluginToolSettings = {};
-  state.qbarPluginSaving = false;
-}
 function openQbarDeleteDialog(plugin) {
-  if (!plugin || !plugin.deletable) return;
-  state.qbarDeleteTarget = { pluginId: plugin.pluginId, name: qbarToolName(plugin) };
-  state.qbarDeleteSaving = false;
+  if (!plugin || !pluginMeta(plugin).deletable) return;
+  state.qbarDeleteTarget = { pluginId: qbarToolIdentity(plugin), name: qbarToolName(plugin) };
   state.qbarDeleteDialog = AppDialog.open({
     title: '删除工具',
     className: 'qbar-delete-dialog',
@@ -1138,206 +1359,61 @@ function openQbarDeleteDialog(plugin) {
     },
     onClose() {
       state.qbarDeleteTarget = null;
-      state.qbarDeleteSaving = false;
       state.qbarDeleteDialog = null;
     }
   });
 }
 function confirmQbarPluginDelete(dialog = state.qbarDeleteDialog) {
   const target = state.qbarDeleteTarget;
-  if (!target || state.qbarDeleteSaving || !dialog) return;
-  state.qbarDeleteSaving = true;
-  dialog.setError('');
-  dialog.setBusy(true, '删除中…', 'delete');
-  post({ type: 'deleteQbarPlugin', pluginId: target.pluginId });
-}
-function qbarCreateSetError(message = '') {
-  if (state.qbarCreateDialog) state.qbarCreateDialog.setError(message);
-}
-function closeQbarCreateDialog() {
-  const dialog = state.qbarCreateDialog;
-  state.qbarCreateDialog = null;
-  if (dialog) dialog.close({ action: 'cancel' });
-  state.qbarCreateKind = '';
-  state.qbarCreateDraft = null;
-  state.qbarCreateSaving = false;
-  qbarCreateSetError('');
-}
-function qbarCreateField(labelText, value, placeholder, wide, onInput) {
-  const field = document.createElement('label');
-  field.className = 'field' + (wide ? ' wide' : '');
-  const label = document.createElement('span'); label.textContent = labelText;
-  const input = document.createElement('input');
-  input.value = value || ''; input.placeholder = placeholder || '';
-  input.addEventListener('input', () => onInput(input.value));
-  field.append(label, input);
-  return { field, input };
-}
-function openQbarCreateDialog(kind) {
-  kind = kind === 'run' ? 'run' : 'search';
-  const search = kind === 'search';
-  state.qbarCreateKind = kind;
-  state.qbarCreateDraft = {
-    displayName: search ? '新搜索' : '新项目',
-    aliases: [],
-    settings: search
-      ? { template: 'https://www.google.com/search?q={q}', encodeQuery: true }
-      : { command: '', runAs: false, argumentMode: 'append' }
-  };
-  state.qbarCreateSaving = false;
-  state.qbarCreateDialog = AppDialog.open({
-    title: search ? '添加网页搜索' : '添加快捷命令',
-    initialFocus: 'content',
-    actions: [
-      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
-      { id: 'create', text: '添加' }
-    ],
-    render(root) { renderQbarCreateDialog(root); },
-    onAction(id, api) {
-      if (id === 'create') {
-        saveQbarCreateDialog(api);
-        return api.keepOpen();
-      }
-    },
-    onClose() {
-      state.qbarCreateKind = '';
-      state.qbarCreateDraft = null;
-      state.qbarCreateSaving = false;
-      state.qbarCreateDialog = null;
-    }
-  });
-}
-function renderQbarCreateDialog(editor) {
-  const draft = state.qbarCreateDraft;
-  if (!draft) return;
-  const search = state.qbarCreateKind === 'search';
-  qbarCreateSetError('');
-  editor.replaceChildren();
-
-  const general = document.createElement('div'); general.className = 'grid';
-  const name = qbarCreateField('工具名称', draft.displayName, search ? '例如：百度' : '例如：开发命令', false,
-    value => { draft.displayName = value; });
-  name.input.autofocus = true;
-  general.append(name.field);
-  editor.append(general);
-
-  const detail = document.createElement('div'); detail.className = 'plugin-detail-section';
-  const title = document.createElement('strong'); title.textContent = search ? '搜索设置' : '命令设置';
-  const hint = document.createElement('div'); hint.className = 'hint';
-  hint.textContent = search ? '使用 {q} 代表用户输入的搜索内容。' : '命令会在输入别名后执行，搜索内容会作为参数追加。';
-  const grid = document.createElement('div'); grid.className = 'grid';
-  if (search) {
-    const template = qbarCreateField('搜索网址模板', draft.settings.template,
-      'https://example.com/search?q={q}', true, value => { draft.settings.template = value; });
-    grid.append(template.field);
-    const encodeField = document.createElement('label'); encodeField.className = 'check';
-    const encode = document.createElement('input'); encode.type = 'checkbox'; encode.checked = draft.settings.encodeQuery !== false;
-    encode.addEventListener('change', () => { draft.settings.encodeQuery = encode.checked; });
-    encodeField.append(encode, document.createTextNode('编码搜索内容')); grid.append(encodeField);
-  } else {
-    const command = qbarCreateField('执行命令或程序路径', draft.settings.command, '例如：code.exe', true,
-      value => { draft.settings.command = value; });
-    grid.append(command.field);
-    const runAsField = document.createElement('label'); runAsField.className = 'check';
-    const runAs = document.createElement('input'); runAs.type = 'checkbox'; runAs.checked = !!draft.settings.runAs;
-    runAs.addEventListener('change', () => { draft.settings.runAs = runAs.checked; });
-    runAsField.append(runAs, document.createTextNode('以管理员身份运行')); grid.append(runAsField);
-  }
-  detail.append(title, hint, grid); editor.append(detail);
-
-  const aliasSection = document.createElement('div'); aliasSection.className = 'plugin-detail-section';
-  const aliasTitle = document.createElement('strong'); aliasTitle.textContent = '命令别名（可选）';
-  const aliasHint = document.createElement('div'); aliasHint.className = 'hint';
-  aliasHint.textContent = '可以添加多个别名；不添加别名时，Qbar 会使用工具名称匹配。';
-  const aliasList = document.createElement('div'); aliasList.className = 'plugin-alias-list';
-  renderQbarToolAliases({ aliases: draft.aliases }, aliasList);
-  aliasSection.append(aliasTitle, aliasHint, aliasList);
-  editor.append(aliasSection);
-  refreshIcons();
-}
-function saveQbarCreateDialog(dialog = state.qbarCreateDialog) {
-  const draft = state.qbarCreateDraft;
-  if (!draft || state.qbarCreateSaving || !dialog) return;
-  draft.displayName = String(draft.displayName || '').trim();
-  draft.aliases = [...new Set((draft.aliases || [])
-    .map(alias => String(alias || '').trim()).filter(Boolean))];
-  if (!draft.displayName) return qbarCreateSetError('请输入工具名称。');
-  if (state.qbarCreateKind === 'search') {
-    draft.settings.template = draft.settings.template == null ? '' : String(draft.settings.template).trim();
-    if (!draft.settings.template.includes('{q}'))
-      return qbarCreateSetError('搜索网址模板必须包含 {q}。');
-  } else {
-    draft.settings.command = draft.settings.command == null ? '' : String(draft.settings.command).trim();
-    if (!draft.settings.command)
-      return qbarCreateSetError('请输入执行命令或程序路径。');
-  }
-
-  state.qbarCreateSaving = true;
-  dialog.setBusy(true, '添加中…', 'create');
-  qbarCreateSetError('');
-  post({ type: 'createPlugin', kind: state.qbarCreateKind, displayName: draft.displayName,
-    aliases: draft.aliases, settings: clone(draft.settings) });
-}
-function applySavedQbarPluginToDraft() {
-  if (!state.qbarPluginDraft || !state.draft) return;
-  const saved = clone(state.qbarPluginDraft);
-  saved.toolSettings = clone(state.qbarPluginToolSettings || {});
-  (saved.commands || []).forEach(command => {
-    command.aliases = [...new Set((command.aliases || [])
-      .map(alias => String(alias || '').trim()).filter(Boolean))];
-  });
-  const plugins = Array.isArray(state.draft.plugins) ? state.draft.plugins : (state.draft.plugins = []);
-  const index = plugins.findIndex(item => item && item.pluginId === saved.pluginId);
-  if (index >= 0) plugins[index] = saved;
-  else plugins.push(saved);
-  const basePlugins = Array.isArray(state.basePlugins) ? state.basePlugins : (state.basePlugins = []);
-  const baseIndex = basePlugins.findIndex(item => item && item.pluginId === saved.pluginId);
-  if (baseIndex >= 0) basePlugins[baseIndex] = clone(saved);
-  else basePlugins.push(clone(saved));
+  if (!target || !isLoaded() || isSaving() || !dialog) return;
+  if (state.draft && Array.isArray(state.draft.plugins))
+    state.draft.plugins = state.draft.plugins.filter(plugin => qbarToolIdentity(plugin) !== target.pluginId);
+  dialog.close();
+  updateDirtyStatus();
   renderPlugins();
-  recomputeDirtyState();
-  if (!state.dirty) setStatus('');
+  showToast('删除已暂存，请点击右上角“保存”后生效。', 'info');
 }
-function renderQbarSchemaSettings(plugin, editor, title, hintText = '') {
-  const schema = plugin.settingsSchema || {};
-  const settings = plugin.settings || (plugin.settings = {});
-  const entries = Object.entries(schema);
-  if (!entries.length) return;
 
-  const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
-  const sectionTitle = document.createElement('strong'); sectionTitle.textContent = title;
-  const grid = document.createElement('div'); grid.className = 'grid';
-  entries.forEach(([key, field]) => {
-    const value = Object.hasOwn(settings, key) ? settings[key] : field.default;
-    if (!Object.hasOwn(settings, key)) settings[key] = value;
-    if (field.type === 'boolean') {
-      const checkField = document.createElement('label'); checkField.className = 'check';
-      const input = document.createElement('input'); input.type = 'checkbox';
-      input.checked = value === true || value === 1 || value === '1' || value === 'true';
-      input.addEventListener('change', () => { settings[key] = input.checked; });
-      checkField.append(input, document.createTextNode(field.label || key)); grid.append(checkField);
-    } else if (field.type === 'integer') {
-      const scale = Math.max(1, Number(field.displayScale) || 1);
-      const settingField = document.createElement('label'); settingField.className = 'field';
-      const label = document.createElement('span'); label.textContent = field.label || key;
-      const input = document.createElement('input'); input.type = 'number';
-      if (field.min != null) input.min = String(Number(field.min) / scale);
-      if (field.max != null) input.max = String(Number(field.max) / scale);
-      if (field.step != null) input.step = String(Number(field.step) / scale);
-      input.value = value == null ? '' : String(Number(value) / scale);
-      input.addEventListener('input', () => {
-        const number = input.value.trim() === '' ? NaN : Number(input.value);
-        settings[key] = Number.isFinite(number) ? number * scale : '';
-      });
-      settingField.append(label, input); grid.append(settingField);
-    }
+function openQbarCreateDialog(kind) {
+  const meta = state.schema.creatableTools[kind];
+  const settings = Object.create(null);
+  for (const [key, field] of Object.entries(meta.settingsSchema))
+    settings[key] = Object.hasOwn(field, 'default') ? field.default : '';
+  state.qbarCreateDraft = { draftId: 'draft.' + crypto.randomUUID(), kind,
+    name: kind === 'search' ? '新搜索' : '新项目', enabled: true, settings, aliases: [] };
+  state.qbarCreateDialog = AppDialog.open({
+    title: kind === 'search' ? '添加网页搜索' : '添加快捷命令', initialFocus: 'content',
+    actions: [{ id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'create', text: '确认' }],
+    render(root) {
+      root.append(createSettingsField({ type: 'text', label: '工具名称' },
+        state.qbarCreateDraft.name, value => { state.qbarCreateDraft.name = value; }).field);
+      renderQbarSchemaSettings(state.qbarCreateDraft, root, '工具设置');
+      const aliases = document.createElement('div'); aliases.className = 'plugin-alias-list';
+      renderQbarToolAliases({ aliases: state.qbarCreateDraft.aliases }, aliases); root.append(aliases);
+    },
+    onAction(id, api) {
+      if (id !== 'create') return;
+      const error = validateQbarToolDraft(state.qbarCreateDraft);
+      if (error) { api.setError(error); return api.keepOpen(); }
+      state.draft.plugins.push(clone(state.qbarCreateDraft));
+       renderPlugins();
+      setStatus('未保存');
+    },
+    onClose() { state.qbarCreateDraft = null; state.qbarCreateDialog = null; }
   });
-  sectionRoot.append(sectionTitle, grid);
-  if (hintText) {
-    const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = hintText;
-    sectionRoot.append(hint);
-  }
-  editor.append(sectionRoot);
+}
+
+function renderQbarSchemaSettings(plugin, editor, title) {
+  const entries = Object.entries(pluginMeta(plugin).settingsSchema);
+  if (!entries.some(([key, field]) => !field.hidden || !Object.hasOwn(plugin.settings, key))) return;
+  const root = document.createElement('div'); root.className = 'plugin-detail-section';
+  const heading = document.createElement('strong'); heading.textContent = title;
+  const grid = document.createElement('div'); grid.className = 'grid';
+  for (const [key, field] of entries)
+    if (!field.hidden || !Object.hasOwn(plugin.settings, key)) grid.append(createSettingsField(field, plugin.settings[key],
+      value => { plugin.settings[key] = value; }).field);
+  root.append(heading, grid); editor.append(root);
 }
 
 function renderQbarToolDialog(editor) {
@@ -1355,58 +1431,15 @@ function renderQbarToolDialog(editor) {
   enabled.addEventListener('change', () => { plugin.enabled = enabled.checked; });
   enabledField.append(enabled, document.createTextNode('启用工具')); general.append(enabledField);
   editor.append(general);
-  if (plugin.definitionValid === false || plugin.settingsValid === false) {
+  if (pluginMeta(plugin).definitionValid === false || pluginMeta(plugin).settingsValid === false) {
     const warning = document.createElement('div'); warning.className = 'hint';
-    warning.textContent = plugin.definitionValid === false
+    warning.textContent = pluginMeta(plugin).definitionValid === false
       ? '此工具当前无法使用，请重新启动应用后重试。'
       : '此工具的设置无效，已暂停使用。请检查设置后重新启用。';
     editor.append(warning);
   }
 
-  const settings = plugin.settings || (plugin.settings = {});
-  if (plugin.definitionId === 'builtin.clipboard') {
-    renderQbarSchemaSettings(plugin, editor, '剪贴板历史设置',
-      '“启用工具”控制 Qbar 入口；此处控制自动记录、容量和清理策略。收藏和置顶项不参与到期清理，数据保存在安装目录 data\\clipboard-history。');
-  } else if (plugin.definitionId === 'builtin.search') {
-    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
-    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '搜索设置';
-    const grid = document.createElement('div'); grid.className = 'grid';
-    const templateField = document.createElement('label'); templateField.className = 'field wide';
-    const templateLabel = document.createElement('span'); templateLabel.textContent = '搜索网址模板';
-    const template = document.createElement('input');
-    template.value = settings.template || ''; template.placeholder = 'https://example.com/search?q={q}';
-    template.addEventListener('input', () => { settings.template = template.value; });
-    templateField.append(templateLabel, template); grid.append(templateField);
-    const encodeField = document.createElement('label'); encodeField.className = 'check';
-    const encode = document.createElement('input'); encode.type = 'checkbox'; encode.checked = settings.encodeQuery !== false;
-    encode.addEventListener('change', () => { settings.encodeQuery = encode.checked; });
-    encodeField.append(encode, document.createTextNode('编码搜索内容')); grid.append(encodeField);
-    sectionRoot.append(sectionTitle, grid); editor.append(sectionRoot);
-  } else if (plugin.definitionId === 'builtin.run') {
-    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
-    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '命令设置';
-    const grid = document.createElement('div'); grid.className = 'grid';
-    const commandField = document.createElement('label'); commandField.className = 'field wide';
-    const commandLabel = document.createElement('span'); commandLabel.textContent = '执行命令';
-    const commandInput = document.createElement('input'); commandInput.value = settings.command || '';
-    commandInput.addEventListener('input', () => { settings.command = commandInput.value; });
-    commandField.append(commandLabel, commandInput); grid.append(commandField);
-    const runAsField = document.createElement('label'); runAsField.className = 'check';
-    const runAs = document.createElement('input'); runAs.type = 'checkbox'; runAs.checked = !!settings.runAs;
-    runAs.addEventListener('change', () => { settings.runAs = runAs.checked; });
-    runAsField.append(runAs, document.createTextNode('以管理员身份运行')); grid.append(runAsField);
-    sectionRoot.append(sectionTitle, grid); editor.append(sectionRoot);
-  }
-  if (plugin.pluginId === 'builtin.everything') {
-    const sectionRoot = document.createElement('div'); sectionRoot.className = 'plugin-detail-section';
-    const sectionTitle = document.createElement('strong'); sectionTitle.textContent = '文件搜索设置';
-    const field = document.createElement('label'); field.className = 'field';
-    const label = document.createElement('span'); label.textContent = '最多结果数';
-    const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.max = '500';
-    input.value = state.qbarPluginToolSettings.esMaxResults ?? 50;
-    input.addEventListener('input', () => { state.qbarPluginToolSettings.esMaxResults = input.value; });
-    field.append(label, input); sectionRoot.append(sectionTitle, field); editor.append(sectionRoot);
-  }
+  renderQbarSchemaSettings(plugin, editor, '工具设置');
 
   const commandSection = document.createElement('div'); commandSection.className = 'plugin-detail-section';
   const commandTitle = document.createElement('strong'); commandTitle.textContent = '命令';
@@ -1422,17 +1455,46 @@ function renderQbarToolDialog(editor) {
   editor.append(commandSection);
   refreshIcons();
 }
-function saveQbarToolDialog(dialog = state.qbarPluginDialog) {
+function confirmQbarToolDialog() {
   const plugin = state.qbarPluginDraft;
-  if (!plugin || state.qbarPluginSaving || !dialog) return;
-  const payloadPlugin = clone(plugin);
-  delete payloadPlugin.toolSettings;
-  (payloadPlugin.commands || []).forEach(command => {
+  if (!plugin || !state.draft) return false;
+  const error = validateQbarToolDraft(plugin);
+  if (error) {
+    state.qbarPluginDialog?.setError(error);
+    return false;
+  }
+  const draftPlugin = clone(plugin);
+  qbarToolCommands(draftPlugin).forEach(command => {
     command.aliases = [...new Set((command.aliases || []).map(alias => String(alias || '').trim()).filter(Boolean))];
   });
-  state.qbarPluginSaving = true;
-  dialog.setBusy(true, '保存中…', 'save');
-  post({ type: 'saveQbarPlugin', plugin: payloadPlugin, toolSettings: clone(state.qbarPluginToolSettings || {}) });
+  const plugins = Array.isArray(state.draft.plugins)
+    ? state.draft.plugins : (state.draft.plugins = []);
+  const index = plugins.findIndex(item => item && qbarToolIdentity(item) === qbarToolIdentity(draftPlugin));
+  if (index < 0) return;
+  plugins[index] = draftPlugin;
+  renderPlugins();
+
+  setStatus(hasChanges() ? '未保存' : '');
+  showToast('修改已暂存，请点击右上角“保存”后生效。', 'info');
+  return true;
+}
+function validateQbarToolDraft(plugin) {
+  if (!String(plugin.name || '').trim() || String(plugin.name).trim().length > 80)
+    return '工具名称需要填写，且不能超过 80 个字符。';
+  for (const [key, field] of Object.entries(pluginMeta(plugin).settingsSchema || {})) {
+    const value = plugin.settings?.[key];
+    if (field.type === 'integer') {
+      if (!Number.isInteger(value) || value < field.min || value > field.max
+        || (value - (field.min ?? value)) % (field.step ?? 1) !== 0)
+        return '请检查“' + (field.label || '工具选项') + '”的数值范围。';
+    } else if (field.type === 'enum' && !field.values.includes(value))
+      return '请选择“' + field.label + '”。';
+    else if (field.type === 'url-template' && !String(value || '').includes('{q}'))
+      return '搜索网址需要包含 {q}。';
+    else if (field.type === 'command-line' && (!String(value || '').trim() || /[\r\n]/.test(value)))
+      return '请填写完整的单行执行命令。';
+  }
+  return '';
 }
 function renderQbarToolTable(title, group, plugins) {
   const card = document.createElement('section'); card.className = 'qbar-plugin-table-card';
@@ -1441,7 +1503,7 @@ function renderQbarToolTable(title, group, plugins) {
   if (group === 'search' || group === 'run') {
     const add = document.createElement('button'); add.type = 'button'; add.className = 'btn mini';
     add.textContent = group === 'search' ? '添加搜索' : '添加快捷命令';
-    add.addEventListener('click', () => createPlugin(group));
+    add.addEventListener('click', () => openQbarCreateDialog(group));
     head.append(add);
   }
   card.append(head);
@@ -1463,7 +1525,7 @@ function renderQbarToolTable(title, group, plugins) {
       const status = document.createElement('td'); status.className = 'tool-status' + (enabled ? '' : ' off');
       status.textContent = enabled ? '已启用' : '已停用';
       const actions = document.createElement('td');
-      if (plugin.deletable) {
+      if (pluginMeta(plugin).deletable) {
         const remove = document.createElement('button');
         remove.type = 'button'; remove.className = 'btn mini qbar-plugin-delete';
         remove.title = '删除' + qbarToolName(plugin);
@@ -1499,38 +1561,57 @@ function renderPlugins() {
 function addPairRow(sectionName, root, initialKey = '', initialValue = '', multiline = false) {
   const row = document.createElement('div');
   row.className = 'pair-row';
-  row.dataset.key = initialKey;
-  const keyInput = document.createElement('input'); keyInput.value = initialKey; keyInput.placeholder = '键';
-  const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.value = initialValue; valueInput.placeholder = '值';
+  const keyInput = document.createElement('input'); keyInput.className = 'pair-key'; keyInput.value = initialKey; keyInput.placeholder = '键';
+  const valueInput = document.createElement(multiline ? 'textarea' : 'input'); valueInput.className = 'pair-value'; valueInput.value = initialValue; valueInput.placeholder = '值';
   const remove = document.createElement('button'); remove.className = 'icon-btn'; remove.type = 'button'; remove.appendChild(createIcon('x'));
   row.append(keyInput, valueInput, remove); root.append(row); refreshIcons();
-  const updateKey = () => {
-    const oldKey = row.dataset.key;
-    const newKey = keyInput.value.trim();
-    if (oldKey && oldKey !== newKey) {
-      state.draft.sections[sectionName][oldKey] = '';
-      markDirty(sectionName, oldKey);
-    }
-    row.dataset.key = newKey;
-    if (newKey) {
-      state.draft.sections[sectionName][newKey] = valueInput.value;
-      markDirty(sectionName, newKey);
-    }
-  };
-  keyInput.addEventListener('input', updateKey);
-  valueInput.addEventListener('input', () => {
-    if (row.dataset.key) {
-      state.draft.sections[sectionName][row.dataset.key] = valueInput.value;
-      markDirty(sectionName, row.dataset.key);
-    }
-  });
+  const update = () => updatePairDraft(sectionName, root);
+  keyInput.addEventListener('input', update);
+  valueInput.addEventListener('input', update);
   remove.addEventListener('click', () => {
-    if (row.dataset.key) {
-      state.draft.sections[sectionName][row.dataset.key] = '';
-      markDirty(sectionName, row.dataset.key);
-    }
     row.remove();
+    update();
   });
+}
+function updatePairDraft(sectionName, root) {
+  if (!state.draft || isSaving()) return;
+  const values = Object.create(null);
+  $$('.pair-row', root).forEach(row => {
+    const key = $('.pair-key', row).value.trim();
+    if (key) values[key] = $('.pair-value', row).value;
+  });
+  state.draft.sections[sectionName] = values;
+
+  setStatus(hasChanges() ? '未保存' : '');
+}
+function findPairRowError(root) {
+  const seen = new Set();
+  for (const row of $$('.pair-row', root)) {
+    const keyInput = $('.pair-key', row);
+    const valueInput = $('.pair-value', row);
+    const key = keyInput.value.trim();
+    const value = valueInput.value;
+    if (!key && !value) continue;
+    let error = '';
+    let target = keyInput;
+    if (!key) error = '请填写替换的触发词。';
+    else if (!value) {
+      error = '请填写替换内容；不需要的替换请用右侧删除按钮移除。';
+      target = valueInput;
+    } else if (seen.has(key)) error = '触发词重复，请修改后再保存。';
+    if (error) return { message: error, target };
+    seen.add(key);
+  }
+  return null;
+}
+function validatePairRows(root) {
+  const error = findPairRowError(root);
+  if (error) {
+    showToast(error.message, 'warning');
+    error.target.focus();
+    return false;
+  }
+  return true;
 }
 function renderBindings() {
   const root = $('#bindingList'); root.replaceChildren();
@@ -1542,13 +1623,16 @@ function renderBindings() {
     title.textContent = 'CapsLock + ' + (binding.number === 10 ? '0' : binding.number);
     const mode = modes.get(String(binding.bindType));
     const select = document.createElement('select');
-    select.innerHTML = [...modes.entries()].map(([value, item]) =>
+    select.innerHTML = [['0', { label: '未绑定' }], ...modes.entries()].map(([value, item]) =>
       `<option value="${value}">${item.label}</option>`).join('');
-    select.value = mode ? String(binding.bindType) : '1';
+    select.value = mode ? String(binding.bindType) : '0';
     const actions = document.createElement('div'); actions.className = 'binding-actions';
     const renderActions = () => {
       actions.replaceChildren();
-      if (select.value === '3') {
+      if (select.value === '0') {
+        const hint = document.createElement('span'); hint.className = 'hint';
+        hint.textContent = '此快捷键槽位未绑定窗口。'; actions.append(hint);
+      } else if (select.value === '3') {
         const selectOpenApplication = document.createElement('button');
         selectOpenApplication.type = 'button'; selectOpenApplication.className = 'btn'; selectOpenApplication.textContent = '选择已打开应用';
         selectOpenApplication.addEventListener('click', () => post({ type: 'selectOpenApplication', number: binding.number, bindType: 3 }));
@@ -1563,11 +1647,20 @@ function renderBindings() {
         selectWindow.addEventListener('click', () => post({ type: 'selectOpenWindow', number: binding.number, bindType: Number(select.value) }));
         actions.append(selectWindow);
       }
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button'; clearButton.className = 'btn mini ghost';
+      clearButton.textContent = '清除绑定';
+      clearButton.addEventListener('click', () => clearWindowBinding(binding));
+      actions.append(clearButton);
     };
     head.append(title, select, actions); card.append(head);
     const modeHint = document.createElement('div'); modeHint.className = 'binding-mode-hint'; card.append(modeHint);
     const updateModeHint = () => { modeHint.textContent = (modes.get(select.value) || modes.get('1')).description; };
-    select.addEventListener('change', () => { updateModeHint(); renderActions(); });
+    select.addEventListener('change', () => {
+      if (select.value === '0') { clearWindowBinding(binding); return; }
+      binding.bindType = Number(select.value);
+      updateModeHint(); renderActions(); updateDirtyStatus();
+    });
     updateModeHint();
     renderActions();
     const items = document.createElement('div'); items.className = 'binding-items';
@@ -1654,6 +1747,7 @@ function createHotkeyApplicationRow(profile, root) {
   remove.textContent = '删除';
   remove.addEventListener('click', event => {
     event.stopPropagation();
+    const draft = state.draft;
     closeHotkeyApplicationDialog();
     AppDialog.confirm({
       title: '删除应用配置',
@@ -1661,11 +1755,12 @@ function createHotkeyApplicationRow(profile, root) {
       confirmText: '删除',
       tone: 'danger'
     }).then(confirmed => {
+      if (!isLoaded() || isSaving() || state.draft !== draft) return;
       if (confirmed) {
         const previousProfileId = state.hotkeyProfileId;
         state.draft.profiles = state.draft.profiles.filter(item => String(item.id) !== String(profile.id));
         if (String(state.hotkeyProfileId) === String(profile.id)) state.hotkeyProfileId = '';
-        markHotkeyProfileDirty();
+        updateDirtyStatus();
         if (String(previousProfileId || '') !== String(state.hotkeyProfileId || ''))
           renderHotkeyEditor(previousProfileId);
       }
@@ -1680,7 +1775,7 @@ function createHotkeyApplicationRow(profile, root) {
   toggle.addEventListener('click', event => {
     event.stopPropagation();
     profile.enabled = enabled ? '0' : '1';
-    markHotkeyProfileDirty();
+    updateDirtyStatus();
     renderHotkeyScope();
     renderHotkeyApplicationRows(root);
   });
@@ -1735,6 +1830,8 @@ function renderHotkeyApplicationRows(root) {
 }
 function openHotkeyApplicationDialog() {
   if (!state.draft || state.hotkeyApplicationDialog) return;
+  if (!validateCustomHotkeyRows()) return;
+  syncCustomHotkeyDraft();
   let dialog;
   dialog = AppDialog.open({
     title: '应用范围',
@@ -1758,7 +1855,6 @@ function openHotkeyApplicationDialog() {
   });
   state.hotkeyApplicationDialog = dialog;
 }
-window.openHotkeyApplicationDialog = openHotkeyApplicationDialog;
 function renderHotkeyScope() {
   const profile = hotkeyProfile();
   const button = $('#hotkeyScopeButton');
@@ -1775,11 +1871,14 @@ function renderHotkeyScope() {
   button.setAttribute('aria-label', '选择快捷键范围，当前为' + label
     + (disabled ? '，已停用' : ''));
 }
-window.hotkeyApplicationSelected = function (profile) {
+function hotkeyApplicationSelected(profile, sessionId) {
+  if (!isLoaded() || isSaving() || sessionId !== state.sessionId) return;
   if (!profile || !profile.id || !profile.exePath || !state.draft) {
     post({ type: 'hotkeyPickerTrace', stage: 'profile_callback_invalid' });
     return;
   }
+  if (!validateCustomHotkeyRows()) return;
+  syncCustomHotkeyDraft();
   const profiles = Array.isArray(state.draft.profiles) ? state.draft.profiles : [];
   const previousProfileId = state.hotkeyProfileId;
   const existing = profiles.find(item => String(item.id) === String(profile.id)
@@ -1788,7 +1887,7 @@ window.hotkeyApplicationSelected = function (profile) {
   else profiles.push(clone(profile));
   state.draft.profiles = profiles;
   state.hotkeyProfileId = String(profile.id);
-  if (!existing) markHotkeyProfileDirty();
+  if (!existing) updateDirtyStatus();
   renderHotkeyEditor(previousProfileId); closeHotkeyApplicationDialog();
   post({ type: 'hotkeyPickerTrace', stage: 'profile_applied' });
 };
@@ -1799,6 +1898,7 @@ function renderHotkeyEditor(previousProfileId = state.hotkeyProfileId) {
   renderShortcuts(sameScope);
 }
 function renderAll(previousProfileId = state.hotkeyProfileId) {
+  renderSettingsForms();
   refreshStaticControls();
   renderHotkeyEditor(previousProfileId);
   renderPairs('TabHotString', 'tabList', true);
@@ -1815,346 +1915,217 @@ function setPage(page, syncHost = true) {
   if (syncHost) post({ type: 'setSettingsPage', page });
 }
 function showToast(message, type = 'info') { AppToast.show(message, type); }
+function resolveTestSecret(value) {
+  return value.op === 'set' ? value.value : value.op === 'clear' ? '' : undefined;
+}
 function buildLlmTest() {
-  return Object.assign({ type: 'testSettings', target: 'llm' }, section('LLM'));
+  const values = clone(section('LLM'));
+  const key = resolveTestSecret(values.apiKey);
+  if (key === undefined) delete values.apiKey; else values.apiKey = key;
+  return { type: 'testSettings', target: 'llm', ...values };
 }
 function buildTranslationTest(target) {
-  const shared = section('TTranslate'), youdao = section('TYoudao'), volcengine = section('TVolcengine');
-  if (target === 'youdao') return {
-    type: 'testSettings', target,
-    appId: youdao.appPaidID || '', appKey: youdao.appPaidKey || '',
-    targetLanguage: shared.targetLanguage || ''
+  const payload = { type: 'testSettings', target, targetLanguage: section('TTranslate').targetLanguage };
+  const fields = target === 'youdao'
+    ? [['TYoudao', 'appPaidID', 'appId'], ['TYoudao', 'appPaidKey', 'appKey']]
+    : [['TVolcengine', 'accessKey', 'volcAccessKey'], ['TVolcengine', 'secretKey', 'volcSecretKey']];
+  for (const [sectionName, key, name] of fields) {
+    const value = resolveTestSecret(section(sectionName)[key]);
+    if (value !== undefined) payload[name] = value;
+  }
+  if (target === 'volcengine') payload.volcRegion = section('TVolcengine').region;
+  return payload;
+}
+
+function applySettingsSnapshot(snapshot, committed = false) {
+  if (!snapshot?.sessionId || !snapshot.config || !snapshot.schema
+    || !Array.isArray(snapshot.config.profiles) || !Array.isArray(snapshot.config.plugins)
+    || !Array.isArray(snapshot.config.bindings) || !Number.isSafeInteger(snapshot.revision))
+    throw new Error('Invalid settings snapshot');
+  if (!committed && isSaving()) return false;
+  if (!committed && state.sessionId === snapshot.sessionId && isLoaded()) {
+    setPage(snapshot.page || state.page, false);
+    if (snapshot.toast) showToast(snapshot.toast);
+    return true;
+  }
+  if (!committed && hasChanges()) return false;
+  if (!setTranslationLanguageCatalog(snapshot.languageCatalog))
+    throw new Error('Invalid language catalog');
+  clearPendingRequests();
+  stopShortcutRecording(false);
+  closeWindowPickerDialog();
+  AppDialog.dismiss();
+  const selectedProfileId = state.hotkeyProfileId;
+  state.schema = snapshot.schema;
+  state.sessionId = snapshot.sessionId;
+  state.revision = snapshot.revision;
+  state.base = clone(snapshot.config);
+  state.draft = clone(snapshot.config);
+  state.customHotkeyActions = normalizeCustomHotkeyActions(snapshot.customHotkeyActions);
+  state.bindingModes = snapshot.bindingModes;
+  state.hotkeyProfileId = state.draft.profiles.some(profile => profile.id === selectedProfileId)
+    ? selectedProfileId : '';
+  document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
+  $('.side-foot').textContent = 'v' + snapshot.appVersion;
+  renderAll(selectedProfileId);
+  setSettingsLoaded(true);
+  setPage(snapshot.page || state.page || 'general', false);
+  if (!committed) setStatus('');
+  if (snapshot.toast) showToast(snapshot.toast);
+  return true;
+}
+function editableDocument(document) {
+  return { sections: clone(document.sections),
+    profiles: [...document.profiles].sort((a, b) => a.id.localeCompare(b.id)),
+    plugins: editablePluginSnapshot(document.plugins),
+    bindings: editableBindingSnapshot(document.bindings) };
+}
+function hasChanges() {
+  return !!state.base && !!state.draft && (
+    stableJson(editableDocument(state.draft)) !== stableJson(editableDocument(state.base))
+    || (isLoaded() && (!!findPairRowError($('#tabList')) || !!findCustomHotkeyError())));
+}
+
+function editablePluginSnapshot(plugins) {
+  const aliases = values => [...new Set(values.map(alias => String(alias).trim().replace(/\s+/g, ' ').toLowerCase()).filter(Boolean))].sort();
+  return plugins.map(plugin => plugin.draftId
+    ? { draftId: plugin.draftId, kind: plugin.kind, name: plugin.name.trim(),
+        enabled: plugin.enabled, settings: clone(plugin.settings), aliases: aliases(plugin.aliases) }
+    : { pluginId: plugin.pluginId, name: plugin.name.trim(), enabled: plugin.enabled,
+        settings: clone(plugin.settings), commands: plugin.commands.map(command => ({
+          commandId: command.commandId, aliases: aliases(command.aliases)
+        })).sort((a, b) => a.commandId.localeCompare(b.commandId)) }
+  ).sort((a, b) => (a.pluginId || a.draftId).localeCompare(b.pluginId || b.draftId));
+}
+
+function editableBindingSnapshot(bindings) {
+  return bindings.map(binding => ({ number: Number(binding.number), bindType: Number(binding.bindType),
+    applicationPath: binding.applicationPath || '', selectionToken: binding.selectionToken || '',
+    items: (binding.items || []).map(item => ({ path: item.path || '', exe: item.exe || '',
+      windowClass: item.windowClass || '' })) })).sort((a, b) => a.number - b.number);
+}
+
+function saveDraft() {
+  if (!isLoaded() || !state.draft || isSaving()) return;
+  if (!validatePairRows($('#tabList')) || !validateCustomHotkeyRows()) return;
+  updatePairDraft('TabHotString', $('#tabList'));
+  syncCustomHotkeyDraft();
+  stopShortcutRecording();
+  if (!hasChanges()) { setStatus('没有需要保存的变化'); return; }
+  $$('.secret-control input').forEach(cancelSecretRequest);
+  setSettingsSaving(true);
+  if (!request({ type: 'saveSettings', page: state.page,
+    revision: state.revision, draft: editableDocument(state.draft) }, 'saved',
+    result => settingsSaved(result.ok, result.text, result.snapshot, result.timedOut))) {
+    setSettingsSaving(false);
+    setStatus('无法发送保存请求，修改仍保留。请重试。', true);
+  }
+
+}
+
+function receiveBindingCandidate(candidate) {
+  if (!candidate || !state.draft || isSaving() || candidate.sessionId !== state.sessionId) return;
+  const rows = Array.isArray(state.draft.bindings) ? state.draft.bindings : [];
+  const index = rows.findIndex(item => Number(item.number) === Number(candidate.number));
+  if (index < 0) return;
+  rows[index] = editableBindingSnapshot([candidate])[0];
+
+  renderBindings();
+  setStatus('窗口选择已暂存，请点击右上角“保存”后生效。');
+};
+
+function clearWindowBinding(binding) {
+  if (!binding || isSaving()) return;
+  const index = (state.draft.bindings || []).findIndex(item => Number(item.number) === Number(binding.number));
+  if (index < 0) return;
+  post({ type: 'clearWindowBindingCandidate', number: binding.number });
+  state.draft.bindings[index] = {
+    number: binding.number, bindType: 0, applicationPath: '', items: []
   };
-  return {
-    type: 'testSettings', target,
-    volcAccessKey: volcengine.accessKey || '', volcSecretKey: volcengine.secretKey || '',
-    targetLanguage: shared.targetLanguage || '', volcRegion: volcengine.region || ''
-  };
+
+  renderBindings();
+  updateDirtyStatus();
+}
+function reportSettingsPageError(error, phase) {
+  const location = String(error?.stack || '').match(/settings-page\.js:(\d+):(\d+)/);
+  post({ type: 'settingsPageError', phase, errorType: String(error?.name || 'Error'),
+    line: location ? Number(location[1]) : 0, column: location ? Number(location[2]) : 0 });
 }
 function receiveSnapshot(snapshot) {
-  if (state.dirty && state.draft) {
-    setStatus('外部配置已变化；请保存当前修改或取消后重新载入', true);
-    return;
+  try { return applySettingsSnapshot(snapshot); }
+  catch (error) {
+    reportSettingsPageError(error, 'load');
+    settingsLoadFailed();
+    return false;
   }
-  state.pendingSaveSections.clear();
-  if (!setTranslationLanguageCatalog(snapshot && snapshot.languageCatalog)) {
+};
+function settingsSaved(ok, text, snapshot, timedOut) {
+  if (!isSaving()) return;
+  if (timedOut) {
     setSettingsLoaded(false);
-    setStatus('语言选项加载失败，请重新打开设置。', true);
+    setStatus('未收到保存结果，请重新加载应用后确认设置。', true);
     return;
   }
-  state.customHotkeyActions = normalizeCustomHotkeyActions(
-    snapshot && snapshot.customHotkeyActions);
-  setSettingsLoaded(true);
-  const selectedProfileId = state.hotkeyProfileId;
-  closeHotkeyApplicationDialog();
-  const sections = clone(snapshot.sections);
-  sections.Keys = clone(snapshot.keys || sections.Keys);
-  if (!sections.TTranslate) sections.TTranslate = {};
-  sections.TTranslate.mode = normalizeTranslationModeValue(sections.TTranslate.mode);
-  sections.TTranslate.languageA = normalizePairLanguageValue(sections.TTranslate.languageA, 'zh-CN');
-  sections.TTranslate.languageB = normalizePairLanguageValue(sections.TTranslate.languageB, 'en');
-  sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
-    sections.TTranslate.targetLanguage);
-  state.baseSections = sections;
-  state.baseProfiles = clone(snapshot.profiles || []);
-  state.basePlugins = clone(snapshot.plugins || []);
-  state.baseProfileStamp = String(snapshot.profileStamp || '');
-  state.bindingModes = clone(snapshot.bindingModes || []);
-  const profiles = clone(snapshot.profiles || []);
-  state.hotkeyProfileId = profiles.some(profile => String(profile.id) === String(selectedProfileId))
-    ? selectedProfileId : '';
-  state.profilesDirty = false;
-  state.draft = {
-    sections: clone(sections), bindings: clone(snapshot.bindings),
-    plugins: clone(snapshot.plugins || []), profiles
-  };
-  state.dirtyFields.clear();
-  state.pluginsDirty = false;
-  document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
-  updateLanguageSelectLabels();
-  renderAll(selectedProfileId);
-  setPage(snapshot.page || state.page || 'general', false);
-  state.dirty = false; setStatus('');
-  if (snapshot.toast) showToast(snapshot.toast);
+  try {
+    if (ok && (snapshot?.sessionId !== state.sessionId || !applySettingsSnapshot(snapshot, true)))
+      throw new Error('Incomplete save receipt');
+    setStatus(text || (ok ? '设置已保存。' : '保存失败，修改仍保留。'), !ok);
+  } catch (error) {
+    reportSettingsPageError(error, 'save-receipt');
+    if (ok) state.base = clone(state.draft);
+    setSettingsLoaded(false);
+    setStatus(ok ? '设置已保存，请重新打开设置以载入最新内容。'
+      : '无法加载保存结果，请重新打开设置。', true);
+  } finally {
+    setSettingsSaving(false);
+  }
+};
+function settingsLoadFailed() {
+  setSettingsLoaded(false);
+  setStatus('无法加载设置，请重新打开设置。若仍失败，请查看错误日志。', true);
+};
+function settingsPickerFailed(sessionId) {
+  if (sessionId === state.sessionId && isLoaded() && !isSaving())
+    showToast('所选窗口已关闭或发生变化，请重新选择。', 'error');
+};
+
+function settingsTestResult(ok, text, sessionId) {
+  if (!isLoaded() || isSaving() || sessionId !== state.sessionId) return;
+  setStatus(hasChanges() ? '未保存' : '');
+  showToast(ok ? '连接正常。' : (text || '连接检查失败，请检查配置。'), ok ? 'success' : 'error');
 }
 
-function applySettingsSaveReceipt(receipt, submittedSections = undefined) {
-  if (!receipt || typeof receipt !== 'object' || !state.draft) return;
-  let baselineChanged = false;
-  let profilesChanged = false;
-  let pluginsChanged = false;
-  let tabHotStringsChanged = false;
-  let hotkeyKeysChanged = false;
-  let customHotkeysChanged = false;
-  let translateModeChanged = false;
-  const controlsToRefresh = new Set();
-  if (Array.isArray(receipt.bindings)) {
-    const bindings = clone(receipt.bindings);
-    const bindingModes = clone(receipt.bindingModes || []);
-    const bindingsChanged = JSON.stringify(state.draft.bindings || []) !== JSON.stringify(bindings)
-      || JSON.stringify(state.bindingModes || []) !== JSON.stringify(bindingModes);
-    state.draft.bindings = bindings;
-    state.bindingModes = bindingModes;
-    if (bindingsChanged) renderBindings();
-  }
-  if (receipt.uiLanguage) {
-    document.documentElement.lang = receipt.uiLanguage === 'en' ? 'en' : 'zh-CN';
-    updateLanguageSelectLabels();
-  }
-  if (receipt.sectionsCommitted && receipt.sections && typeof receipt.sections === 'object') {
-    const oldBase = state.baseSections || {};
-    const sections = clone(receipt.sections);
-    sections.Keys = clone(receipt.keys || sections.Keys || {});
-    if (sections.TTranslate) {
-      sections.TTranslate.mode = normalizeTranslationModeValue(sections.TTranslate.mode);
-      sections.TTranslate.languageA = normalizePairLanguageValue(sections.TTranslate.languageA, 'zh-CN');
-      sections.TTranslate.languageB = normalizePairLanguageValue(sections.TTranslate.languageB, 'en');
-      sections.TTranslate.targetLanguage = normalizeTargetLanguageValue(
-        sections.TTranslate.targetLanguage);
-    }
-    Object.keys(sections).forEach(sectionName => {
-      const previous = oldBase[sectionName] || {};
-      const current = state.draft.sections[sectionName]
-        || (state.draft.sections[sectionName] = {});
-      const committed = sections[sectionName] || {};
-      const keys = new Set([...Object.keys(previous), ...Object.keys(committed)]);
-      keys.forEach(key => {
-        const oldValue = String(previous[key] ?? '');
-        const committedValue = String(committed[key] ?? '');
-        if (oldValue !== committedValue) {
-          if (sectionName === 'TabHotString') tabHotStringsChanged = true;
-          else if (sectionName === 'Keys') hotkeyKeysChanged = true;
-          else if (sectionName === 'CustomHotkey') customHotkeysChanged = true;
-          else if (sectionName === 'TTranslate' && key === 'mode') translateModeChanged = true;
-        }
-        const submitted = submittedSections && submittedSections[sectionName];
-        if (submitted && Object.hasOwn(submitted, key)) {
-          if (String(current[key] ?? '') !== String(submitted[key] ?? '')) return;
-        } else if (String(current[key] ?? '') !== oldValue) return;
-        if (Object.hasOwn(committed, key)) current[key] = committed[key];
-        else delete current[key];
-        controlsToRefresh.add(sectionName + '\u0000' + key);
-      });
-    });
-    state.baseSections = sections;
-    baselineChanged = true;
-  }
-  if (receipt.profilesCommitted && Array.isArray(receipt.profiles)) {
-    state.baseProfiles = clone(receipt.profiles);
-    state.baseProfileStamp = String(receipt.profileStamp || '');
-    baselineChanged = true;
-    profilesChanged = true;
-  }
-  if (receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
-    state.basePlugins = clone(receipt.plugins);
-    baselineChanged = true;
-    pluginsChanged = true;
-  }
-  if (receipt.toolSettingsCommitted && receipt.toolSettings) {
-    let toolSettingsChanged = false;
-    [state.draft.plugins, state.basePlugins].forEach(plugins => {
-      const plugin = (plugins || []).find(item => item && item.pluginId === 'builtin.everything');
-      if (!plugin) return;
-      if (JSON.stringify(plugin.toolSettings || {}) !== JSON.stringify(receipt.toolSettings))
-        toolSettingsChanged = true;
-      plugin.toolSettings = clone(receipt.toolSettings);
-    });
-    baselineChanged = true;
-    pluginsChanged = pluginsChanged || toolSettingsChanged;
-  }
-  if (baselineChanged) {
-    recomputeDirtyState();
-    if (controlsToRefresh.size) {
-      $$('[data-section][data-key]').forEach(node => {
-        if (controlsToRefresh.has(node.dataset.section + '\u0000' + node.dataset.key))
-          writeControl(node);
-      });
-    }
-    if (translateModeChanged) updateTranslateModeFields();
-    if (tabHotStringsChanged) renderPairs('TabHotString', 'tabList', true);
-    if (profilesChanged) renderHotkeyEditor();
-    else if (hotkeyKeysChanged) renderShortcuts();
-    if (customHotkeysChanged && !profilesChanged) renderCustomHotkeys();
-    if (pluginsChanged) renderPlugins();
-  }
-}
-
-function recomputeDirtyState() {
-  const changes = buildChangedSections();
-  state.dirtyFields.clear();
-  Object.entries(changes).forEach(([sectionName, values]) => {
-    Object.keys(values).forEach(key => state.dirtyFields.add(sectionName + '\u0000' + key));
-  });
-  state.profilesDirty = JSON.stringify((state.draft && state.draft.profiles) || [])
-    !== JSON.stringify(state.baseProfiles || []);
-  state.pluginsDirty = JSON.stringify((state.draft && state.draft.plugins) || [])
-    !== JSON.stringify(state.basePlugins || []);
-  state.dirty = state.dirtyFields.size > 0 || state.profilesDirty || state.pluginsDirty;
-  return state.dirty;
-}
-
-function buildChangedSections() {
-  const changes = {};
-  const baseSections = state.baseSections || {};
-  const draftSections = (state.draft && state.draft.sections) || {};
-  const names = new Set([...Object.keys(baseSections), ...Object.keys(draftSections)]);
-  for (const sectionName of names) {
-    const before = baseSections[sectionName] || {};
-    const after = draftSections[sectionName] || {};
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    for (const key of keys) {
-      const oldValue = String(before[key] ?? '');
-      const newValue = String(after[key] ?? '');
-      if (oldValue === newValue) continue;
-      if (!changes[sectionName]) changes[sectionName] = {};
-      changes[sectionName][key] = newValue;
-    }
-  }
-  return changes;
-}
-function buildPluginPayload() {
-  const plugins = clone((state.draft && state.draft.plugins) || []);
-  plugins.forEach(plugin => (plugin.commands || []).forEach(command => {
-    if (!Array.isArray(command.aliases)) return;
-    command.aliases = [...new Set(command.aliases.map(alias => String(alias || '').trim()).filter(Boolean))];
-  }));
-  return plugins;
-}
-function saveDraft() {
-  if (!state.draft) return;
-  const changes = buildChangedSections();
-  const hasSectionChanges = Object.keys(changes).some(name => Object.keys(changes[name]).length);
-  if (!hasSectionChanges && !state.pluginsDirty && !state.profilesDirty) {
-    setStatus('没有需要保存的变化');
-    state.dirty = false;
-    state.dirtyFields.clear();
-    return;
-  }
-  setStatus('保存中…');
-  const saveId = ++state.saveSequence;
-  state.pendingSaveSections.set(saveId, clone(changes));
-  while (state.pendingSaveSections.size > 8)
-    state.pendingSaveSections.delete(state.pendingSaveSections.keys().next().value);
-  const payload = {
-    type: 'saveSettings', page: state.page, sections: changes, saveId,
-    base: clone(state.baseSections || {}),
-    profiles: clone((state.draft && state.draft.profiles) || []),
-    profilesDirty: state.profilesDirty,
-    baseProfileStamp: state.baseProfileStamp
-  };
-  if (state.pluginsDirty) payload.plugins = buildPluginPayload();
-  post(payload);
-}
-window.receiveSnapshot = receiveSnapshot;
-window.settingsSaved = function (ok, text, receipt, saveId) {
-  const parsedSaveId = Number(saveId);
-  const hasSaveId = Number.isSafeInteger(parsedSaveId) && parsedSaveId > 0;
-  const hasSubmittedSnapshot = hasSaveId && state.pendingSaveSections.has(parsedSaveId);
-  const submittedSections = hasSaveId
-    ? state.pendingSaveSections.get(parsedSaveId) : undefined;
-  if (hasSaveId) state.pendingSaveSections.delete(parsedSaveId);
-  if (receipt && hasSaveId && hasSubmittedSnapshot
-    && parsedSaveId > state.latestAppliedSaveId) {
-    state.latestAppliedSaveId = parsedSaveId;
-    applySettingsSaveReceipt(receipt, submittedSections);
-  }
-  const message = text || (ok ? '已保存' : '保存失败');
-  setStatus(ok && state.dirty ? message + '；保存期间的新修改仍未保存' : message, !ok);
-};
-window.qbarPluginSaved = function (ok, text, receipt) {
-  if (receipt) applySettingsSaveReceipt(receipt);
-  if (ok) {
-    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)
-      && state.qbarPluginDraft) {
-      const saved = receipt.plugins.find(plugin =>
-        plugin && plugin.pluginId === state.qbarPluginDraft.pluginId);
-      if (saved) state.qbarPluginDraft = clone(saved);
-    }
-    applySavedQbarPluginToDraft();
-    closeQbarToolDialog();
-    showToast(text || '工具设置已保存。', 'success');
-    return;
-  }
-  state.qbarPluginSaving = false;
-  if (state.qbarPluginDialog) state.qbarPluginDialog.setBusy(false);
-  showToast(text || '工具设置保存失败。', 'error');
-};
-window.qbarPluginCreated = function (ok, text, receipt) {
-  if (receipt) applySettingsSaveReceipt(receipt);
-  if (ok) {
-    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
-      state.draft.plugins = clone(receipt.plugins);
-      state.basePlugins = clone(receipt.plugins);
-      recomputeDirtyState();
-      renderPlugins();
-    }
-    closeQbarCreateDialog();
-    showToast(text || '工具已添加。', 'success');
-    return;
-  }
-  state.qbarCreateSaving = false;
-  if (state.qbarCreateDialog) state.qbarCreateDialog.setBusy(false);
-  qbarCreateSetError(text || '工具添加失败。');
-};
-window.qbarPluginDeleted = function (ok, text, pluginId, receipt) {
-  if (receipt) applySettingsSaveReceipt(receipt);
-  if (ok) {
-    if (receipt && receipt.pluginsCommitted && Array.isArray(receipt.plugins)) {
-      state.draft.plugins = clone(receipt.plugins);
-      state.basePlugins = clone(receipt.plugins);
-    } else {
-      if (state.draft && Array.isArray(state.draft.plugins))
-        state.draft.plugins = state.draft.plugins.filter(plugin => plugin.pluginId !== pluginId);
-      if (Array.isArray(state.basePlugins))
-        state.basePlugins = state.basePlugins.filter(plugin => plugin.pluginId !== pluginId);
-    }
-    recomputeDirtyState();
-    renderPlugins();
-    if (state.qbarDeleteDialog) state.qbarDeleteDialog.close();
-    showToast(text || '工具已删除。', 'success');
-    return;
-  }
-  state.qbarDeleteSaving = false;
-  if (state.qbarDeleteDialog) {
-    state.qbarDeleteDialog.setBusy(false);
-    state.qbarDeleteDialog.setError(text || '删除工具失败。');
-  }
-};
-window.settingsTestResult = function (ok, text) {
-  setStatus('');
-  AppDialog.alert({
-    title: ok ? '测试正常' : '测试失败',
-    message: ok ? '连接正常' : (text || '未知错误')
-  });
-};
 function requestSettingsExit(action) {
-  if (!state.dirty) {
-    post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
-    return;
-  }
-  AppDialog.confirm({
-    title: '未保存的修改',
-    message: '当前有未保存的修改，确定放弃吗？',
-    confirmText: '放弃更改',
-    tone: 'danger'
-  }).then(ok => {
-    if (!ok) return;
-    state.dirty = false;
-    post(action === 'close' ? { type: 'hide' } : { type: 'getSettings' });
-  });
+  if (isSaving()) return;
+  const discard = () => {
+    setEditorStatus('loading');
+    stopShortcutRecording();
+    closeWindowPickerDialog();
+    AppDialog.dismiss();
+    state.draft = state.base ? clone(state.base) : null;
+    lockDisplayedSecrets();
+    post({ type: 'discardSettingsDraft' });
+    if (action === 'close') {
+      post({ type: 'hide' });
+      state.sessionId = '';
+    } else {
+      setSettingsLoaded(false);
+      post({ type: 'getSettings' });
+    }
+  };
+  if (!hasChanges()) { discard(); return; }
+  AppDialog.confirm({ title: '未保存的修改', message: '当前页面的修改将被放弃，确定继续吗？',
+    confirmText: '放弃更改', tone: 'danger' }).then(ok => { if (ok) discard(); });
 }
-window.requestCloseSettings = () => requestSettingsExit('close');
 $('#nav').addEventListener('click', event => { const button = event.target.closest('button[data-page]'); if (button) setPage(button.dataset.page); });
 $('#saveBtn').addEventListener('click', saveDraft);
 $('#cancelBtn').addEventListener('click', () => requestSettingsExit('discard'));
-$('#testLlm').addEventListener('click', () => { setStatus('测试中…'); post(buildLlmTest()); });
-$('#openLlmSettings').addEventListener('click', () => setPage('llm'));
-$('#openLlmSettingsFromTranslate').addEventListener('click', () => setPage('llm'));
-$('#testYoudao').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('youdao')); });
-$('#testVolcengine').addEventListener('click', () => { setStatus('测试中…'); post(buildTranslationTest('volcengine')); });
-function createPlugin(kind) {
-  openQbarCreateDialog(kind);
-}
+window.addEventListener('keydown', event => {
+  if (!isSaving() && isLoaded()) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
+
 $('#hotkeyScopeButton').addEventListener('click', openHotkeyApplicationDialog);
 $('#hotkeyOverridesOnly').addEventListener('click', () => {
   if (!hotkeyProfile()) return;
@@ -2172,6 +2143,47 @@ $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const rootId = 'tabList';
   addPairRow(sectionName, $('#' + rootId), '', '', sectionName === 'TabHotString');
 }));
-setSettingsLoaded(false);
-bindStaticControls();
+
+const messageHandlers = {
+  snapshot: receiveSnapshot,
+  windowPicker: receiveWindowPicker,
+  closeWindowPicker: closeWindowPickerDialog,
+  applicationSelected: payload => hotkeyApplicationSelected(payload.profile, payload.sessionId),
+  bindingCandidate: receiveBindingCandidate, pickerFailed: payload => settingsPickerFailed(payload.sessionId),
+  shortcutCapture: receiveShortcutCapture, shortcutCaptureFailed,
+  testResult: payload => settingsTestResult(payload.ok, payload.text, payload.sessionId),
+  loadFailed: settingsLoadFailed, requestClose: () => requestSettingsExit('close'),
+  openApplicationDialog: openHotkeyApplicationDialog
+};
+chrome.webview.addEventListener('message', event => {
+  const message = event.data;
+  if (!message || typeof message !== 'object') return;
+  const pending = pendingRequests.get(Number(message.payload?.requestId));
+  try {
+    if (pending) {
+      if (message.type !== pending.responseType || message.payload.sessionId !== pending.sessionId
+        || state.sessionId !== pending.sessionId) return;
+      cancelRequest(message.payload.requestId);
+      pending.onReply(message.payload);
+    } else if (Object.hasOwn(messageHandlers, message.type)) {
+      messageHandlers[message.type](message.payload);
+    }
+  } catch (error) {
+    reportSettingsPageError(error, message.type);
+    if (isSaving()) { setSettingsLoaded(false); setStatus('无法载入保存结果，请重新打开设置。', true); }
+  }
+});
+
+setEditorStatus('loading');
+document.addEventListener('click', event => {
+  const action = event.target.closest('[data-settings-action]')?.dataset.settingsAction;
+  if (!action || !isLoaded() || isSaving()) return;
+  if (action === 'openLlm') { setPage('llm'); return; }
+  setStatus('测试中…');
+  if (!post(action === 'testLlm' ? buildLlmTest()
+    : buildTranslationTest(action === 'testYoudao' ? 'youdao' : 'volcengine')))
+    setStatus('无法发送连接检查请求，请重试。', true);
+});
 post({ type: 'getSettings' });
+
+})();

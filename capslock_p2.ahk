@@ -35,6 +35,7 @@ A_HotkeyInterval := 2000
 #Include lib\shared\llm.ahk
 #Include lib\features\translate\llmTranslate.ahk
 #Include lib\features\settings.ahk
+#Include lib\features\settings\settings_editor.ahk
 #Include lib\features\settings\settings_capture.ahk
 #Include lib\features\settings\settings_picker.ahk
 #Include lib\features\translate\youdaoTranslate.ahk
@@ -66,6 +67,8 @@ A_HotkeyInterval := 2000
 #Include lib\input\keys.ahk
 #Include lib\input\keymap.ahk
 #Include lib\input\customHotkeys.ahk
+#Include lib\app\store.ahk
+#Include lib\app\settings_store.ahk
 #Include *i userAHK\main.ahk
 
 Persistent()

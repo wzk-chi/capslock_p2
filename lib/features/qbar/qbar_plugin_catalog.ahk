@@ -32,7 +32,9 @@ QbarPluginCatalogDefinitions() {
             "icon", "search",
             "trustLevel", "trusted-inprocess",
             "capabilities", ["panel.everything"],
-            "settingsSchema", Map(),
+            "settingsSchema", Map(
+                "esMaxResults", Map("type", "integer", "label", "最多结果数",
+                    "default", 50, "min", 1, "max", 500, "step", 1)),
             "commands", [Map(
                 "id", "search",
                 "title", "文件搜索",
@@ -167,8 +169,9 @@ QbarPluginCatalogDefinitions() {
             "trustLevel", "host-declarative",
             "capabilities", ["browser.open"],
             "settingsSchema", Map(
-                "template", Map("type", "url-template", "required", true),
-                "encodeQuery", Map("type", "boolean", "default", true)),
+                "template", Map("type", "url-template", "label", "搜索网址模板", "wide", true,
+                    "hint", "使用 {q} 代表搜索内容。", "required", true),
+                "encodeQuery", Map("type", "boolean", "label", "编码搜索内容", "default", true)),
             "commands", [Map(
                 "id", "execute",
                 "title", "网址搜索",
@@ -186,9 +189,10 @@ QbarPluginCatalogDefinitions() {
             "trustLevel", "host-declarative",
             "capabilities", ["process.start"],
             "settingsSchema", Map(
-                "command", Map("type", "command-line", "required", true),
-                "runAs", Map("type", "boolean", "default", false),
-                "argumentMode", Map("type", "enum", "values", ["append"], "default", "append")),
+                "command", Map("type", "command-line", "label", "执行命令或程序路径", "wide", true, "required", true),
+                "runAs", Map("type", "boolean", "label", "以管理员身份运行", "default", false),
+                "argumentMode", Map("type", "enum", "label", "参数处理", "hidden", true,
+                    "values", ["append"], "labels", Map("append", "追加输入内容"), "default", "append")),
             "commands", [Map(
                 "id", "execute",
                 "title", "快捷命令",

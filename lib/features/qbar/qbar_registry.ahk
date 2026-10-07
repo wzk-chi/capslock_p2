@@ -9,7 +9,7 @@ global QbarRuntimeRegistry := 0
 global QbarRuntimeGeneration := 0
 global QbarRegistryError := ""
 
-QbarRegistryBuild(&next) {
+QbarRegistryBuild(&next, includeUsage := true) {
     global QbarRuntimeGeneration, QbarRegistryError, QbarStoreError, QbarStoreReady
     QbarRegistryError := ""
     next := 0
@@ -20,7 +20,8 @@ QbarRegistryBuild(&next) {
             throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 注册表失败")
         if !QbarStoreLoadPluginSettings(&settingsByPlugin, &invalidPluginSettings)
             throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 插件设置失败")
-        if !QbarStoreLoadUsageRows(&usageRows)
+        usageRows := []
+        if includeUsage && !QbarStoreLoadUsageRows(&usageRows)
             throw Error(QbarStoreError != "" ? QbarStoreError : "读取 Qbar 使用记录失败")
         DebugLog("Qbar registry source rows=" . rows.Length)
         candidate := Map(
@@ -363,19 +364,18 @@ QbarRegistryHasAlias(alias) {
         && QbarRuntimeRegistry["byAlias"].Has(normalized)
 }
 
-QbarRegistryPluginSnapshot() {
+QbarRegistryPluginSnapshot(registry := 0) {
     global QbarRuntimeRegistry
+    if !IsObject(registry)
+        registry := QbarRuntimeRegistry
     plugins := Map()
-    if !IsObject(QbarRuntimeRegistry)
+    if !IsObject(registry)
         return []
-    for commandId, command in QbarRuntimeRegistry["byCommandId"] {
+    for commandId, command in registry["byCommandId"] {
         if command["pluginRetired"] || command["commandRetired"]
             continue
         pluginId := command["pluginId"]
         if !plugins.Has(pluginId) {
-            toolSettings := Map()
-            if pluginId = "builtin.everything"
-                toolSettings["esMaxResults"] := SettingInteger("Qbar", "esMaxResults", 50, 1, 500)
             plugins[pluginId] := Map(
                 "pluginId", pluginId,
                 "definitionId", command["definitionId"],
@@ -383,21 +383,19 @@ QbarRegistryPluginSnapshot() {
                 "name", command["displayName"],
                 "deletable", (command["source"] != "builtin"
                     || command["definitionId"] = "builtin.search"
-                    || command["definitionId"] = "builtin.run"),
+                    || command["definitionId"] = "builtin.run") ? JSON.true : JSON.false,
                 "settings", command["settings"],
-                "definitionValid", command["definitionValid"],
-                "settingsValid", command["settingsValid"],
+                "definitionValid", command["definitionValid"] ? JSON.true : JSON.false,
+                "settingsValid", command["settingsValid"] ? JSON.true : JSON.false,
                 "settingsSchema", command["settingsSchema"],
-                "toolSettings", toolSettings,
-                "enabled", command["pluginEnabled"] && command["definitionValid"]
-                    && command["settingsValid"],
+                "enabled", command["pluginEnabled"] ? JSON.true : JSON.false,
                 "commands", [])
         }
-        usage := QbarRegistryUsage(command["usageKey"])
+        usage := registry["usage"].Get(command["usageKey"], Map("score", 0, "useCount", 0))
         conflictAliases := []
         for alias in command["aliases"] {
-            if QbarRuntimeRegistry["byAlias"].Has(alias)
-                && QbarRuntimeRegistry["byAlias"][alias].Length > 1
+            if registry["byAlias"].Has(alias)
+                && registry["byAlias"][alias].Length > 1
                 conflictAliases.Push(alias)
         }
         editableAliases := []
@@ -407,7 +405,7 @@ QbarRegistryPluginSnapshot() {
         plugins[pluginId]["commands"].Push(Map(
             "commandId", commandId,
             "title", command["title"],
-            "enabled", command["commandEnabled"],
+            "enabled", command["commandEnabled"] ? JSON.true : JSON.false,
             "aliases", editableAliases,
             "conflictAliases", conflictAliases,
             "usageScore", usage["score"],
@@ -417,6 +415,16 @@ QbarRegistryPluginSnapshot() {
     for pluginId, plugin in plugins
         result.Push(plugin)
     return result
+}
+
+QbarRegistryPluginSettings(pluginId) {
+    global QbarRuntimeRegistry
+    if !IsObject(QbarRuntimeRegistry) || !QbarRuntimeRegistry.Has("byCommandId")
+        return 0
+    for commandId, command in QbarRuntimeRegistry["byCommandId"]
+        if command["pluginId"] = pluginId && IsObject(command["settings"])
+            return command["settings"]
+    return 0
 }
 
 QbarRegistryUserItems() {

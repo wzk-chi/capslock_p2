@@ -8,43 +8,52 @@ global ClipboardHistoryDb := 0
 global ClipboardHistoryDbReady := false
 global ClipboardHistoryStoreError := ""
 global ClipboardHistoryStoreVersion := 5
-global ClipboardHistoryStoreRoot := A_ScriptDir . "\data\clipboard-history"
+global ClipboardHistoryStoreRoot := A_ScriptDir . "\data"
 global ClipboardHistoryStoreMaxItems := 500
 global ClipboardHistoryStoreMaxBytes := 512 * 1024 * 1024
 global ClipboardHistoryStoreMaxThumbnailChars := 128 * 1024
 
+ClipboardHistoryStoreEnsureSchema(db) {
+    schema := "CREATE TABLE IF NOT EXISTS clipboard_items ("
+        . "id TEXT PRIMARY KEY,primary_type TEXT NOT NULL,is_rich_text INTEGER NOT NULL DEFAULT 0,"
+        . "content_hash TEXT NOT NULL,text_plain TEXT NOT NULL DEFAULT '',search_text TEXT NOT NULL DEFAULT '',"
+        . "preview_text TEXT NOT NULL DEFAULT '',files_json TEXT NOT NULL DEFAULT '[]',"
+        . "image_width INTEGER NOT NULL DEFAULT 0,image_height INTEGER NOT NULL DEFAULT 0,"
+        . "byte_size INTEGER NOT NULL DEFAULT 0,last_captured_at_utc TEXT NOT NULL,"
+        . "is_favorite INTEGER NOT NULL DEFAULT 0,note_text TEXT NOT NULL DEFAULT '',"
+        . "is_pinned INTEGER NOT NULL DEFAULT 0,pin_order INTEGER NOT NULL DEFAULT 0,file_count INTEGER NOT NULL DEFAULT 0);"
+        . "CREATE TABLE IF NOT EXISTS clipboard_payloads (item_id TEXT PRIMARY KEY,snapshot_blob BLOB NOT NULL,"
+        . "format_manifest_json TEXT NOT NULL DEFAULT '[]',payload_version INTEGER NOT NULL DEFAULT 1,"
+        . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
+        . "CREATE TABLE IF NOT EXISTS clipboard_thumbnails (item_id TEXT PRIMARY KEY,png_data_uri TEXT NOT NULL,"
+        . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
+        . "CREATE UNIQUE INDEX IF NOT EXISTS clipboard_items_hash_idx ON clipboard_items(content_hash);"
+        . "CREATE INDEX IF NOT EXISTS clipboard_items_recent_idx ON clipboard_items(is_pinned DESC,pin_order DESC,last_captured_at_utc DESC,id DESC);"
+    if !db.Exec(schema)
+        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法创建剪贴板历史数据表")
+    return true
+}
+
 ClipboardHistoryStorePath() {
     global ClipboardHistoryStoreRoot
-    return ClipboardHistoryStoreRoot . "\clipboard-history.db"
+    return ClipboardHistoryStoreRoot . "\capslock_p2.db"
 }
 
 ClipboardHistoryStoreInit() {
     global ClipboardHistoryDb, ClipboardHistoryDbReady, ClipboardHistoryStoreError
-    global ClipboardHistoryStoreRoot
+    global AppStoreDb
     if ClipboardHistoryDbReady && IsObject(ClipboardHistoryDb)
         return true
 
     ClipboardHistoryStoreError := ""
     try {
-        DirCreate(ClipboardHistoryStoreRoot)
-        if !DirExist(ClipboardHistoryStoreRoot)
-            throw Error("剪贴板历史目录不可写：" . ClipboardHistoryStoreRoot)
-
-        db := CSQLite(A_ScriptDir . "\resources")
-        if !db.OpenDB(ClipboardHistoryStorePath(), "W", true)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法打开剪贴板历史数据库")
-        if !db.SetTimeout(2000)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法设置剪贴板历史 SQLite 超时")
-        if !db.Exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法初始化剪贴板历史 SQLite")
-        ClipboardHistoryStoreMigrate(db)
-        ClipboardHistoryDb := db
+        if !AppStoreInit()
+            throw Error(AppStoreError != "" ? AppStoreError : "无法初始化应用数据库")
+        ClipboardHistoryDb := AppStoreDb
         ClipboardHistoryDbReady := true
         return true
     } catch as initError {
         ClipboardHistoryStoreError := "剪贴板历史数据库初始化失败：" . initError.Message
-        if IsObject(ClipboardHistoryDb)
-            try ClipboardHistoryDb.CloseDB()
         ClipboardHistoryDb := 0
         ClipboardHistoryDbReady := false
         DebugLog("Clipboard history store init failed")
@@ -52,96 +61,8 @@ ClipboardHistoryStoreInit() {
     }
 }
 
-ClipboardHistoryStoreMigrate(db) {
-    global ClipboardHistoryStoreVersion
-    if !db.Exec("CREATE TABLE IF NOT EXISTS history_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建剪贴板历史元数据表失败")
-    if !db.GetTable("SELECT value FROM history_meta WHERE key='schema_version';", &versionTable, -1)
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "读取剪贴板历史版本失败")
-    schemaVersion := 0
-    if versionTable.RowCount > 0 {
-        try schemaVersion := Integer(versionTable.Rows[1][1])
-        catch
-            schemaVersion := 0
-    }
-    if schemaVersion > ClipboardHistoryStoreVersion
-        throw Error("剪贴板历史数据库由较新版本创建，请升级程序后再打开")
-    ; Versions before 3 used the discarded wide schema. Keep that one-time reset
-    ; explicit; future version bumps must provide a migration instead of wiping data.
-    if schemaVersion < 3 {
-        if !db.Exec("BEGIN IMMEDIATE; DROP TABLE IF EXISTS clipboard_thumbnails; "
-            . "DROP TABLE IF EXISTS clipboard_payloads; DROP TABLE IF EXISTS clipboard_items; COMMIT;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "重建剪贴板历史表失败")
-        schemaVersion := 3
-    }
-    if schemaVersion = 3
-        schemaVersion := 4
-    if schemaVersion = 4 {
-        if !db.GetTable("PRAGMA table_info(clipboard_items);", &columns, -1)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "检查剪贴板历史表结构失败")
-        if columns.RowCount > 0 {
-            hasFileCount := false
-            for column in columns.Rows
-                if column[2] = "file_count"
-                    hasFileCount := true
-            if !hasFileCount && !db.Exec("BEGIN IMMEDIATE;"
-                . "ALTER TABLE clipboard_items ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0;"
-                . "UPDATE clipboard_items SET file_count=CASE WHEN json_valid(files_json) "
-                . "THEN json_array_length(files_json) ELSE 0 END;"
-                . "UPDATE clipboard_items SET files_json='[]'; COMMIT;" )
-                throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "迁移剪贴板文件元数据失败")
-        }
-        schemaVersion := 5
-    }
-    if schemaVersion != ClipboardHistoryStoreVersion
-        throw Error("剪贴板历史数据库需要显式迁移")
-
-    schema := ""
-    schema .= "CREATE TABLE IF NOT EXISTS clipboard_items ("
-        . "id TEXT PRIMARY KEY,"
-        . "primary_type TEXT NOT NULL,"
-        . "is_rich_text INTEGER NOT NULL DEFAULT 0,"
-        . "content_hash TEXT NOT NULL,"
-        . "text_plain TEXT NOT NULL DEFAULT '',"
-        . "search_text TEXT NOT NULL DEFAULT '',"
-        . "preview_text TEXT NOT NULL DEFAULT '',"
-        . "files_json TEXT NOT NULL DEFAULT '[]',"
-        . "image_width INTEGER NOT NULL DEFAULT 0,"
-        . "image_height INTEGER NOT NULL DEFAULT 0,"
-        . "byte_size INTEGER NOT NULL DEFAULT 0,"
-        . "last_captured_at_utc TEXT NOT NULL,"
-        . "is_favorite INTEGER NOT NULL DEFAULT 0,"
-        . "note_text TEXT NOT NULL DEFAULT '',"
-        . "is_pinned INTEGER NOT NULL DEFAULT 0,"
-        . "pin_order INTEGER NOT NULL DEFAULT 0,"
-        . "file_count INTEGER NOT NULL DEFAULT 0);"
-    schema .= "CREATE TABLE IF NOT EXISTS clipboard_payloads ("
-        . "item_id TEXT PRIMARY KEY,"
-        . "snapshot_blob BLOB NOT NULL,"
-        . "format_manifest_json TEXT NOT NULL DEFAULT '[]',"
-        . "payload_version INTEGER NOT NULL DEFAULT 1,"
-        . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
-    schema .= "CREATE TABLE IF NOT EXISTS clipboard_thumbnails ("
-        . "item_id TEXT PRIMARY KEY,"
-        . "png_data_uri TEXT NOT NULL,"
-        . "FOREIGN KEY(item_id) REFERENCES clipboard_items(id) ON DELETE CASCADE);"
-    schema .= "CREATE UNIQUE INDEX IF NOT EXISTS clipboard_items_hash_idx "
-        . "ON clipboard_items(content_hash);"
-        . "CREATE INDEX IF NOT EXISTS clipboard_items_recent_idx "
-        . "ON clipboard_items(is_pinned DESC,pin_order DESC,last_captured_at_utc DESC,id DESC);"
-    if !db.Exec(schema)
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建剪贴板历史数据库结构失败")
-    version := String(ClipboardHistoryStoreVersion)
-    if !db.Exec("INSERT OR REPLACE INTO history_meta(key,value) VALUES ('schema_version',"
-        . ClipboardHistoryStoreSql(version) . ");")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "写入剪贴板历史 schema 版本失败")
-    return true
-}
-
 ClipboardHistoryStoreClose() {
     global ClipboardHistoryDb, ClipboardHistoryDbReady
-    if IsObject(ClipboardHistoryDb)
-        try ClipboardHistoryDb.CloseDB()
     ClipboardHistoryDb := 0
     ClipboardHistoryDbReady := false
 }

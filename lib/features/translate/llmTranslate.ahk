@@ -1,6 +1,6 @@
 ; LLM translation UI and translation-provider orchestration.
 ; The UI is hosted by WebView2; API settings are read only from the active
-; capslock_p2.ini file, never from the demo/reference INI.
+; application database.
 
 global LLMTranslateHost := 0
 global LLMTranslateVisible := false

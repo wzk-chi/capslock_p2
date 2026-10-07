@@ -13,6 +13,7 @@ html, body { height: 100%; }
 body { margin: 0; background: var(--ui-bg); color: var(--ui-text); }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+body.settings-saving { pointer-events: none; }
 .app { height: 100%; display: flex; overflow: hidden; }
 .side {
   width: 224px; flex: none; padding: 25px 14px 16px;
@@ -63,6 +64,28 @@ button { cursor: pointer; }
 .field { min-width: 0; display: grid; gap: 5px; }
 .field.wide, .grid.wide { grid-column: 1 / -1; }
 .field label, .field > span { color: var(--ui-muted); font-size: 11px; }
+.secret-control {
+  min-width: 0; display: flex; align-items: center; gap: 2px;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control);
+  background: var(--ui-surface); transition: border-color .15s ease, box-shadow .15s ease;
+}
+.secret-control:focus-within { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.secret-control input, .secret-control input:focus {
+  min-width: 0; flex: 1; width: 0; height: 36px; border: 0; border-radius: inherit;
+  padding: 8px 10px; outline: 0; background: transparent; box-shadow: none;
+}
+.secret-control input::placeholder { color: var(--ui-subtle); letter-spacing: .09em; opacity: .9; }
+.secret-control input::-ms-reveal, .secret-control input::-ms-clear { display: none; }
+.secret-actions { flex: none; display: flex; align-items: center; gap: 1px; padding-right: 4px; }
+.secret-action {
+  width: 30px; height: 30px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 7px; background: transparent; color: var(--ui-muted);
+}
+.secret-action .lucide { width: 16px; height: 16px; }
+.secret-action:hover:not(:disabled) { background: var(--ui-accent-soft); color: var(--ui-accent-strong); }
+.secret-action:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.secret-action:disabled { opacity: .38; cursor: default; }
+.secret-clear:hover:not(:disabled) { background: var(--ui-danger-soft); color: var(--ui-danger); }
 input, select, textarea {
   width: 100%; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control); padding: 8px 10px;
   outline: none; background: var(--ui-surface); color: var(--ui-text); font-size: 12px;
@@ -260,7 +283,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
       <button data-page="qbar"><i data-lucide="search"></i><span>qbar</span></button>
       <button data-page="windows"><i data-lucide="app-window"></i><span>窗口绑定</span></button>
     </nav>
-    <div class="side-foot">v0.2.0</div>
+    <div class="side-foot"></div>
   </aside>
 
   <main class="main">
@@ -271,86 +294,23 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
 
     <div class="content">
       <section class="page active" data-page-view="general">
-        <div class="cards">
-          <div class="card"><div class="grid">
-            <label class="field"><span>界面语言</span><select data-section="Global" data-key="language"><option value="0">跟随系统</option><option value="1">简体中文</option><option value="2">English</option></select></label>
-            <label class="check"><input data-section="Global" data-key="autostart" type="checkbox"><span>开机启动</span></label>
-            <label class="check"><input data-section="Global" data-key="allowClipboard" type="checkbox"><span>独立剪贴板</span></label>
-            <label class="check"><input data-section="Global" data-key="loadingAnimation" type="checkbox"><span>启动动画</span></label>
-            <label class="check"><input data-section="Global" data-key="debug" type="checkbox"><span>调试日志</span></label>
-            <label class="check"><input data-section="Global" data-key="runAsAdmin" type="checkbox"><span>以管理员身份运行（重启后生效）</span></label>
-            <label class="field"><span>面板隐藏后释放页面（分钟）</span><input data-section="Global" data-key="webViewDestroyMinutes" type="number" min="0" max="1440" step="1"><small class="hint">0 表示关闭。</small></label>
-          </div></div>
-        </div>
+        <div class="cards settings-groups"></div>
       </section>
 
       <section class="page" data-page-view="mouse">
-        <div class="cards">
-          <div class="card"><div class="grid">
-            <label class="field"><span>临时鼠标速度</span><input data-section="Global" data-key="mouseSpeed" type="number" min="1" max="20"></label>
-            <div class="hint field wide">按住 CapsLock + 左Alt 时生效，松开后恢复系统鼠标速度。</div>
-          </div></div>
-        </div>
+        <div class="cards settings-groups"></div>
       </section>
 
       <section class="page" data-page-view="llm">
-        <div class="cards">
-          <div class="card">
-            <div class="card-head"><h3>共用 LLM</h3><button class="btn" id="testLlm">测试</button></div>
-            <div class="grid">
-              <label class="field wide"><span>API 地址</span><input data-section="LLM" data-key="endpoint" placeholder="https://.../v1/chat/completions"></label>
-              <label class="field"><span>API Key</span><input data-section="LLM" data-key="apiKey" type="password"></label>
-              <label class="field"><span>模型</span><input data-section="LLM" data-key="model"></label>
-              <label class="field"><span>Temperature</span><input data-section="LLM" data-key="temperature"></label>
-              <label class="field"><span>超时（毫秒）</span><input data-section="LLM" data-key="timeout"></label>
-              <label class="field"><span>最大输入 Token</span><input data-section="LLM" data-key="maxInputTokens" type="number" min="1"></label>
-              <label class="check"><input data-section="LLM" data-key="thinking" type="checkbox"><span>使用模型默认思考模式</span></label>
-            </div>
-          </div>
-        </div>
+        <div class="cards settings-groups"></div>
       </section>
 
       <section class="page" data-page-view="translate">
-        <div class="cards">
-          <div class="card">
-            <div class="card-head"><h3>翻译共用配置</h3></div>
-            <div class="grid">
-              <label class="field"><span>引擎</span><select data-section="TTranslate" data-key="engine"><option value="auto">自动</option><option value="llm">LLM</option><option value="youdao">有道</option><option value="volcengine">火山</option></select></label>
-              <label class="field"><span>翻译方式</span><select id="translationMode" data-section="TTranslate" data-key="mode">
-                <option value="fixed">固定目标语言</option>
-                <option value="bidirectional">两种语言互译</option>
-              </select></label>
-              <div id="bidirectionalLanguageFields" class="grid wide" hidden>
-                <label class="field"><span>语言 A</span><select data-section="TTranslate" data-key="languageA" data-pair-language-select data-translation-language-select disabled></select></label>
-                <label class="field"><span>语言 B</span><select data-section="TTranslate" data-key="languageB" data-pair-language-select data-translation-language-select disabled></select></label>
-              </div>
-              <label id="fixedTargetLanguageField" class="field"><span>目标语言</span><select data-section="TTranslate" data-key="targetLanguage" data-language-select data-translation-language-select disabled></select></label>
-            </div>
-          </div>
-          <div class="card"><div class="card-head"><h3>LLM翻译</h3><button class="btn ghost" id="openLlmSettingsFromTranslate">LLM 设置</button></div><div class="grid">
-            <label class="field wide"><span>系统提示词</span><textarea data-section="LLMTranslate" data-key="systemPrompt"></textarea></label>
-          </div></div>
-          <div class="card"><div class="card-head"><h3>有道翻译</h3><button class="btn" id="testYoudao">测试</button></div><div class="grid">
-            <label class="field"><span>App ID</span><input data-section="TYoudao" data-key="appPaidID"></label>
-            <label class="field"><span>App Key</span><input data-section="TYoudao" data-key="appPaidKey" type="password"></label>
-          </div></div>
-          <div class="card"><div class="card-head"><h3>火山翻译</h3><button class="btn" id="testVolcengine">测试</button></div><div class="grid">
-            <label class="field"><span>Access Key</span><input data-section="TVolcengine" data-key="accessKey"></label>
-            <label class="field"><span>Secret Key</span><input data-section="TVolcengine" data-key="secretKey" type="password"></label>
-            <label class="field"><span>Region</span><input data-section="TVolcengine" data-key="region"></label>
-          </div></div>
-        </div>
+        <div class="cards settings-groups"></div>
       </section>
 
       <section class="page" data-page-view="ai">
-        <div class="cards">
-          <div class="card">
-            <div class="card-head"><h3>问答设置</h3><button class="btn ghost" id="openLlmSettings">LLM 设置</button></div>
-            <div class="grid">
-              <label class="field wide"><span>系统提示词</span><textarea data-section="QAI" data-key="systemPrompt"></textarea></label>
-            </div>
-          </div>
-        </div>
+        <div class="cards settings-groups"></div>
       </section>
 
       <section class="page" data-page-view="shortcuts">

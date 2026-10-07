@@ -1,5 +1,5 @@
 ; CapsLock-layer AHK v2 hotkeys. The complete default layout lives in
-; capslock_p2-default.ini and is overlaid by the user's Keys section.
+; The trusted shortcut seed is stored in cfg_defaults and overlaid by user rows.
 
 global LayerKeyNames := Map(
     "a", "a", "b", "b", "c", "c", "d", "d", "e", "e", "f", "f", "g", "g", "h", "h", "i", "i", "j", "j", "k", "k", "l", "l", "m", "m", "n", "n", "o", "o", "p", "p", "q", "q", "r", "r", "s", "s", "t", "t", "u", "u", "v", "v", "w", "w", "x", "x", "y", "y", "z", "z",

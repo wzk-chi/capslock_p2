@@ -10,51 +10,49 @@ global NotesStoreRoot := A_ScriptDir . "\data\qbar-notes"
 global NotesStoreMedia := A_ScriptDir . "\data\qbar-notes\media"
 global NotesPendingAssets := Map()
 
+NotesStoreEnsureSchema(db) {
+    schema := "CREATE TABLE IF NOT EXISTS notes ("
+        . "id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL DEFAULT '',"
+        . "content_md TEXT NOT NULL DEFAULT '',pinned INTEGER NOT NULL DEFAULT 0,"
+        . "created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);"
+        . "CREATE TABLE IF NOT EXISTS tags ("
+        . "id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL COLLATE NOCASE UNIQUE,"
+        . "created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);"
+        . "CREATE TABLE IF NOT EXISTS note_tags ("
+        . "note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,"
+        . "tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,PRIMARY KEY(note_id,tag_id));"
+        . "CREATE TABLE IF NOT EXISTS note_assets ("
+        . "id TEXT PRIMARY KEY,note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,"
+        . "relative_path TEXT NOT NULL,mime TEXT NOT NULL,original_name TEXT NOT NULL DEFAULT '',"
+        . "created_at INTEGER NOT NULL);"
+        . "CREATE INDEX IF NOT EXISTS idx_notes_order ON notes(pinned DESC,updated_at DESC,id DESC);"
+        . "CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id,note_id);"
+        . "CREATE INDEX IF NOT EXISTS idx_assets_note ON note_assets(note_id);"
+    if !db.Exec(schema)
+        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法创建笔记数据表")
+    return true
+}
+
 NotesStoreDbPath() {
-    global NotesStoreRoot
-    return NotesStoreRoot . "\qbar-notes.db"
+    return AppStorePath()
 }
 
 NotesStoreInit() {
-    global NotesDB, NotesDBReady, NotesStoreError, NotesStoreRoot, NotesStoreMedia
+    global NotesDB, NotesDBReady, NotesStoreError, AppStoreDb
     if NotesDBReady && IsObject(NotesDB)
         return true
-
     NotesStoreError := ""
     try {
-        DirCreate(NotesStoreRoot)
-        DirCreate(NotesStoreMedia)
-        if !DirExist(NotesStoreRoot) || !DirExist(NotesStoreMedia)
-            throw Error("笔记数据目录不可写：" . NotesStoreRoot)
-
-        db := CSQLite(A_ScriptDir . "\resources")
-        if !db.OpenDB(NotesStoreDbPath(), "W", true)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法打开笔记数据库")
-        if !db.SetTimeout(2000)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法设置 SQLite 超时")
-        if !db.Exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法初始化 SQLite")
-        NotesStoreMigrate(db)
-        NotesDB := db
+        if !AppStoreInit()
+            throw Error(AppStoreError != "" ? AppStoreError : "无法初始化应用数据库")
+        NotesDB := AppStoreDb
         NotesDBReady := true
-        normalizeOk := false
-        try {
-            normalizeOk := NotesStoreNormalizeAssetFiles()
-        } catch as normalizeError {
-            DebugLog("notes asset normalization skipped: " . normalizeError.Message)
-        }
-        if normalizeOk {
-            try {
-                NotesStoreCleanOrphans()
-            } catch as cleanupError {
-                DebugLog("notes orphan cleanup skipped: " . cleanupError.Message)
-            }
-        }
+        DirCreate(NotesStoreMedia)
+        if !DirExist(NotesStoreMedia)
+            throw Error("笔记图片目录不可用")
         return true
     } catch as initError {
         NotesStoreError := "笔记数据库初始化失败（" . NotesStoreDbPath() . "）：" . initError.Message
-        if IsObject(NotesDB)
-            try NotesDB.CloseDB()
         NotesDB := 0
         NotesDBReady := false
         DebugLog(NotesStoreError)
@@ -62,110 +60,8 @@ NotesStoreInit() {
     }
 }
 
-NotesStoreMigrate(db) {
-    global NotesDBVersion
-    current := 0
-    if !db.GetTable("PRAGMA user_version;", &versionTable)
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法读取笔记数据库版本")
-    if versionTable.RowCount > 0
-        current := Integer(versionTable.Rows[1][1])
-    if current > NotesDBVersion
-        throw Error("笔记数据库版本过高，请更新程序后再使用。")
-    if current = NotesDBVersion
-        return true
-    if current = 1 {
-        NotesStoreMigrateV1ToV2(db)
-        return true
-    }
-
-    schema := ""
-    schema .= "CREATE TABLE IF NOT EXISTS notes ("
-        . "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        . "title TEXT NOT NULL DEFAULT '',"
-        . "content_md TEXT NOT NULL DEFAULT '',"
-        . "pinned INTEGER NOT NULL DEFAULT 0,"
-        . "created_at INTEGER NOT NULL,"
-        . "updated_at INTEGER NOT NULL);"
-    schema .= "CREATE TABLE IF NOT EXISTS tags ("
-        . "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        . "name TEXT NOT NULL COLLATE NOCASE UNIQUE,"
-        . "created_at INTEGER NOT NULL,"
-        . "updated_at INTEGER NOT NULL);"
-    schema .= "CREATE TABLE IF NOT EXISTS note_tags ("
-        . "note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,"
-        . "tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,"
-        . "PRIMARY KEY(note_id, tag_id));"
-    schema .= "CREATE TABLE IF NOT EXISTS note_assets ("
-        . "id TEXT PRIMARY KEY,"
-        . "note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,"
-        . "relative_path TEXT NOT NULL,"
-        . "mime TEXT NOT NULL,"
-        . "original_name TEXT NOT NULL DEFAULT '',"
-        . "created_at INTEGER NOT NULL);"
-    schema .= "CREATE INDEX IF NOT EXISTS idx_notes_order ON notes(pinned DESC, updated_at DESC, id DESC);"
-        . "CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id, note_id);"
-        . "CREATE INDEX IF NOT EXISTS idx_assets_note ON note_assets(note_id);"
-
-    if !db.Exec("BEGIN IMMEDIATE;")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法开始数据库迁移")
-    try {
-        if !db.Exec(schema)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建笔记数据库结构失败")
-        if !db.Exec("PRAGMA user_version = " . NotesDBVersion . ";")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "写入笔记数据库版本失败")
-        if !db.Exec("COMMIT;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "提交笔记数据库迁移失败")
-    } catch as migrationError {
-        try db.Exec("ROLLBACK;")
-        throw migrationError
-    }
-    return true
-}
-
-NotesStoreMigrateV1ToV2(db) {
-    if !db.Exec("PRAGMA foreign_keys = OFF;")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法准备笔记数据库升级")
-    if !db.Exec("BEGIN IMMEDIATE;") {
-        try db.Exec("PRAGMA foreign_keys = ON;")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法开始笔记数据库升级")
-    }
-    schema := "CREATE TABLE notes_v2 ("
-        . "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        . "title TEXT NOT NULL DEFAULT '',"
-        . "content_md TEXT NOT NULL DEFAULT '',"
-        . "pinned INTEGER NOT NULL DEFAULT 0,"
-        . "created_at INTEGER NOT NULL,"
-        . "updated_at INTEGER NOT NULL);"
-    try {
-        if !db.Exec(schema)
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "创建升级后的笔记表失败")
-        if !db.Exec("INSERT INTO notes_v2(id,title,content_md,pinned,created_at,updated_at) "
-            . "SELECT id,title,content_md,pinned,created_at,updated_at FROM notes;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "迁移笔记内容失败")
-        if !db.Exec("DROP TABLE notes;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "删除旧笔记表失败")
-        if !db.Exec("ALTER TABLE notes_v2 RENAME TO notes;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "重命名升级后的笔记表失败")
-        if !db.Exec("CREATE INDEX IF NOT EXISTS idx_notes_order ON notes(pinned DESC, updated_at DESC, id DESC);")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "恢复笔记排序索引失败")
-        if !db.Exec("PRAGMA user_version = 2;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "写入笔记数据库版本失败")
-        if !db.Exec("COMMIT;")
-            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "提交笔记数据库升级失败")
-    } catch as migrationError {
-        try db.Exec("ROLLBACK;")
-        try db.Exec("PRAGMA foreign_keys = ON;")
-        throw migrationError
-    }
-    if !db.Exec("PRAGMA foreign_keys = ON;")
-        throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "恢复笔记数据库约束失败")
-    return true
-}
-
 NotesStoreClose() {
     global NotesDB, NotesDBReady
-    if IsObject(NotesDB)
-        try NotesDB.CloseDB()
     NotesDB := 0
     NotesDBReady := false
 }
@@ -209,65 +105,6 @@ NotesStoreRelativeAssetPath(stored) {
 ; Repairs note_assets rows written by older builds: an absolute media path, and
 ; a path stored without its file extension. Both forms are rewritten to
 ; "media\<file>.<ext>" and the file is moved when the extension was missing.
-NotesStoreNormalizeAssetFiles() {
-    global NotesStoreRoot, NotesStoreError
-    if !NotesStoreQuery("SELECT id,relative_path,mime FROM note_assets;", &table)
-        return false
-    changes := []
-    for raw in table.Rows {
-        assetId := String(raw[1])
-        stored := StrReplace(String(raw[2]), "/", "\")
-        mime := String(raw[3])
-        if assetId = "" || stored = ""
-            continue
-        relative := NotesStoreRelativeAssetPath(stored)
-        if relative = ""
-            continue
-        if !RegExMatch(relative, "\.[A-Za-z0-9]+$")
-            relative .= "." . NotesAssetExtension(mime)
-        if relative = stored
-            continue
-        oldPath := NotesStoreRoot . "\" . stored
-        newPath := NotesStoreRoot . "\" . relative
-        moved := false
-        ; Only a legacy row stored without its extension has a file to move;
-        ; an absolute path already names the same file as its relative form.
-        if FileExist(oldPath) && !FileExist(newPath) {
-            try {
-                FileMove(oldPath, newPath)
-                moved := true
-            } catch
-                continue
-        }
-        changes.Push(Map("id", assetId, "oldPath", oldPath, "newPath", newPath,
-            "relative", relative, "moved", moved))
-    }
-    if !changes.Length
-        return true
-    if !NotesStoreExec("BEGIN IMMEDIATE;") {
-        for change in changes
-            if change["moved"] && FileExist(change["newPath"]) && !FileExist(change["oldPath"])
-                try FileMove(change["newPath"], change["oldPath"])
-        return false
-    }
-    try {
-        for change in changes
-            if !NotesStoreExec("UPDATE note_assets SET relative_path=" . NotesStoreSql(change["relative"])
-                . " WHERE id=" . NotesStoreSql(change["id"]) . ";")
-                throw Error(NotesStoreError != "" ? NotesStoreError : "更新图片路径失败")
-        if !NotesStoreExec("COMMIT;")
-            throw Error(NotesStoreError != "" ? NotesStoreError : "提交图片路径更新失败")
-    } catch as normalizeError {
-        try NotesStoreExec("ROLLBACK;")
-        for change in changes
-            if change["moved"] && FileExist(change["newPath"]) && !FileExist(change["oldPath"])
-                try FileMove(change["newPath"], change["oldPath"])
-        NotesStoreError := normalizeError.Message
-        return false
-    }
-    return true
-}
-
 NotesStoreSql(value) {
     return "'" . StrReplace(String(value), "'", "''") . "'"
 }
@@ -535,54 +372,59 @@ NotesStoreSaveNote(noteId, title, content, tagNames, editorId, &savedId := 0) {
     for oldAsset in oldAssets
         oldAssetMap[oldAsset["id"]] := oldAsset
     now := NotesStoreNow()
-    if !NotesStoreExec("BEGIN IMMEDIATE;")
-        return false
+    criticalState := Critical("On")
     try {
-        if noteId = "" {
-            sql := "INSERT INTO notes(title,content_md,pinned,created_at,updated_at) VALUES("
-                . NotesStoreSql(title) . "," . NotesStoreSql(content)
-                . ",0," . now . "," . now . ");"
-            if !NotesStoreExec(sql)
+        if !NotesStoreExec("BEGIN IMMEDIATE;")
+            return false
+        try {
+            if noteId = "" {
+                sql := "INSERT INTO notes(title,content_md,pinned,created_at,updated_at) VALUES("
+                    . NotesStoreSql(title) . "," . NotesStoreSql(content)
+                    . ",0," . now . "," . now . ");"
+                if !NotesStoreExec(sql)
+                    throw Error(NotesStoreError)
+                noteId := String(NotesDB.LastInsertRowID())
+            } else {
+                sql := "UPDATE notes SET title=" . NotesStoreSql(title)
+                    . ",content_md=" . NotesStoreSql(content)
+                    . ",updated_at=" . now . " WHERE id=" . Integer(noteId) . ";"
+                if !NotesStoreExec(sql)
+                    throw Error(NotesStoreError)
+            }
+            if !NotesStoreExec("DELETE FROM note_tags WHERE note_id=" . Integer(noteId) . ";")
                 throw Error(NotesStoreError)
-            noteId := String(NotesDB.LastInsertRowID())
-        } else {
-            sql := "UPDATE notes SET title=" . NotesStoreSql(title)
-                . ",content_md=" . NotesStoreSql(content)
-                . ",updated_at=" . now . " WHERE id=" . Integer(noteId) . ";"
-            if !NotesStoreExec(sql)
+            for tagName in tagNames {
+                tagName := Trim(String(tagName))
+                if tagName = ""
+                    continue
+                if !NotesStoreExec("INSERT OR IGNORE INTO tags(name,created_at,updated_at) VALUES(" . NotesStoreSql(tagName) . "," . now . "," . now . ");")
+                    throw Error(NotesStoreError)
+                if !NotesStoreQuery("SELECT id FROM tags WHERE name=" . NotesStoreSql(tagName) . " LIMIT 1;", &tagTable) || tagTable.RowCount < 1
+                    throw Error("读取标签失败")
+                tagId := Integer(tagTable.Rows[1][1])
+                if !NotesStoreExec("INSERT OR IGNORE INTO note_tags(note_id,tag_id) VALUES(" . Integer(noteId) . "," . tagId . ");")
+                    throw Error(NotesStoreError)
+            }
+            if !NotesStoreExec("DELETE FROM note_assets WHERE note_id=" . Integer(noteId) . ";")
                 throw Error(NotesStoreError)
+            for assetId in referenced {
+                asset := NotesAssetForSave(assetId, noteId, editorId, oldAssetMap)
+                if !IsObject(asset)
+                    throw Error("图片资产不存在或不属于当前笔记")
+                if !NotesStoreExec("INSERT INTO note_assets(id,note_id,relative_path,mime,original_name,created_at) VALUES("
+                    . NotesStoreSql(asset["id"]) . "," . Integer(noteId) . "," . NotesStoreSql(NotesAssetStoredPath(asset))
+                    . "," . NotesStoreSql(asset["mime"]) . "," . NotesStoreSql(asset["name"]) . "," . now . ");")
+                    throw Error(NotesStoreError)
+            }
+            if !NotesStoreExec("COMMIT;")
+                throw Error(NotesStoreError)
+        } catch as saveError {
+            try NotesStoreExec("ROLLBACK;")
+            NotesStoreError := saveError.Message
+            return false
         }
-        if !NotesStoreExec("DELETE FROM note_tags WHERE note_id=" . Integer(noteId) . ";")
-            throw Error(NotesStoreError)
-        for tagName in tagNames {
-            tagName := Trim(String(tagName))
-            if tagName = ""
-                continue
-            if !NotesStoreExec("INSERT OR IGNORE INTO tags(name,created_at,updated_at) VALUES(" . NotesStoreSql(tagName) . "," . now . "," . now . ");")
-                throw Error(NotesStoreError)
-            if !NotesStoreQuery("SELECT id FROM tags WHERE name=" . NotesStoreSql(tagName) . " LIMIT 1;", &tagTable) || tagTable.RowCount < 1
-                throw Error("读取标签失败")
-            tagId := Integer(tagTable.Rows[1][1])
-            if !NotesStoreExec("INSERT OR IGNORE INTO note_tags(note_id,tag_id) VALUES(" . Integer(noteId) . "," . tagId . ");")
-                throw Error(NotesStoreError)
-        }
-        if !NotesStoreExec("DELETE FROM note_assets WHERE note_id=" . Integer(noteId) . ";")
-            throw Error(NotesStoreError)
-        for assetId in referenced {
-            asset := NotesAssetForSave(assetId, noteId, editorId, oldAssetMap)
-            if !IsObject(asset)
-                throw Error("图片资产不存在或不属于当前笔记")
-            if !NotesStoreExec("INSERT INTO note_assets(id,note_id,relative_path,mime,original_name,created_at) VALUES("
-                . NotesStoreSql(asset["id"]) . "," . Integer(noteId) . "," . NotesStoreSql(NotesAssetStoredPath(asset))
-                . "," . NotesStoreSql(asset["mime"]) . "," . NotesStoreSql(asset["name"]) . "," . now . ");")
-                throw Error(NotesStoreError)
-        }
-        if !NotesStoreExec("COMMIT;")
-            throw Error(NotesStoreError)
-    } catch as saveError {
-        try NotesStoreExec("ROLLBACK;")
-        NotesStoreError := saveError.Message
-        return false
+    } finally {
+        Critical(criticalState)
     }
     savedId := Integer(noteId)
     NotesFinalizeAssets(editorId, referenced, savedId)
@@ -608,19 +450,24 @@ NotesStoreDeleteNotes(noteIds) {
         for asset in NotesStoreGetAssetRows(noteId)
             oldAssets.Push(asset["path"])
     }
-    if !NotesStoreExec("BEGIN IMMEDIATE;")
-        return false
+    criticalState := Critical("On")
     try {
-        for noteId in noteIds
-            if RegExMatch(String(noteId), "^\d+$")
-                if !NotesStoreExec("DELETE FROM notes WHERE id=" . Integer(noteId) . ";")
-                    throw Error(NotesStoreError)
-        if !NotesStoreExec("COMMIT;")
-            throw Error(NotesStoreError)
-    } catch as deleteError {
-        try NotesStoreExec("ROLLBACK;")
-        NotesStoreError := deleteError.Message
-        return false
+        if !NotesStoreExec("BEGIN IMMEDIATE;")
+            return false
+        try {
+            for noteId in noteIds
+                if RegExMatch(String(noteId), "^\d+$")
+                    if !NotesStoreExec("DELETE FROM notes WHERE id=" . Integer(noteId) . ";")
+                        throw Error(NotesStoreError)
+            if !NotesStoreExec("COMMIT;")
+                throw Error(NotesStoreError)
+        } catch as deleteError {
+            try NotesStoreExec("ROLLBACK;")
+            NotesStoreError := deleteError.Message
+            return false
+        }
+    } finally {
+        Critical(criticalState)
     }
     for path in oldAssets
         NotesDeleteRelativeAsset(path)
@@ -632,19 +479,24 @@ NotesStoreSetPinned(noteIds, value) {
     if !NotesStoreInit() || Type(noteIds) != "Array"
         return false
     pin := value ? 1 : 0
-    if !NotesStoreExec("BEGIN IMMEDIATE;")
-        return false
+    criticalState := Critical("On")
     try {
-        for noteId in noteIds
-            if RegExMatch(String(noteId), "^\d+$")
-                if !NotesStoreExec("UPDATE notes SET pinned=" . pin . ",updated_at=updated_at WHERE id=" . Integer(noteId) . ";")
-                    throw Error(NotesStoreError)
-        if !NotesStoreExec("COMMIT;")
-            throw Error(NotesStoreError)
-    } catch as pinError {
-        try NotesStoreExec("ROLLBACK;")
-        NotesStoreError := pinError.Message
-        return false
+        if !NotesStoreExec("BEGIN IMMEDIATE;")
+            return false
+        try {
+            for noteId in noteIds
+                if RegExMatch(String(noteId), "^\d+$")
+                    if !NotesStoreExec("UPDATE notes SET pinned=" . pin . ",updated_at=updated_at WHERE id=" . Integer(noteId) . ";")
+                        throw Error(NotesStoreError)
+            if !NotesStoreExec("COMMIT;")
+                throw Error(NotesStoreError)
+        } catch as pinError {
+            try NotesStoreExec("ROLLBACK;")
+            NotesStoreError := pinError.Message
+            return false
+        }
+    } finally {
+        Critical(criticalState)
     }
     return true
 }

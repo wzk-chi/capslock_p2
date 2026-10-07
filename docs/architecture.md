@@ -19,18 +19,19 @@
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
 - **LLM 公共层**：`lib/shared/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
   OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
-- **配置分层**：`capslock_p2-default.ini` 保存完整默认值，`capslock_p2-settingsDemo.ini` 只作详细参考，
-  `capslock_p2.ini` 只保存用户覆盖项。`lib/app/config.ahk` 先加载默认配置，再叠加用户配置；设置页保存时会删除恢复为默认值的覆盖项。
+- **配置分层**：默认值存储在 `data/capslock_p2.db` 的 `cfg_defaults`，个人覆盖存储在 `cfg_values`；运行时只从主数据库加载。当前旧数据已在开发环境手动迁移，程序不提供旧来源导入功能。
 
 ## 目录结构与模块职责
 
 ```
 capslock_p2.ahk                    入口：#include 全部 lib 模块
 lib\
-  config.ahk                       schema、字段 codec、INI 解析、默认覆盖层、类型读取与原子写入
+  app/store.ahk                    主数据库连接、全局 schema、事务、默认项版本
+  app/settings_store.ahk           数据库配置、秘密保护、受信任 seed 和一次性导入
+  config.ahk                       schema、数据库配置读取、类型访问与校验
   core.ahk                         初始化、剪贴板序号/槽位、热串匹配与应用级编排
   shared/selection.ahk             选区读取、文本规范化与 UI Automation provider
-  clipboard/clipboard_store.ahk   安装目录下 SQLite 剪贴板历史数据库与事务
+  clipboard/clipboard_store.ahk   剪贴板历史仓储，借用 AppStore 主库连接与事务
   clipboard/clipboard_formats.ahk ClipboardAll 白名单格式解析、校验与恢复
   clipboard/clipboard_history.ahk 历史采集队列、去重、收藏、容量和回放
   clipboard/clipboard_panel.ahk   剪贴板历史 WebView2 面板与消息协议
@@ -62,8 +63,9 @@ lib\
   crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
   dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
   aiChat.ahk                       AI 聊天面板、会话命令和流式请求生命周期
-  aiChat_store.ahk                 AI 多会话 SQLite 存储（{app}\data\ai-chat\ai-chat.db）
-  settings.ahk                     设置面板生命周期、消息路由、草稿和统一保存回执
+  aiChat_store.ahk                 AI 会话表仓储，借用 AppStore 连接
+  settings.ahk                     设置面板生命周期、消息路由及辅助操作
+  settings/settings_editor.ahk     单一基线、完整草稿校验、一次提交和最终快照
   settings/settings_capture.ahk    快捷键录制 InputHook 生命周期与页面回执
   settings/settings_picker.ahk     设置窗口/应用选择器状态、回执和取消恢复
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
@@ -88,7 +90,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 
 ### AI 问答多会话
 
-多会话设计与数据字段见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。`aiChat_store.ahk` 独占会话数据库访问；`aiChat.ahk` 编排持久化轮次、主回答和首问标题请求；`chat.html` 负责会话侧栏和消息视图。数据库保存在 `{app}\data\ai-chat\ai-chat.db`，只在运行时创建。面板每次从隐藏状态重新打开时进入空白会话；历史按置顶状态、最后聊天时间倒序排列，支持切换、重命名、置顶、单条删除和多选删除。侧栏默认折叠，收起时保留新建对话和设置两个操作按钮。
+多会话设计与数据字段见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。`aiChat_store.ahk` 独占 AI 会话表访问并借用 AppStore 连接；`aiChat.ahk` 编排持久化轮次、主回答和首问标题请求；`chat.html` 负责会话侧栏和消息视图。所有会话数据位于 `{app}\data\capslock_p2.db`。面板每次从隐藏状态重新打开时进入空白会话；历史按置顶状态、最后聊天时间倒序排列，支持切换、重命名、置顶、单条删除和多选删除。侧栏默认折叠，收起时保留新建对话和设置两个操作按钮。
 
 ## 翻译引擎注册表
 
@@ -202,14 +204,14 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
   词频排序）。词形、其余音标字段都是可点击的跳转查询；消息回调只记录查询序号，SQLite 工作在可取消队列中执行。
 - **settings**：`settings.html` 是唯一活动设置界面；F12、托盘菜单、qbar `cl set` 和功能页设置按钮都路由到它。
 
-设置写入经过 `config.ahk` 的 schema 与字段 codec；提示词和 Tab 替换在 INI 边界使用单行编码，运行时只暴露逻辑文本。页面只发送相对基线的变更，只有有效变化才触发对应运行时应用；外部修改与未保存草稿冲突时保留草稿并提示用户。
+设置默认值与用户覆盖位于 `data/capslock_p2.db` 的 `cfg_defaults`、`cfg_values`；密钥使用 DPAPI 密文。配置经过 `config.ahk` schema 校验，SQLite 保存多行提示词和热字符串的逻辑文本。页面在闭包内维护一份 base/draft，通过 WebView2 原生消息提交完整可编辑草稿；宿主计算差异，并在一个事务中检查统一设置版本、写入变化的域。外部配置版本变化时保留草稿并要求重新载入。字段的默认声明、校验及展示元数据集中在 schema，普通字段和工具字段共用控件。具体实施见 [设置页简化设计](2026-10-07-settings-simplification-design.md)。
 
 Everything 页的 `es.exe` 和内置 Everything 由程序资源目录定位，设置页只允许调整结果数量。
 
-Qbar 工具命令由 `{app}\data\qbar\qbar.db` 的插件注册表管理，配置变化通过 registry generation 失效旧候选。
+Qbar 工具命令由 `{app}\data\capslock_p2.db` 中的插件表管理，配置变化通过 registry generation 失效旧候选。
 目标库不存在且旧 AppData 库存在时，store 通过 SQLite backup API 创建并校验同目录暂存库后无覆盖发布；
-目标库与旧库并存时先校验目标库，有效则使用目标库并保留旧库，无效则停止初始化并提示两处路径。
-迁移或目录写入失败会阻止 store 初始化并提示用户检查权限，不回退到 AppData。
+程序只打开 `data/capslock_p2.db`，旧 Qbar 数据库保留但不参与运行。主库无效时停止初始化并报告错误。
+目录写入失败会阻止 store 初始化并提示用户检查权限，不回退到 AppData。全新建库时将默认配置与插件设置写入同一个事务，普通启动不从代码补齐缺失的配置。
 Qbar 的 `e`、`everything`、`find`、`f` 只负责打开独立页面并传入查询文本，Qbar 不再展示 Everything 结果。
 
 Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作业，退出时只回收本会话拉起的客户端或内置实例。
@@ -238,7 +240,7 @@ Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作�
 - 独立剪贴板在 `[Global] allowClipboard` 开关下于系统之外维护 3 组槽位，复制/剪切/粘贴键
   跟随 `allowClipboard` 与 `keyFunc_switchClipboard` 选择的「粘贴来源」。
 - 剪贴板历史由独立服务监听所有外部剪贴板变化，并将文本、图片、CF_HDROP 文件列表和常见
-  HTML/RTF 格式的白名单数据写入 `{app}\data\clipboard-history\clipboard-history.db`。
+  HTML/RTF 格式的白名单数据写入 `{app}\data\capslock_p2.db`。
   公共回调只登记序号；已有的槽位 `ClipboardAll()` 快照会被历史采集复用，内部临时写入由带
   reason 的嵌套挂起 token 排除。历史回放会同步系统槽位，不重新抓取一次全量剪贴板。
 
@@ -267,7 +269,7 @@ Everything 客户端查询使用带期限、序号和临时 CSV 的可取消作�
 - **命名**：`#Warn` 保持开启（仅关闭 `VarUnset`）；AHK v2 类名占用全局命名空间，局部变量不要
   与内置类名（如 `File`）或库类名（`Core`、`JSON` 等）同名。
 - **翻译引擎扩展入口**：新建 `lib/features/translate/*Translate.ahk` → 实现 provider 契约 → 文件底部一行注册 →
-  在中央设置页增加对应字段，完成扩展。
+  在配置 schema 中声明对应字段和分组，页面自动生成普通控件，完成扩展。
 - **thqby `JSON.stringify` 只序列化 Map/Array/Object**：顶层 String（含 `""`）会抛
   “has no method named OwnProps”。传给页面的标量一律用 `LLMJsonQuote`（内部包一层数组后
   `SubStr(JSON.stringify([v],0),2,-1)`）。

@@ -1,5 +1,7 @@
 # Qbar 全插件化重构设计
 
+> 存储结论已由 [统一设置与单一用户数据库设计](2026-10-06-unified-settings-and-single-database-design.md) 更新：以下 `qbar.db`、`schema_meta` 和独立初始化说明只用于理解旧版数据结构。当前 Qbar 表由 `qbar_store.ahk` 通过 AppStore 连接读写，位于 `data/capslock_p2.db`；schema 版本由主库 `user_version` 管理。
+
 日期：2026-10-02
 
 状态：设计文档；Qbar 插件主架构已落地，仍有审查项待整改。本次已实施数据库路径调整与旧库迁移。

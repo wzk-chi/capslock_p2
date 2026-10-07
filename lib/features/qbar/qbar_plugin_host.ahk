@@ -43,15 +43,17 @@ QbarPluginHostInitialize() {
     }
 }
 
-QbarPluginHostRegisterCatalog(&nextRegistry) {
+QbarPluginHostRegisterCatalog(&nextRegistry, initializeDefaults := false, transactionOwned := false) {
     definitions := QbarPluginCatalogDefinitions()
     instances := QbarPluginCatalogBuiltinInstances()
     retiredPluginIds := QbarPluginCatalogRetiredBuiltinPluginIds()
     DebugLog("Qbar catalog registration start definitions=" . definitions.Length
         . " instances=" . instances.Length . " retired=" . retiredPluginIds.Length)
-    if !QbarStoreBegin()
+    if !transactionOwned && !QbarStoreBegin()
         throw Error(QbarStoreError != "" ? QbarStoreError : "无法开始 Qbar 插件注册")
     try {
+        if !QbarStoreLoadPluginSettings(&storedSettings, &invalidStoredSettings)
+            throw Error(QbarStoreError != "" ? QbarStoreError : "读取现有插件设置失败")
         for definition in definitions {
             DebugLog("Qbar catalog definition id=" . definition["definitionId"])
             if !QbarPluginHostValidateDefinition(definition)
@@ -88,20 +90,30 @@ QbarPluginHostRegisterCatalog(&nextRegistry) {
                     if !QbarStoreRemoveManifestAlias(commandId, "剪贴板历史")
                         throw Error(QbarStoreError != "" ? QbarStoreError : "清理剪贴板历史本名别名失败")
             }
-            settings := instance.Has("settings") ? instance["settings"] : Map()
-            for key, settingSchema in definition["settingsSchema"] {
-                if !settings.Has(key) && settingSchema.Has("default")
-                    settings[key] := settingSchema["default"]
-            }
-            if !QbarStoreEnsurePluginSettings(instance["pluginId"], 1, settings)
-                throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件设置失败")
+            settings := storedSettings.Has(instance["pluginId"])
+                ? QbarPluginHostCloneSettings(storedSettings[instance["pluginId"]]) : Map()
+            if initializeDefaults && !invalidStoredSettings.Has(instance["pluginId"]) {
+                for key, settingSchema in definition["settingsSchema"]
+                    if !settings.Has(key) && settingSchema.Has("default")
+                        settings[key] := settingSchema["default"]
+                if instance.Has("settings")
+                    for key, value in instance["settings"]
+                        if !settings.Has(key)
+                            settings[key] := value
+                if !QbarStoreEnsurePluginSettings(instance["pluginId"], 1, settings)
+                    || !QbarStoreSetPluginSettings(instance["pluginId"], settings, 1, false)
+                    throw Error(QbarStoreError != "" ? QbarStoreError : "初始化插件默认设置失败")
+            } else if !storedSettings.Has(instance["pluginId"])
+                && !invalidStoredSettings.Has(instance["pluginId"])
+                throw Error("应用数据库缺少工具设置：" . instance["pluginId"])
         }
         if !QbarRegistryBuild(&nextRegistry)
             throw Error(QbarRegistryError != "" ? QbarRegistryError : "Qbar 注册表构建失败")
-        if !QbarStoreCommit()
+        if !transactionOwned && !QbarStoreCommit()
             throw Error(QbarStoreError != "" ? QbarStoreError : "提交 Qbar 插件注册失败")
     } catch as registerError {
-        try QbarStoreRollback()
+        if !transactionOwned
+            try QbarStoreRollback()
         DebugLog("Qbar catalog registration failed: " . registerError.Message)
         throw registerError
     }
@@ -152,113 +164,89 @@ QbarPluginHostCommandCopy(command, commandId) {
     return copy
 }
 
-QbarPluginHostApplyPluginChanges(plugins) {
+; Applies host-validated changes inside the unified settings transaction.
+QbarPluginHostApplyPluginChanges(preparedPlugins, deletePluginIds, &nextRegistryOut := 0) {
     global QbarPluginHostError, QbarStoreError, QbarRegistryError
+    global AppStoreTransactionOwner
     QbarPluginHostError := ""
-    if !QbarPluginHostPreparePluginChanges(plugins, &preparedPlugins, &validationError) {
-        QbarPluginHostError := validationError
-        DebugLog("Qbar plugin changes rejected: validation")
+    nextRegistryOut := 0
+    if AppStoreTransactionOwner != "settings"
+        || Type(preparedPlugins) != "Array" || Type(deletePluginIds) != "Array" {
+        QbarPluginHostError := "设置事务不可用。"
         return false
     }
-    DebugLog("Qbar plugin changes begin count=" . preparedPlugins.Length)
-    criticalState := Critical("On")
+    DebugLog("Qbar plugin changes begin count=" . preparedPlugins.Length
+        . " deleteCount=" . deletePluginIds.Length)
     try {
-        if !QbarPluginHostPreparePluginChanges(plugins, &preparedPlugins, &validationError) {
+        if !QbarPluginHostValidatePluginDeletes(preparedPlugins, deletePluginIds, &validationError) {
             QbarPluginHostError := validationError
-            DebugLog("Qbar plugin changes rejected before transaction: validation")
             return false
         }
-        if !QbarStoreBegin() {
-            QbarPluginHostError := QbarStoreError != "" ? QbarStoreError : "无法开始插件修改事务"
-            DebugLog("Qbar plugin changes begin failed: " . QbarPluginHostError)
-            return false
+        for pluginId in deletePluginIds {
+            if !QbarStoreRetirePlugin(pluginId)
+                throw Error(QbarStoreError != "" ? QbarStoreError : "删除工具失败")
         }
-        try {
-            for plugin in preparedPlugins {
-                pluginId := String(plugin["pluginId"])
-                DebugLog("Qbar plugin change plugin=" . pluginId)
-                if plugin.Has("enabled") {
-                    if !QbarPluginHostParseBoolean(plugin["enabled"], &enabled)
-                        throw Error("插件启用状态校验失败")
-                    if !QbarStoreSetPluginEnabled(pluginId, enabled)
-                        throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件状态失败")
-                }
-                if plugin.Has("displayName") || plugin.Has("name") {
-                    displayName := plugin.Has("displayName")
-                        ? Trim(String(plugin["displayName"])) : Trim(String(plugin["name"]))
-                    if displayName = "" || !QbarStoreSetPluginDisplayName(pluginId, displayName)
-                        throw Error(QbarStoreError != "" ? QbarStoreError : "保存工具名称失败")
-                }
-                if plugin.Has("settings")
-                    if !QbarStoreSetPluginSettings(pluginId, plugin["settings"], 1, false)
-                        throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件设置失败")
-                if plugin.Has("commands") {
-                    for command in plugin["commands"] {
-                        if command.Has("aliases") {
-                            if !QbarStoreApplyCommandAliases(String(command["commandId"]), command["aliases"])
-                                throw Error(QbarStoreError != "" ? QbarStoreError : "保存命令别名失败")
-                        }
-                    }
-                }
+        for plugin in preparedPlugins {
+            pluginId := String(plugin["pluginId"])
+            DebugLog("Qbar plugin change plugin=" . pluginId)
+            if plugin.Has("create") && plugin["create"] {
+                if !QbarPluginHostPersistNewPlugin(plugin)
+                    throw Error(QbarStoreError != "" ? QbarStoreError : "创建工具失败")
+                continue
             }
-            if !QbarRegistryBuild(&nextRegistry)
-                throw Error(QbarRegistryError != "" ? QbarRegistryError : "插件注册表构建失败")
-            if !QbarStoreCommit()
-                throw Error(QbarStoreError != "" ? QbarStoreError : "提交插件修改失败")
-        } catch as changeError {
-            try QbarStoreRollback()
-            QbarPluginHostError := changeError.Message
-            DebugLog("Qbar plugin settings failed: " . QbarPluginHostError)
-            return false
+            if plugin.Has("enabled") {
+                if !QbarPluginHostParseBoolean(plugin["enabled"], &enabled)
+                    throw Error("插件启用状态校验失败")
+                if !QbarStoreSetPluginEnabled(pluginId, enabled)
+                    throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件状态失败")
+            }
+            if plugin.Has("displayName") && !QbarStoreSetPluginDisplayName(pluginId, plugin["displayName"])
+                throw Error(QbarStoreError != "" ? QbarStoreError : "保存工具名称失败")
+            if plugin.Has("settings") && !QbarStoreSetPluginSettings(pluginId, plugin["settings"], 1, false)
+                throw Error(QbarStoreError != "" ? QbarStoreError : "保存插件设置失败")
+            if plugin.Has("commands")
+                for command in plugin["commands"]
+                    if command.Has("aliases") && !QbarStoreApplyCommandAliases(command["commandId"], command["aliases"])
+                        throw Error(QbarStoreError != "" ? QbarStoreError : "保存命令别名失败")
         }
-        QbarRegistryPublish(nextRegistry)
-    } finally {
-        Critical(criticalState)
+        if !QbarRegistryBuild(&nextRegistry)
+            throw Error(QbarRegistryError != "" ? QbarRegistryError : "插件注册表构建失败")
+        nextRegistryOut := nextRegistry
+    } catch as changeError {
+        QbarPluginHostError := changeError.Message
+        DiagnosticLogAlways("Qbar plugin settings failed: " . QbarPluginHostError)
+        return false
     }
-    QbarPluginHostRefreshIndex()
-    DebugLog("Qbar plugin changes committed count=" . plugins.Length
-        . " generation=" . QbarRegistryGeneration())
     return true
 }
 
-QbarPluginHostDeletePlugin(pluginId) {
-    global QbarPluginHostError, QbarStoreError, QbarRegistryError
-    QbarPluginHostError := ""
-    pluginId := Trim(String(pluginId))
-    criticalState := Critical("On")
-    try {
-        if !QbarPluginHostPluginDeletable(pluginId) {
-            QbarPluginHostError := "该工具不存在或不可删除"
-            return false
-        }
-        if !QbarStoreBegin() {
-            QbarPluginHostError := QbarStoreError != "" ? QbarStoreError : "无法开始删除工具"
-            return false
-        }
-        try {
-            if !QbarStoreRetirePlugin(pluginId)
-                throw Error(QbarStoreError != "" ? QbarStoreError : "删除工具失败")
-            if !QbarRegistryBuild(&nextRegistry)
-                throw Error(QbarRegistryError != "" ? QbarRegistryError : "删除后的注册表构建失败")
-            if !QbarStoreCommit()
-                throw Error(QbarStoreError != "" ? QbarStoreError : "提交工具删除失败")
-        } catch as deleteError {
-            try QbarStoreRollback()
-            QbarPluginHostError := ""
-            diagnostic := deleteError.Message
-            DebugLog("Qbar plugin delete failed plugin=" . pluginId
-                . " errorType=" . Type(deleteError)
-                . " detailLength=" . StrLen(diagnostic))
-            return false
-        }
-        QbarRegistryPublish(nextRegistry)
-        QbarHistoryMarkPluginRetired(pluginId)
-    } finally {
-        Critical(criticalState)
+QbarPluginHostValidatePluginDeletes(plugins, deletePluginIds, &errorText := "") {
+    errorText := ""
+    if Type(plugins) != "Array" || Type(deletePluginIds) != "Array" {
+        errorText := "工具删除信息无效，请重新打开设置后重试。"
+        return false
     }
-    QbarPluginHostRefreshIndex()
-    DebugLog("Qbar plugin deleted plugin=" . pluginId
-        . " generation=" . QbarRegistryGeneration())
+    changedIds := Map()
+    for plugin in plugins
+        changedIds[plugin["pluginId"]] := true
+    seenDeletes := Map()
+    for pluginId in deletePluginIds {
+        if Type(pluginId) != "String" || pluginId = "" || StrLen(pluginId) > 200
+            || RegExMatch(pluginId, "\s") {
+            errorText := "工具删除信息无效，请重新打开设置后重试。"
+            return false
+        }
+        if changedIds.Has(pluginId) || seenDeletes.Has(pluginId) {
+            errorText := "工具修改与删除操作冲突，请重新打开设置后重试。"
+            return false
+        }
+        if !QbarPluginHostPluginDeletable(pluginId) {
+            DebugLog("Qbar plugin delete rejected plugin=" . pluginId . " reason=unavailable-or-protected")
+            errorText := "有工具无法删除，请重新打开设置后重试。"
+            return false
+        }
+        seenDeletes[pluginId] := true
+    }
     return true
 }
 
@@ -310,6 +298,14 @@ QbarPluginHostParseBoolean(value, &parsed := false) {
     return false
 }
 
+QbarPluginHostCloneSettings(source) {
+    result := Map()
+    if IsObject(source)
+        for key, value in source
+            result[key] := value
+    return result
+}
+
 QbarPluginHostInteger(value, &number := 0) {
     if Type(value) = "Integer" {
         number := value
@@ -335,7 +331,7 @@ QbarPluginHostInteger(value, &number := 0) {
 }
 
 QbarPluginHostNormalizeSettings(definition, rawSettings, &normalized := 0,
-    &errorText := "") {
+    &errorText := "", initializeDefaults := false) {
     normalized := Map()
     errorText := ""
     if Type(definition) != "Map" || !definition.Has("settingsSchema")
@@ -364,8 +360,12 @@ QbarPluginHostNormalizeSettings(definition, rawSettings, &normalized := 0,
             ? field["label"] : key
         if rawSettings.Has(key)
             value := rawSettings[key]
-        else if field.Has("default")
+        else if initializeDefaults && field.Has("default")
             value := field["default"]
+        else if field.Has("default") {
+            errorText := "缺少设置项：“" . label . "”。"
+            return false
+        }
         else {
             required := false
             if field.Has("required")
@@ -511,18 +511,17 @@ QbarPluginHostPreparePluginChanges(plugins, &prepared := 0, &errorText := "") {
             patch["displayName"] := Trim(rawName)
         }
         if rawPlugin.Has("settings") {
+            if !currentSettingsValid && Type(rawPlugin["settings"]) = "Map"
+                && rawPlugin["settings"].Count = 0 {
+                ; An untouched corrupt setting must stay disabled and intact.
+            } else {
             if !QbarPluginHostNormalizeSettings(definition, rawPlugin["settings"],
                 &normalizedSettings, &settingsError) {
-                if currentSettingsValid || Type(rawPlugin["settings"]) != "Map"
-                    || rawPlugin["settings"].Count != 0 {
-                    errorText := settingsError
-                    return false
-                }
-                ; An untouched corrupt baseline is omitted from the patch so an
-                ; unrelated tool edit can proceed. The command stays disabled
-                ; until its own settings are repaired.
+                errorText := settingsError
+                return false
             } else {
                 patch["settings"] := normalizedSettings
+            }
             }
         }
         if rawPlugin.Has("commands") {
@@ -596,68 +595,81 @@ QbarPluginHostNormalizeAliases(rawAliases, &aliases := 0, &errorText := "") {
     return true
 }
 
-QbarPluginHostCreateUserPlugin(kind, displayName, aliases, settings) {
-    if Type(kind) != "String" || Type(displayName) != "String"
+QbarPluginHostPrepareNewPlugin(raw, &patch := 0, &errorText := "", reserved := 0) {
+    patch := 0
+    errorText := ""
+    if Type(raw) != "Map" || !raw.Has("kind") || !raw.Has("name")
+        || Type(raw["kind"]) != "String" || Type(raw["name"]) != "String" {
+        errorText := "新增工具信息无效。"
         return false
-    kind := StrLower(Trim(String(kind)))
-    if kind != "search" && kind != "run"
+    }
+    if !IsObject(reserved)
+        reserved := Map()
+    kind := raw["kind"]
+    name := Trim(raw["name"])
+    if (kind != "search" && kind != "run") || name = "" || StrLen(name) > 80 {
+        errorText := "请选择有效的工具类型并填写名称。"
         return false
+    }
     definitionId := "builtin." . kind
     definition := QbarPluginCatalogDefinitionById(definitionId)
-    if !IsObject(definition) || Type(settings) != "Map"
+    if !IsObject(definition) || !raw.Has("settings")
+        || !QbarPluginHostNormalizeSettings(definition, raw["settings"], &settings, &errorText)
         return false
-    displayName := Trim(String(displayName))
-    if displayName = "" || StrLen(displayName) > 80
+    if !raw.Has("aliases") || !QbarPluginHostNormalizeAliases(raw["aliases"], &aliases, &errorText)
         return false
-    if !QbarPluginHostNormalizeAliases(aliases, &userAliases, &aliasError)
+    if !raw.Has("enabled") || !QbarPluginHostParseBoolean(raw["enabled"], &enabled) {
+        errorText := "工具启用状态无效。"
         return false
-    if !QbarPluginHostNormalizeSettings(definition, settings, &normalizedSettings, &settingsError)
-        return false
-    settings := normalizedSettings
-    suffixSeed := userAliases.Length ? userAliases[1] : displayName
-    suffix := QbarPluginHostUniqueSuffix(suffixSeed)
-    pluginId := "user." . kind . "." . suffix
-    commandId := pluginId . ".execute"
-    command := 0
-    for candidate in definition["commands"] {
-        command := QbarPluginHostCommandCopy(candidate, commandId)
-        break
     }
-    if !IsObject(command)
-        return false
-    instance := Map("definitionId", definitionId, "pluginId", pluginId, "source", "user",
-        "displayName", displayName)
-    criticalState := Critical("On")
-    try {
-        if !QbarStoreBegin()
-            return false
-        try {
-            if !QbarStoreUpsertPlugin(instance)
-                throw Error(QbarStoreError != "" ? QbarStoreError : "保存用户插件失败")
-            if !QbarStoreUpsertCommand(pluginId, command)
-                throw Error(QbarStoreError != "" ? QbarStoreError : "保存用户命令失败")
-            for alias in userAliases
-                if !QbarStoreEnsureAlias(commandId, alias, "user", false)
-                    throw Error(QbarStoreError != "" ? QbarStoreError : "保存用户别名失败")
-            if !QbarStoreSetPluginSettings(pluginId, settings, 1, false)
-                throw Error(QbarStoreError != "" ? QbarStoreError : "保存用户插件设置失败")
-            if !QbarRegistryBuild(&nextRegistry)
-                throw Error(QbarRegistryError != "" ? QbarRegistryError : "创建后的注册表构建失败")
-            if !QbarStoreCommit()
-                throw Error(QbarStoreError != "" ? QbarStoreError : "提交用户插件失败")
-        } catch as createError {
-            try QbarStoreRollback()
-            DebugLog("Qbar user plugin creation failed: " . createError.Message)
-            return false
+    pluginId := ""
+    Loop 16 {
+        candidateId := "user." . kind . "." . QbarPluginHostUniqueSuffix(name)
+        if !reserved.Has(candidateId) && !QbarStorePluginIdExists(candidateId) {
+            pluginId := candidateId
+            break
         }
-        QbarRegistryPublish(nextRegistry)
-    } finally {
-        Critical(criticalState)
     }
-    QbarPluginHostRefreshIndex()
-    DebugLog("Qbar user plugin created plugin=" . pluginId
-        . " generation=" . QbarRegistryGeneration())
+    if pluginId = "" {
+        errorText := "无法创建工具，请重试。"
+        return false
+    }
+    reserved[pluginId] := true
+    patch := Map("pluginId", pluginId, "create", true, "definitionId", definitionId,
+        "source", "user", "displayName", name, "enabled", enabled ? JSON.true : JSON.false,
+        "settings", settings, "commands", [Map("commandId", pluginId . ".execute", "aliases", aliases)])
     return true
+}
+
+QbarPluginHostPersistNewPlugin(plugin) {
+    pluginId := String(plugin["pluginId"])
+    instance := Map("pluginId", pluginId, "definitionId", plugin["definitionId"],
+        "source", "user", "displayName", plugin["displayName"], "enabled", plugin["enabled"])
+    if !QbarStoreUpsertPlugin(instance)
+        return false
+    definition := QbarPluginCatalogDefinitionById(plugin["definitionId"])
+    if !IsObject(definition)
+        return false
+    commandId := pluginId . ".execute"
+    for command in definition["commands"] {
+        if command["id"] != "execute"
+            continue
+        commandCopy := QbarPluginHostCommandCopy(command, commandId)
+        if commandCopy.Has("usageKey") && commandCopy["usageKey"] = ""
+            commandCopy["usageKey"] := commandId
+        if !QbarStoreUpsertCommand(pluginId, commandCopy)
+            return false
+        for alias in plugin["commands"][1]["aliases"]
+            if !QbarStoreEnsureAlias(commandId, alias, "user", false)
+                return false
+    }
+    return QbarStoreSetPluginSettings(pluginId, plugin["settings"], 1, false)
+}
+
+QbarStorePluginIdExists(pluginId) {
+    if !QbarStoreRows("SELECT id FROM plugins WHERE id=" . QbarStoreSql(pluginId) . ";", &rows)
+        return true
+    return rows.RowCount > 0
 }
 
 ; Persistence and registry publication have already succeeded here. Keep a

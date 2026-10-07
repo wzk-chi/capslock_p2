@@ -16,9 +16,9 @@ capslock_p2.exe + 动态资源
 - Ahk2Exe：用于把 `capslock_p2.ahk` 编译成 64 位主程序
 - Inno Setup 6：用于把主程序和动态资源压缩成一个安装 EXE
 - Inno Setup 配置：`tools/capslock_p2.iss`
-- 发布用脱敏配置：`capslock_p2-default.ini`
+- 运行设置和用户数据：首次启动时在安装目录创建 `data\capslock_p2.db`
 
-`tools/capslock_p2.iss` 不参与程序运行，`capslock_p2-default.ini` 是程序和安装包共用的完整默认配置。
+`tools/capslock_p2.iss` 不参与程序运行。可信默认设置在首次初始化时写入主数据库；安装包不携带配置 INI 或用户数据。
 
 ## 构建顺序
 
@@ -64,13 +64,13 @@ Start-Process $iscc -ArgumentList @("$project\tools\capslock_p2.iss") -Wait -Pas
 - `resources\capslock_p2-icon.png`：运行时托盘图标
 - `resources\capslock_p2-icon.ico`：EXE、安装器和快捷方式图标
 - `WebView2\64bit\WebView2Loader.dll`
-- `capslock_p2-default.ini`、`capslock_p2-settingsDemo.ini`、`README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
+- `README.md` 和 `LICENSE`（GPL v2，派生自 Capslock+ 需随程序分发）
 
 设置中心由 CapsLock+F12、托盘菜单「设置」和 qbar `cl set` 打开；翻译和 AI 页面中的设置按钮只发送消息，
 不会再加载独立的设置脚本。`pages\settings.js` 与旧的 `loadScript\`、`lib\math.ahk`、
 `lib\jsEval.ahk`、INI 诊断副本已在本轮经用户授权删除，不属于运行时或发布资源。
 
-安装器默认创建当前用户的开始菜单和桌面快捷方式。用户可以在安装向导中改选安装目录，但程序需要对该目录具有写入权限，因为配置、日志和窗口绑定记录位于程序目录旁。
+安装器默认创建当前用户的开始菜单和桌面快捷方式。用户可以在安装向导中改选安装目录，但程序需要对该目录具有写入权限，因为主数据库和日志位于程序目录旁。
 
 Everything 建立索引时使用独立数据目录：
 
@@ -78,43 +78,34 @@ Everything 建立索引时使用独立数据目录：
 %LocalAppData%\capslock_p2\Everything\
 ```
 
-Everything 页的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。`Qbar.esMaxResults` 仍可在 1–500 范围内调整。
+Everything 页的 `es.exe` 和版本化 Everything 只从安装包的 `resources\` 布局查找；设置中心不提供路径重定向，旧用户 INI 中的 `esPath`、`everythingPath`、`esInstance` 文本不会再参与运行时。结果上限属于 `builtin.everything` 工具设置，范围为 1–500。
 
-QBar 笔记使用安装目录下的运行时数据目录：
+设置和用户内容统一使用一个主数据库；笔记图片保留独立媒体目录：
 
 ```text
-{app}\data\qbar-notes\qbar-notes.db
+{app}\data\capslock_p2.db
 {app}\data\qbar-notes\media\
 ```
 
-该目录不出现在安装器 `[Files]` 或 `UninstallDelete` 中，因此安装包不携带用户笔记，覆盖更新和同目录重装不会覆盖数据库或图片。卸载也不会主动删除笔记；更换安装目录时由用户手动复制整个 `data\qbar-notes` 目录。
+`data\` 不出现在安装器 `[Files]` 或 `UninstallDelete` 中，因此安装包不携带用户数据，覆盖更新和同目录重装不会覆盖数据库或图片。卸载也不会主动删除数据；更换安装目录时复制主数据库及 `data\qbar-notes\media`。
 
-大型持久化数据遵循 `AGENTS.md`：优先保存在 `{app}\data\<功能名>\`，作为安装目录下的运行时用户数据，不列入安装包，也不由覆盖更新或卸载清理。剪贴板历史使用 `{app}\data\clipboard-history\clipboard-history.db`，运行后按需创建。更换安装目录时一并迁移相应功能的数据子目录。
+运行配置、插件、笔记、剪贴板历史和 AI 会话统一保存在 `{app}\data\capslock_p2.db`。媒体文件保存在 `{app}\data\qbar-notes\media`。这些路径不列入安装包，也不由覆盖更新或卸载清理。
 
-Qbar 插件、历史和使用频率数据库使用 `{app}\data\qbar\qbar.db`。安装器的 `[Files]` 是显式资源清单，不包含 `data\`；
-脚本也没有 `UninstallDelete` 项，因此不会打包、覆盖更新或卸载清理该数据库。更换安装目录时复制整个 `data\qbar` 子目录。
-
-升级时若目标库不存在而旧 `%AppData%\capslock_p2\qbar.db` 存在，程序使用 SQLite 一致性备份迁移到同目录暂存库，
-核对完整性、关键表和记录数后才无覆盖发布，原库保留。若两处数据库同时存在，则校验 `{app}\data\qbar\qbar.db`：
-有效时记录冲突并使用目标库，旧库仍保留且不会合并；无效时停止初始化并提示两处路径，保留两库。
-迁移失败不会创建并启用空库；安装目录或目标库写入失败会提示检查写入权限后重试，不会静默回退 AppData。
-
-AI 问答多会话使用 `{app}\data\ai-chat\ai-chat.db`。数据库只在运行时创建；安装器通过显式资源清单打包，不包含 `data\`，也没有删除该目录的卸载项，因此覆盖更新、同目录重装和卸载不会覆盖或删除会话。更换安装目录时用户复制整个 `data\ai-chat` 子目录。详细设计见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。
+旧版 `capslock_p2.ini`、窗口绑定 INI 与四个独立数据库仅供本次开发环境的手动迁移，已完成导入并保留原文件。程序启动时直接读取主库；全新安装首次创建主库并写入默认配置及插件设置，不检测、读取或清理旧来源。安装包不包含旧 INI、默认 INI、示例 INI 或独立数据库。
 
 WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsoft Edge WebView2 Runtime。内置 Everything 第一次建立 NTFS 索引时可能请求一次管理员权限。
 
 ## 配置和安全规则
 
-开发机根目录的 `capslock_p2.ini` 是个人配置，可能包含真实 API 地址和 API Key，**禁止作为安装包输入文件**。安装器只使用不含凭据的 `capslock_p2-default.ini`：
+开发机根目录的 `capslock_p2.ini` 是个人迁移来源，可能包含真实 API 地址和 API Key，**禁止作为安装包输入文件**。安装包不携带默认 INI、示例 INI、用户 INI 或窗口绑定 INI：
 
-- 安装包提供 `capslock_p2-default.ini`；首次运行直接使用它，并自动打开一次 `pages\usage.html` 使用介绍页；程序只在用户配置中记录内部的首次运行标记，其他设置仍按需保存覆盖项；
-- 用户文件只保存覆盖项，升级时不会覆盖已有的用户配置；
+- 首次创建主数据库时，将可信默认项写入 `cfg_defaults`；个人修改写入 `cfg_values`，插件默认项归各自插件设置；
 - 不打包 `capslock_p2-debug.log`；
 - 不打包 `capslock_p2-winsInfosRecorder.ini`；
 - 不打包 `capslock-plus\`、`.claude\`、已退役诊断脚本和 AHK 源码；
-- 不把个人 API Key 写入 `.iss`、默认配置或任何发布文档。
+- 不把个人 API Key 写入 `.iss`、数据库 seed 或任何发布文档。
 
-系统提示词等多行字段由配置层编码为单行 INI 存储值，读取时恢复逻辑换行；TabHotString 继续兼容 `\n` 与 `\\` 约定。配置保存只持久化有效变化，日志不记录 API Key、请求正文、剪贴板或用户输入。
+多行提示词和热字符串按逻辑文本存入 SQLite，不使用 INI 转义。凭据使用当前 Windows 用户的 DPAPI 保护；日志不记录 API Key、请求正文、剪贴板或用户输入。
 
 生成的安装器是一个 EXE，但安装后仍会有 `pages`、`resources` 等运行时文件，这是因为 WebView2、SQLite、词典和 Everything 都必须按磁盘路径访问。程序按固定资源布局查找 es.exe 和内置 Everything；不要把它们删除或移动到未被代码支持的位置。
 
@@ -124,7 +115,7 @@ WebView2 Runtime 不随安装包内置，目标机器需要预先安装 Microsof
 
 1. Ahk2Exe 和 ISCC 退出码均为 0。
 2. `pages\`、`vendor\`、`resources\dictionary.db`、`resources\SQLite3.dll`、Everything、64 位 WebView2 loader 和图标均存在。
-3. 安装包配置引用的是 `capslock_p2-default.ini`，没有引用根目录个人 `capslock_p2.ini`。
+3. 安装包不包含任何 `data\` 内容、配置 INI、个人配置或窗口绑定 INI。
 4. 发布物中没有 API Key、调试日志和机器专属窗口绑定记录。
 5. 使用 PowerShell 或文件工具核对文件和哈希，不启动项目程序，不执行安装器验证其运行效果。
 

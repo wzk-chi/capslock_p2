@@ -84,6 +84,7 @@ class CSQLite {
 		static SQLITE_OPEN_READONLY := 0x01 ; Database opened as read-only
 		static SQLITE_OPEN_READWRITE := 0x02 ; Database opened as read-write
 		static SQLITE_OPEN_CREATE := 0x04 ; Database will be created if not exists
+		static SQLITE_OPEN_URI := 0x40 ; Enable file: URIs for explicitly qualified paths
 		static MEMDB := ":memory:"
 		this.ErrorMsg := "", this.ErrorCode := 0
 		if (DBPath = "")
@@ -101,6 +102,7 @@ class CSQLite {
 			if (Create)
 				Flags |= SQLITE_OPEN_CREATE
 		}
+		Flags |= SQLITE_OPEN_URI
 		this._Path := DBPath
 		if (RC := DllCall("SQLite3.dll\sqlite3_open_v2", "Ptr", this._StrToUTF8(DBPath), "Ptr*", &HDB := 0, "Int", Flags, "Ptr", 0, "Cdecl Int"))
 			return (this._Path := "", this.ErrorMsg := this._ErrMsg(), this.ErrorCode := RC, false)

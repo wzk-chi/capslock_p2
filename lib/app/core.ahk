@@ -38,6 +38,18 @@ Initialize() {
 
     SetWorkingDir(A_ScriptDir)
     CoordMode("Mouse", "Screen")
+    DllCall("Kernel32\SetLastError", "UInt", 0)
+    AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
+        "Ptr", 0, "Int", 0, "WStr", "Local\capslock_p2-running", "Ptr")
+    mutexError := DllCall("Kernel32\GetLastError", "UInt")
+    if !AppInstanceMutex || mutexError = 183 {
+        if AppInstanceMutex
+            DllCall("Kernel32\CloseHandle", "Ptr", AppInstanceMutex)
+        AppInstanceMutex := 0
+        MsgBox("应用已在运行。", AppName, "Iconi")
+        ExitApp()
+        return false
+    }
     iconPath := A_ScriptDir . "\resources\capslock_p2-icon.png"
     try TraySetIcon(iconPath)
     try ProcessSetPriority("High")
@@ -46,30 +58,20 @@ Initialize() {
 
     userDocument := 0
     if !ConfigLoad(&configError, &userDocument) {
-        errorText := configError = "defaults_missing"
-            ? "应用默认配置文件缺失，无法启动。"
-            : configError = "defaults_read"
-                ? "应用默认配置文件无法读取，请检查文件后重新启动。"
-                : configError = "user_read"
-                    ? "应用设置文件无法读取，请检查文件权限后重新启动。"
-                    : configError = "user_metadata"
-                        ? "无法确认应用设置文件状态，请检查文件权限后重新启动。"
-                        : "应用配置无法读取，请检查配置文件后重新启动。"
+        errorText := configError = "database_read"
+            ? "应用数据库无法初始化。请确认安装目录可写、磁盘空间充足后重试；详细原因已记录。"
+            : "应用数据库中的配置无法读取。请保留数据库文件并查看错误日志。"
         MsgBox(errorText, AppName, "Iconx")
         ExitApp()
         return false
     }
     profileChanged := false
-    if !AppProfilesLoad(&profileChanged, true, userDocument) {
-        MsgBox("应用设置文件无法完整读取，请检查文件后重新启动。", AppName, "Iconx")
+    if !AppProfilesLoad(&profileChanged, true) {
+        MsgBox("应用配置无法完整读取，请重启应用；问题详情已记录。", AppName, "Iconx")
         ExitApp()
         return false
     }
     EnsureConfiguredElevation()
-    AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
-        "ptr", 0, "int", 0, "wstr", "Local\capslock_p2-running", "ptr")
-    if !AppInstanceMutex
-        DebugLog("Unable to create app instance mutex")
     BuildKeySet()
     ApplyGlobalSettings()
     ; Initialize the plugin store after debug logging is enabled, but before
@@ -90,8 +92,6 @@ Initialize() {
     OnClipboardChange(HandleClipboardChange)
     DebugLog("Hotkeys and clipboard watcher registered")
 
-    SetTimer(MonitorSettings, 500)
-
     if ConfigGlobalRead("loadingAnimation") != "0" {
         Sleep(80)
         HideLoading()
@@ -106,6 +106,7 @@ Initialize() {
 ; Elevate only when the user explicitly enabled the setting. The child process
 ; inherits the same script/executable and A_IsAdmin prevents a relaunch loop.
 EnsureConfiguredElevation() {
+    global AppInstanceMutex
     if ConfigGlobalRead("runAsAdmin", "0") != "1" || A_IsAdmin
         return true
 
@@ -114,9 +115,16 @@ EnsureConfiguredElevation() {
         ? quote . A_ScriptFullPath . quote
         : quote . A_AhkPath . quote . " " . quote . A_ScriptFullPath . quote
     try {
+        if AppInstanceMutex {
+            DllCall("Kernel32\CloseHandle", "Ptr", AppInstanceMutex)
+            AppInstanceMutex := 0
+        }
         Run("*RunAs " . command)
         ExitApp()
     } catch as elevationError {
+        DllCall("Kernel32\SetLastError", "UInt", 0)
+        AppInstanceMutex := DllCall("Kernel32\CreateMutexW",
+            "Ptr", 0, "Int", 0, "WStr", "Local\capslock_p2-running", "Ptr")
         DebugLog("Admin elevation failed")
         ShowMsg("无法以管理员身份启动，将继续以普通权限运行。", 5000)
         return true
@@ -124,6 +132,7 @@ EnsureConfiguredElevation() {
 }
 
 Shutdown(*) {
+    global AppInstanceMutex
     try ClipboardHistoryShutdown()
     try SetTimer(MouseSpeedTick, 0)
     try RestoreMouseSpeed()
@@ -137,6 +146,11 @@ Shutdown(*) {
     try QbarShutdown()
     try QbarPluginHostShutdown()
     try HideLoading()
+    try AppStoreShutdown()
+    if AppInstanceMutex {
+        try DllCall("Kernel32\CloseHandle", "Ptr", AppInstanceMutex)
+        AppInstanceMutex := 0
+    }
 }
 
 ClipboardSuspendBegin(reason := "unspecified") {
@@ -184,12 +198,11 @@ ClipboardSuspendReason() {
 
 ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
     &loadSucceeded := true, *) {
-    global SettingsVisible, SettingsReloadPending, Config, ConfigDefaults, SettingsModifyTime
+    global SettingsVisible, SettingsReloadPending, Config, ConfigDefaults
     loadSucceeded := false
     previous := ConfigSnapshot()
     previousConfig := Config
     previousDefaults := ConfigDefaults
-    previousModifyTime := SettingsModifyTime
     loadError := ""
     loadedUserDocument := 0
     if !ConfigLoad(&loadError, &loadedUserDocument) {
@@ -197,10 +210,9 @@ ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
         return []
     }
     appProfilesChanged := false
-    if !AppProfilesLoad(&appProfilesChanged, true, loadedUserDocument) {
+    if !AppProfilesLoad(&appProfilesChanged, true) {
         Config := previousConfig
         ConfigDefaults := previousDefaults
-        SettingsModifyTime := previousModifyTime
         SettingsReloadPending := true
         return []
     }
@@ -239,6 +251,17 @@ DebugLog(message) {
         FileAppend(line, DebugLogFile, "UTF-8")
     } catch {
         return
+    }
+}
+
+DiagnosticLogAlways(message) {
+    global DebugLogging
+    previousSetting := DebugLogging
+    DebugLogging := true
+    try {
+        DebugLog(message)
+    } finally {
+        DebugLogging := previousSetting
     }
 }
 
@@ -315,51 +338,23 @@ SettingInteger(section, key, fallback, minimum, maximum) {
 }
 
 MonitorSettings() {
-    global SettingsModifyTime, SettingsVisible, SettingsReloadPending, SettingsFile
-    if SettingsReloadPending {
-        ReloadSettings()
-        return
-    }
-    currentTime := ConfigFileModifyTime()
-    if currentTime = "" && FileExist(SettingsFile) {
-        SettingsReloadPending := true
-        ReloadSettings()
-        return
-    }
-    if currentTime != SettingsModifyTime {
-        ReloadSettings()
-        return
-    }
-    ; Check application profile content even when the coarse file timestamp did
-    ; not change. Profile-only external edits should take effect immediately.
-    appProfilesChanged := false
-    if !AppProfilesLoad(&appProfilesChanged, false) {
-        SettingsReloadPending := true
-        ReloadSettings()
-        return
-    }
-    if appProfilesChanged {
-        ; The probe did not publish; reload reads and publishes the full state.
-        loadSucceeded := false
-        ReloadSettings(false, true, &loadSucceeded)
-        if loadSucceeded && SettingsVisible
-            SetTimer(SettingsPushSnapshot, -1)
-    }
+    ; Configuration changes are published through the database save service.
 }
 
 ConfigSet(section, key, value) {
-    global Config, SettingsFile, SettingsModifyTime
+    global Config
     normalized := ""
     if !ConfigValidateValue(section, key, value, &normalized) {
         ShowMsg(LLMText("The setting value is invalid. Check the selected option and try again.",
             "设置值无效，请检查选项后重试。"), 2500)
         return false
     }
-    try {
-        ConfigWriteValue(SettingsFile, section, key, normalized)
-    } catch as writeError {
+    if Config.Has(section) && Config[section].Has(key) && String(Config[section][key]) = normalized
+        return true
+    if !AppStoreTransaction("runtime-setting", (*) => SettingsStoreSetValue(section, key, normalized)
+        && ((section = "Global" && key = "usageShown") || AppStoreIncrementSettingsRevision(AppStoreDb))) {
         DebugLog("Config write failed section=" . section . " key=" . key
-            . " errorType=" . Type(writeError))
+            . " store=" . AppStoreError)
         ShowMsg(LLMText(
             "Unable to save the setting. Check that the application folder is writable and try again.",
             "设置无法保存。请确认安装目录可写后重试。"), 2500)
@@ -368,7 +363,6 @@ ConfigSet(section, key, value) {
     if !Config.Has(section)
         Config[section] := Map()
     Config[section][key] := normalized
-    SettingsModifyTime := ConfigFileModifyTime()
     ApplySettingChange(section, key, normalized)
     return true
 }
@@ -639,20 +633,8 @@ RunConfiguredAction(actionText) {
     if actionText = ""
         return
 
-    openPosition := InStr(actionText, "(")
-    if !openPosition {
-        functionName := actionText
-        argumentText := ""
-    } else {
-        functionName := Trim(SubStr(actionText, 1, openPosition - 1))
-        argumentText := SubStr(actionText, openPosition + 1)
-        if SubStr(argumentText, -1) = ")"
-            argumentText := SubStr(argumentText, 1, StrLen(argumentText) - 1)
-    }
-
-    if !RegExMatch(functionName, "i)^[A-Za-z_][A-Za-z0-9_]*$")
-        return
-    if !RegExMatch(functionName, "i)^keyFunc_")
+    if !SettingsStoreParseAction(actionText, &functionName, &arguments)
+        || functionName = "@native" || functionName = "@block"
         return
 
     DebugLog("Action invoked")
@@ -674,7 +656,6 @@ RunConfiguredAction(actionText) {
         return
     }
 
-    arguments := SplitActionArguments(argumentText)
     try functionObject.Call(arguments*)
     catch as functionError {
         DebugLog("Action failed function=" . functionName
@@ -685,7 +666,57 @@ RunConfiguredAction(actionText) {
     }
 }
 
-SplitActionArguments(argumentText) {
+ConfiguredActionTextValid(actionText) {
+    return SettingsStoreParseAction(actionText)
+}
+
+ConfiguredActionFunctionAllowed(functionName) {
+    static allowed := Map(
+        "keyFunc_doNothing", true, "keyFunc_send", true, "keyFunc_run", true,
+        "keyFunc_toggleCapsLock", true, "keyFunc_mouseSpeedIncrease", true,
+        "keyFunc_mouseSpeedDecrease", true, "keyFunc_moveLeft", true,
+        "keyFunc_moveRight", true, "keyFunc_moveUp", true, "keyFunc_moveDown", true,
+        "keyFunc_moveWordLeft", true, "keyFunc_moveWordRight", true,
+        "keyFunc_backspace", true, "keyFunc_delete", true, "keyFunc_deleteAll", true,
+        "keyFunc_deleteWord", true, "keyFunc_forwardDeleteWord", true,
+        "keyFunc_end", true, "keyFunc_home", true, "keyFunc_moveToPageBeginning", true,
+        "keyFunc_moveToPageEnd", true, "keyFunc_deleteLine", true,
+        "keyFunc_deleteToLineBeginning", true, "keyFunc_deleteToLineEnd", true,
+        "keyFunc_deleteToPageBeginning", true, "keyFunc_deleteToPageEnd", true,
+        "keyFunc_enterWherever", true, "keyFunc_esc", true, "keyFunc_enter", true,
+        "keyFunc_doubleChar", true, "keyFunc_sendChar", true, "keyFunc_doubleAngle", true,
+        "keyFunc_doubleQuote", true, "keyFunc_pageUp", true, "keyFunc_pageDown", true,
+        "keyFunc_pageMoveUp", true, "keyFunc_pageMoveDown", true,
+        "keyFunc_switchClipboard", true, "keyFunc_pasteSystem", true,
+        "keyFunc_cut_1", true, "keyFunc_copy_1", true, "keyFunc_paste_1", true,
+        "keyFunc_undoRedo", true, "keyFunc_cut_2", true, "keyFunc_copy_2", true,
+        "keyFunc_paste_2", true, "keyFunc_qbar", true, "keyFunc_clipboardHistory", true,
+        "keyFunc_translate", true, "keyFunc_tabPrve", true, "keyFunc_tabNext", true,
+        "keyFunc_jumpPageTop", true, "keyFunc_jumpPageBottom", true,
+        "keyFunc_selectUp", true, "keyFunc_selectDown", true, "keyFunc_selectLeft", true,
+        "keyFunc_selectRight", true, "keyFunc_selectHome", true, "keyFunc_selectEnd", true,
+        "keyFunc_selectToPageBeginning", true, "keyFunc_selectToPageEnd", true,
+        "keyFunc_selectCurrentWord", true, "keyFunc_selectCurrentLine", true,
+        "keyFunc_selectWordLeft", true, "keyFunc_selectWordRight", true,
+        "keyFunc_pageMoveLineUp", true, "keyFunc_pageMoveLineDown", true,
+        "keyFunc_editSelectedText", true, "keyFunc_tabHotString", true,
+        "keyFunc_openCpasDocs", true, "keyFunc_mediaPrev", true, "keyFunc_mediaNext", true,
+        "keyFunc_mediaPlayPause", true, "keyFunc_volumeUp", true, "keyFunc_volumeDown", true,
+        "keyFunc_volumeMute", true, "keyFunc_reload", true, "keyFunc_openSettings", true,
+        "keyFunc_send_dot", true, "keyFunc_qbar_upperFolderPath", true,
+        "keyFunc_qbar_lowerFolderPath", true, "keyFunc_winbind_activate", true,
+        "keyFunc_winbind_binding", true, "keyFunc_winPin", true, "keyFunc_goCjkPage", true,
+        "keyFunc_click_left", true, "keyFunc_click_right", true, "keyFunc_mouse_up", true,
+        "keyFunc_mouse_down", true, "keyFunc_mouse_left", true, "keyFunc_mouse_right", true,
+        "keyFunc_wheel_up", true, "keyFunc_wheel_down", true,
+        "keyFunc_clearWinMinimizeStach", true, "keyFunc_popWinMinimizeStack", true,
+        "keyFunc_pushWinMinimizeStack", true, "keyFunc_unshiftWinMinimizeStack", true,
+        "keyFunc_winTransparent", true)
+    return allowed.Has(String(functionName))
+}
+
+SplitActionArguments(argumentText, &valid := true) {
+    valid := true
     arguments := []
     if Trim(argumentText) = ""
         return arguments
@@ -712,10 +743,18 @@ SplitActionArguments(argumentText) {
         } else if character = "," {
             arguments.Push(Trim(current))
             current := ""
+        } else if character = "(" || character = ")" {
+            ; Quoted parentheses are text; unquoted ones imply invalid structure.
+            valid := false
+            return []
         } else {
             current .= character
         }
         index += 1
+    }
+    if quoteCharacter != "" {
+        valid := false
+        return []
     }
     arguments.Push(Trim(current))
     return arguments

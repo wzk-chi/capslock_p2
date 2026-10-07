@@ -305,10 +305,12 @@ TranslateProviderVolcengineTranslate(text, onDelta, onFinished, overrides := 0) 
 }
 
 TranslateProviderVolcengineTest(msg, onFinished) {
-    overrides := Map(
-        "accessKey", Trim(LLMMsgField(msg, "volcAccessKey")),
-        "secretKey", LLMMsgField(msg, "volcSecretKey"),
-        "targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
+    overrides := Map("targetLanguage", Trim(LLMMsgField(msg, "targetLanguage")))
+    ; Missing credentials keep the saved value; an explicit empty value clears it.
+    if msg.Has("volcAccessKey")
+        overrides["accessKey"] := Trim(LLMMsgField(msg, "volcAccessKey"))
+    if msg.Has("volcSecretKey")
+        overrides["secretKey"] := LLMMsgField(msg, "volcSecretKey")
     if msg.Has("volcRegion")
         overrides["region"] := Trim(LLMMsgField(msg, "volcRegion"))
     return VolcengineTranslateAsync("Hello",

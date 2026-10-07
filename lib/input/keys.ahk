@@ -381,11 +381,7 @@ OpenUsagePage() {
 }
 
 OpenUsageOnFirstRun(*) {
-    global SettingsFile
-    ; An existing user configuration means this is an upgrade or a normal
-    ; restart, not a clean installation. The marker handles a first run where
-    ; the user closes the guide before ever saving settings.
-    if FileExist(SettingsFile) || ConfigGlobalRead("usageShown", "0") = "1"
+    if ConfigGlobalRead("usageShown", "1") = "1"
         return
 
     try {
