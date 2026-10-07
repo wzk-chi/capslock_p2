@@ -136,12 +136,13 @@ ConfigDefaultDocument() {
     document := Map()
     for section, definition in ConfigSchema() {
         values := Map()
-        if definition.Has("keys")
+        if definition.Has("keys") {
             for key, field in definition["keys"]
                 values[key] := field["default"]
-        else if definition.Has("defaults")
+        } else if definition.Has("defaults") {
             for key, value in definition["defaults"]
                 values[key] := value
+        }
         document[section] := values
     }
     return document

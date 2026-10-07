@@ -180,9 +180,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 - 新增弹窗不得直接声明原生 `<dialog>` 或在页面自行调用 `showModal()`；应复用 `AppDialog`，以保证设置、选择器、确认和工具配置弹窗的交互与视觉一致。`<dialog>` 只能作为 `dialog.js` 的内部实现。使用 `AppDialog` 的页面须加载 `dialog.js`，安装清单 `tools/capslock_p2.iss` 也须包含该共享脚本。
 
 面板实例的骨架（创建 GUI → `PanelHostEnsure()` → 导航回调置 `pageReady` →
-`PanelHostShow/Hide()`）在 `panelHost.ahk` 集中实现。开启耗时通过 `Panel timing` 写入 `capslock_p2-debug.log`，分别记录 WebView2 环境、控制器、导航、窗口显示及页面加载阶段；复用已有控制器单独记录。`ms` 是当前阶段耗时，`totalMs` 是从本次 Ensure 开始的耗时，`pageMs` 使用页面自己的计时器，不能与宿主时钟直接相减。
-
-设置页另记录 `Settings timing`，从 `SettingsShow` 起关联同一次打开，覆盖设置读取、校验、工具注册表、快照构建与发送，以及页面各区域渲染、下拉选项数量和首次绘制机会。性能日志只包含固定阶段名、耗时和计数，即使关闭调试日志也会记录，不包含设置值、凭据或用户正文。功能模块只处理各自职责：
+`PanelHostShow/Hide()`）在 `panelHost.ahk` 集中实现，功能模块只处理各自职责：
 
 - **qbar**：`qbar_panel.ahk` 负责窗口和通信，`qbar_index.ahk` 负责索引与行图标；`QbarExec` 调用公共宿主，行图标经 `icons.ahk` 从 shell 提取后
   以 data URI 推给页面并按扩展名/路径缓存。`QbarShow` 每次把窗口重置到收拢高度，页面需配合

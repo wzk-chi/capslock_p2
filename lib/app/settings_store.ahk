@@ -1,5 +1,5 @@
 ; Configuration defaults, user overrides and secrets in the shared AppStore.
-global SettingsStoreSourceVersion := 1
+global SettingsStoreSourceVersion := 2
 
 SettingsStoreValidateDefaultSet(defaults, &missingField := "") {
     missingField := ""
@@ -19,6 +19,8 @@ SettingsStoreValidateDefaultSet(defaults, &missingField := "") {
 
 SettingsStoreSyncDefaults(db) {
     seed := ConfigDefaultDocument()
+    if !SettingsStoreValidateDefaultSet(seed, &missingField)
+        throw Error("可信默认配置声明不完整：" . missingField)
     for section, values in seed {
         if section = "Qbar"
             continue

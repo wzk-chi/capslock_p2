@@ -1907,18 +1907,12 @@ function renderHotkeyEditor(previousProfileId = state.hotkeyProfileId) {
   renderShortcuts(sameScope);
 }
 function renderAll(previousProfileId = state.hotkeyProfileId) {
-  const timings = {};
-  for (const [phase, render] of [
-    ['formsMs', renderSettingsForms], ['controlsMs', refreshStaticControls],
-    ['shortcutsMs', () => renderHotkeyEditor(previousProfileId)],
-    ['tabMs', () => renderPairs('TabHotString', 'tabList', true)],
-    ['pluginsMs', renderPlugins], ['bindingsMs', renderBindings]
-  ]) {
-    const startedAt = performance.now();
-    render();
-    timings[phase] = Math.round(performance.now() - startedAt);
-  }
-  return timings;
+  renderSettingsForms();
+  refreshStaticControls();
+  renderHotkeyEditor(previousProfileId);
+  renderPairs('TabHotString', 'tabList', true);
+  renderPlugins();
+  renderBindings();
 }
 function setPage(page, syncHost = true) {
   if (page !== 'shortcuts') stopShortcutRecording();
@@ -1953,7 +1947,6 @@ function buildTranslationTest(target) {
 }
 
 function applySettingsSnapshot(snapshot, committed = false) {
-  const startedAt = performance.now();
   if (!snapshot?.sessionId || !snapshot.config || !snapshot.schema
     || !Array.isArray(snapshot.config.profiles) || !Array.isArray(snapshot.config.plugins)
     || !Array.isArray(snapshot.config.bindings) || !Number.isSafeInteger(snapshot.revision))
@@ -1962,7 +1955,6 @@ function applySettingsSnapshot(snapshot, committed = false) {
   if (!committed && state.sessionId === snapshot.sessionId && isLoaded()) {
     setPage(snapshot.page || state.page, false);
     if (snapshot.toast) showToast(snapshot.toast);
-    reportSettingsTiming(snapshot, 'snapshot-reuse', startedAt);
     return true;
   }
   if (!committed && hasChanges()) return false;
@@ -1984,23 +1976,12 @@ function applySettingsSnapshot(snapshot, committed = false) {
     ? selectedProfileId : '';
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   $('.side-foot').textContent = 'v' + snapshot.appVersion;
-  const setupMs = Math.round(performance.now() - startedAt);
-  const timings = renderAll(selectedProfileId);
+  renderAll(selectedProfileId);
   setSettingsLoaded(true);
   setPage(snapshot.page || state.page || 'general', false);
   if (!committed) setStatus('');
   if (snapshot.toast) showToast(snapshot.toast);
-  reportSettingsTiming(snapshot, 'render', startedAt, { setupMs, ...timings,
-    optionCount: document.querySelectorAll('option').length });
-  const sessionId = state.sessionId;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (state.sessionId === sessionId && isLoaded()) reportSettingsTiming(snapshot, 'paint', startedAt);
-  }));
   return true;
-}
-function reportSettingsTiming(snapshot, stage, startedAt, metrics = {}) {
-  post({ type: 'settingsTiming', openTraceId: snapshot.openTraceId,
-    stage, ms: Math.round(performance.now() - startedAt), ...metrics });
 }
 function editableDocument(document) {
   return { sections: clone(document.sections),

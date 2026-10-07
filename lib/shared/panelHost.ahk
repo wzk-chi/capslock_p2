@@ -42,9 +42,6 @@ PanelHostCreate(pagePath, title, options := 0) {
         "navigationToken", 0,
         "messageToken", 0,
         "acceptedNavigationId", 0,
-        "openTraceId", 0,
-        "openStartedAt", 0,
-        "navigationStartedAt", 0,
         "registryId", 0,
         "destroyHiddenAt", 0,
         "destroyDeadline", 0,
@@ -68,17 +65,11 @@ PanelHostCreate(pagePath, title, options := 0) {
 PanelHostEnsure(host) {
     if !IsObject(host)
         return false
-    host["openTraceId"] += 1
-    host["openStartedAt"] := A_TickCount
     ; Ensure is called on the path to opening a panel. Cancel expiry before a
     ; due timer can dispose the controller between ensure and show.
     PanelHostCancelDestroyCountdown(host)
-    if IsObject(host["gui"]) && IsObject(host["webView"]) {
-        PanelHostLogTiming(host, "reuse", host["openStartedAt"],
-            " pageReady=" . (host["pageReady"] ? 1 : 0))
+    if IsObject(host["gui"]) && IsObject(host["webView"])
         return true
-    }
-    PanelHostLogTiming(host, "create-start", host["openStartedAt"])
 
     pagePath := host["pagePath"]
     loaderPath := PanelHostLoaderPath()
@@ -94,15 +85,9 @@ PanelHostEnsure(host) {
     }
 
     try {
-        webViewStartedAt := A_TickCount
-        environment := WebView2.CreateEnvironmentAsync(0, host["dataPath"], "", loaderPath).await2(15000)
-        PanelHostLogTiming(host, "environment", webViewStartedAt)
-        controllerStartedAt := A_TickCount
-        ; Keep the original total creation deadline while measuring both phases.
-        host["controller"] := environment.CreateCoreWebView2ControllerAsync(host["gui"].Hwnd)
-            .await2(Max(1, 15000 - (A_TickCount - webViewStartedAt)))
-        PanelHostLogTiming(host, "controller", controllerStartedAt)
-        setupStartedAt := A_TickCount
+        host["controller"] := WebView2.CreateControllerAsync(
+            host["gui"].Hwnd, 0, host["dataPath"], "", loaderPath
+        ).await2(15000)
         host["controller"].Fill()
         if IsNumber(host["controllerBackColor"])
             try host["controller"].DefaultBackgroundColor := host["controllerBackColor"]
@@ -114,11 +99,8 @@ PanelHostEnsure(host) {
         host["navigationToken"] := host["webView"].add_NavigationCompleted(host["navigationHandler"])
         host["messageToken"] := host["webView"].add_WebMessageReceived(host["messageHandler"])
         PanelHostNavigate(host)
-        PanelHostLogTiming(host, "setup", setupStartedAt)
         return true
     } catch as webViewError {
-        PanelHostLogTiming(host, "create-failed", host["openStartedAt"],
-            " errorType=" . Type(webViewError))
         PanelHostReleaseWebView(host)
         host["realized"] := false
         PanelHostHide(host)
@@ -155,7 +137,6 @@ PanelHostNavigationCompleted(host, sender, args) {
     catch
         success := false
     host["pageReady"] := success
-    PanelHostLogTiming(host, "navigation", host["navigationStartedAt"], " success=" . (success ? 1 : 0))
     DebugLog("panel navigation title=" . host["title"] . " success=" . success)
     callbacks := host["callbacks"]
     if callbacks.Has("navigation")
@@ -173,15 +154,6 @@ PanelHostWebMessageReceived(host, sender, args) {
         message := ""
     if message = '{"type":"cursorMove"}' {
         ShowSystemCursor()
-        return
-    }
-    if InStr(message, '"type":"panelTiming"') = 2 {
-        msg := LLMMessageParse(message)
-        stage := LLMMsgField(msg, "stage")
-        elapsed := LLMMsgNumber(msg, "ms", &valid, 0, true)
-        if (stage = "bridge-ready" || stage = "dom-ready" || stage = "loaded")
-            && valid && elapsed >= 0 && elapsed <= 120000
-            PanelHostLogTiming(host, "page-" . stage, 0, " pageMs=" . elapsed)
         return
     }
     callbacks := host["callbacks"]
@@ -204,14 +176,6 @@ PanelHostPageUrl(pagePath) {
     if result < 0
         throw Error("Could not create WebView2 page URL")
     return StrGet(urlBuffer, "UTF-16")
-}
-
-PanelHostLogTiming(host, stage, startedAt := 0, details := "") {
-    SplitPath(host["pagePath"], &pageName)
-    DiagnosticLogAlways("Panel timing panel=" . host["registryId"] . " open=" . host["openTraceId"]
-        . " page=" . pageName . " stage=" . stage
-        . " ms=" . (startedAt ? A_TickCount - startedAt : 0)
-        . " totalMs=" . (host["openStartedAt"] ? A_TickCount - host["openStartedAt"] : 0) . details)
 }
 
 PanelHostIsPageUri(host, uri) {
@@ -254,14 +218,12 @@ PanelHostNavigate(host) {
         return
     host["pageReady"] := false
     host["acceptedNavigationId"] := 0
-    host["navigationStartedAt"] := A_TickCount
     host["webView"].Navigate(PanelHostPageUrl(host["pagePath"]))
 }
 
 PanelHostShow(host, width := 0, height := 0, center := true) {
     if !IsObject(host) || !IsObject(host["gui"])
         return
-    showStartedAt := A_TickCount
     PanelHostCancelDestroyCountdown(host)
     host["visible"] := true
     options := ""
@@ -275,7 +237,6 @@ PanelHostShow(host, width := 0, height := 0, center := true) {
     host["realized"] := true
     ShowSystemCursor()
     PanelHostFill(host)
-    PanelHostLogTiming(host, "window-show", showStartedAt)
 }
 
 PanelHostHide(host) {

@@ -7,16 +7,9 @@ global SettingsPendingToast := ""
 global SettingsTestGeneration := 0
 global SettingsTestOperation := 0
 global SettingsSaving := false
-global SettingsOpenTraceId := 0
-global SettingsOpenStartedAt := 0
 
 SettingsShow(initialPage := "general", toastMessage := "", *) {
     global SettingsHost, SettingsVisible, SettingsPendingPage, SettingsPendingToast
-    global SettingsOpenTraceId, SettingsOpenStartedAt
-    SettingsOpenTraceId += 1
-    SettingsOpenStartedAt := A_TickCount
-    SettingsLogTiming("show-start", SettingsOpenStartedAt,
-        " hostExists=" . (IsObject(SettingsHost) ? 1 : 0))
     initialPage := StrLower(Trim(initialPage))
     SettingsPendingPage := SettingsPageIsAllowed(initialPage) ? initialPage : "general"
     SettingsPendingToast := Trim(String(toastMessage))
@@ -33,34 +26,7 @@ SettingsShow(initialPage := "general", toastMessage := "", *) {
         WinActivate("ahk_id " . panelGui.Hwnd)
     if PanelHostPageReady(SettingsHost)
         SetTimer(SettingsPushSnapshot, -1)
-    SettingsLogTiming("window-shown", SettingsOpenStartedAt)
     return true
-}
-
-SettingsLogTiming(stage, startedAt := 0, details := "") {
-    global SettingsOpenTraceId, SettingsOpenStartedAt
-    DiagnosticLogAlways("Settings timing open=" . SettingsOpenTraceId . " stage=" . stage
-        . " ms=" . (startedAt ? A_TickCount - startedAt : 0)
-        . " totalMs=" . (SettingsOpenStartedAt ? A_TickCount - SettingsOpenStartedAt : 0) . details)
-}
-
-SettingsLogPageTiming(msg) {
-    global SettingsOpenTraceId
-    if !SettingsIsEditMessage(msg, true)
-        return
-    traceId := LLMMsgNumber(msg, "openTraceId", &traceValid, 0, true)
-    elapsed := LLMMsgNumber(msg, "ms", &elapsedValid, 0, true)
-    stage := LLMMsgField(msg, "stage")
-    if !traceValid || traceId != SettingsOpenTraceId || !elapsedValid || elapsed < 0 || elapsed > 120000
-        || (stage != "render" && stage != "paint" && stage != "snapshot-reuse")
-        return
-    details := " pageMs=" . elapsed
-    for key in ["setupMs", "formsMs", "controlsMs", "shortcutsMs", "tabMs", "pluginsMs", "bindingsMs", "optionCount"] {
-        value := LLMMsgNumber(msg, key, &valid, 0, true)
-        if valid && value >= 0 && value <= 1000000
-            details .= " " . key . "=" . value
-    }
-    SettingsLogTiming("page-" . stage, 0, details)
 }
 
 SettingsEnsureWebView() {
@@ -125,10 +91,6 @@ SettingsWebMessageReceived(sender, args) {
         return
     msg := LLMMessageParse(message)
     messageType := LLMMsgField(msg, "type")
-    if messageType = "settingsTiming" {
-        SettingsLogPageTiming(msg)
-        return
-    }
     if messageType = "settingsPageError" {
         phase := RegExReplace(LLMMsgField(msg, "phase"), "[^A-Za-z0-9_-]", "")
         errorType := RegExReplace(LLMMsgField(msg, "errorType"), "[^A-Za-z0-9_-]", "")
