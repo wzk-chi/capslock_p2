@@ -23,6 +23,7 @@ global ClipboardHistoryPendingPageSize := 20
 global ClipboardHistoryWidth := ScreenFitSize(860, 640, 720, 480)[1]
 global ClipboardHistoryHeight := ScreenFitSize(860, 640, 720, 480)[2]
 global ClipboardHistoryPasteBusy := false
+global ClipboardHistoryDragBusy := false
 global ClipboardHistoryClearTokens := Map()
 
 ClipboardHistoryOpen(*) {
@@ -60,6 +61,7 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
         if IsObject(panelGui)
             WinActivate("ahk_id " . panelGui.Hwnd)
         ShowSystemCursor()
+        ClipboardHistoryApplyWindowState()
         if refreshSession {
             ClipboardHistoryResetSession(initialSearch, targetContext, false)
             SetTimer(ClipboardHistorySendState, -1)
@@ -90,13 +92,24 @@ ClipboardHistoryShow(initialSearch := "", targetContext := 0, refreshSession := 
     if IsObject(panelGui)
         WinActivate("ahk_id " . panelGui.Hwnd)
     WindowBarApplyNativeMode(ClipboardHistoryHost, WindowBarIsNative(ClipboardHistoryHost))
-    WindowBarApplyPinnedState(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost),
-        true, ClipboardHistoryHide, Map("autoHide", false))
+    ClipboardHistoryApplyWindowState()
     WindowBarSetPinnedPage(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost))
     SetTimer(ClipboardHistorySendState, -1)
     DebugLog("ClipboardHistoryShow completed pageReady=" . ClipboardHistoryPageReady
         . " windowVisible=" . ClipboardHistoryWindowVisible())
     return true
+}
+
+ClipboardHistoryApplyWindowState() {
+    global ClipboardHistoryHost, ClipboardHistoryVisible
+    WindowBarApplyPinnedState(ClipboardHistoryHost, WindowBarIsPinned(ClipboardHistoryHost),
+        ClipboardHistoryVisible, ClipboardHistoryHide,
+        Map("guard", ClipboardHistoryFocusHideGuard))
+}
+
+ClipboardHistoryFocusHideGuard() {
+    global ClipboardHistoryPasteBusy, ClipboardHistoryDragBusy
+    return ClipboardHistoryPasteBusy || ClipboardHistoryDragBusy
 }
 
 ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget := true) {
@@ -375,7 +388,7 @@ ClipboardHistoryWebMessageReceived(sender, args) {
         return
     messageType := LLMMsgField(msg, "type")
     if WindowBarHandleMessage(ClipboardHistoryHost, messageType, ClipboardHistoryHide, 0,
-        Map("autoHide", false, "requireActive", false))
+        Map("guard", ClipboardHistoryFocusHideGuard))
         return
     sessionId := LLMMsgField(msg, "sessionId")
     if messageType = "ready" {
@@ -449,7 +462,8 @@ ClipboardHistoryPanelCopy(id, sessionId, *) {
 
 ClipboardHistoryPanelNativeDrag(id, sessionId, dragKind, *) {
     global ClipboardHistorySessionId, ClipboardHistoryHost
-    if sessionId != ClipboardHistorySessionId
+    global ClipboardHistoryDragBusy
+    if sessionId != ClipboardHistorySessionId || ClipboardHistoryDragBusy
         return
     item := ClipboardHistoryStoreGetItem(id)
     expectedType := dragKind = "files" ? "file" : "image"
@@ -465,6 +479,7 @@ ClipboardHistoryPanelNativeDrag(id, sessionId, dragKind, *) {
 
     ; Give Windows Shell an IDataObject containing only the requested native format.
     dataObject := 0
+    ClipboardHistoryDragBusy := true
     try {
         result := DllCall("ole32\OleGetClipboard", "ptr*", &dataObject, "int")
         if result < 0 || !dataObject
@@ -481,31 +496,39 @@ ClipboardHistoryPanelNativeDrag(id, sessionId, dragKind, *) {
         ClipboardHistoryActionResult(action, false,
             "无法拖出内容：" . dragError.Message, id, false, sessionId)
     } finally {
-        if dataObject
-            ObjRelease(dataObject)
-        ClipboardHistoryPost(Map("type", "nativeDragFinished", "sessionId", sessionId, "id", id))
+        try {
+            if dataObject
+                ObjRelease(dataObject)
+            ClipboardHistoryPost(Map("type", "nativeDragFinished", "sessionId", sessionId, "id", id))
+        } finally {
+            ClipboardHistoryDragBusy := false
+        }
     }
 }
 
 ClipboardHistoryPanelPaste(id, sessionId, *) {
-    global ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight
-    global ClipboardHistorySessionId, ClipboardHistoryTargetHwnd, ClipboardHistoryVisible
-    global ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
-    global ClipboardHistoryPasteBusy
+    global ClipboardHistorySessionId, ClipboardHistoryPasteBusy
     if sessionId != ClipboardHistorySessionId || ClipboardHistoryPasteBusy
         return
     ClipboardHistoryPasteBusy := true
-    item := ClipboardHistoryStoreGetItem(id)
-    if sessionId != ClipboardHistorySessionId {
+    try return ClipboardHistoryPanelPasteToTarget(id, sessionId)
+    finally {
         ClipboardHistoryPasteBusy := false
-        return
     }
+}
+
+ClipboardHistoryPanelPasteToTarget(id, sessionId) {
+    global ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight
+    global ClipboardHistorySessionId, ClipboardHistoryTargetHwnd, ClipboardHistoryVisible
+    global ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
+    item := ClipboardHistoryStoreGetItem(id)
+    if sessionId != ClipboardHistorySessionId
+        return
     targetContext := ClipboardHistoryTargetContext
     targetHwnd := ClipboardHistoryTargetHwnd
     targetPid := ClipboardHistoryTargetPid
     if !IsObject(item) {
         ClipboardHistoryActionResult("paste", false, "历史内容已不可用", "", false, sessionId)
-        ClipboardHistoryPasteBusy := false
         return
     }
     if !IsObject(targetContext) || !ClipboardHistoryTargetContextValid(targetContext) {
@@ -514,12 +537,10 @@ ClipboardHistoryPanelPaste(id, sessionId, *) {
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
             ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴", "", false, sessionId)
-        ClipboardHistoryPasteBusy := false
         return
     }
     if !ClipboardHistoryTargetWindowValid(targetHwnd, targetPid) {
         ClipboardHistoryActionResult("paste", false, "目标窗口已失效，未发送粘贴", "", false, sessionId)
-        ClipboardHistoryPasteBusy := false
         return
     }
     WinActivate("ahk_id " . targetHwnd)
@@ -529,7 +550,6 @@ ClipboardHistoryPanelPaste(id, sessionId, *) {
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
             ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴", "", false, sessionId)
-        ClipboardHistoryPasteBusy := false
         return
     }
     if sessionId != ClipboardHistorySessionId
@@ -557,26 +577,26 @@ ClipboardHistoryPanelPaste(id, sessionId, *) {
     if !ok && ClipboardHistorySessionId = sessionBeforeHide {
         ClipboardHistoryVisible := true
         PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, false)
+        ClipboardHistoryApplyWindowState()
         SetTimer(ClipboardHistorySendState, -1)
     }
     if !ok
         ClipboardHistoryActionResult("paste", false, "粘贴失败，面板已恢复", "", false, sessionId)
-    ClipboardHistoryPasteBusy := false
 }
 
 ClipboardHistoryPanelPasteFailure(item, expectedSessionId) {
-    global ClipboardHistoryVisible, ClipboardHistorySessionId, ClipboardHistoryPasteBusy
+    global ClipboardHistoryVisible, ClipboardHistorySessionId
     global ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight
     if ClipboardHistorySessionId = expectedSessionId {
         ClipboardHistoryVisible := true
         PanelHostShow(ClipboardHistoryHost, ClipboardHistoryWidth, ClipboardHistoryHeight, false)
+        ClipboardHistoryApplyWindowState()
         SetTimer(ClipboardHistorySendState, -1)
         ok := ClipboardHistoryCopyPrepared(item)
         ClipboardHistoryActionResult("paste", ok,
             ok ? "已复制，请切换到目标窗口粘贴" : "复制失败，未发送粘贴",
             "", false, expectedSessionId)
     }
-    ClipboardHistoryPasteBusy := false
     return false
 }
 

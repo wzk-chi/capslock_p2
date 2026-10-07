@@ -152,7 +152,7 @@ LLMTranslateWebMessageReceived(sender, args) {
     if WindowBarHandleDebugMessage(msg, "translate")
         return
     if WindowBarHandleMessage(LLMTranslateHost, messageType, LLMTranslateHide,
-        LLMTranslateSetPinnedState, Map("guard", LLMTranslateFocusHideGuard),
+        LLMTranslateSetPinnedState, 0,
         LLMTranslateSetNativeState)
         return
     if messageType = "translate" {
@@ -234,8 +234,7 @@ LLMTranslateSetPinned() {
 LLMTranslateApplyWindowState() {
     global LLMTranslateHost, LLMTranslatePinned, LLMTranslateVisible
     WindowBarApplyPinnedState(LLMTranslateHost, LLMTranslatePinned,
-        LLMTranslateVisible, LLMTranslateHide,
-        Map("guard", LLMTranslateFocusHideGuard))
+        LLMTranslateVisible, LLMTranslateHide)
 }
 
 LLMTranslateApplyNativeWindowMode() {
@@ -430,11 +429,6 @@ TranslateProviderLlmTranslate(text, onDelta, onFinished, overrides := 0) {
 LLMTranslateResize(targetGui, minMax, width, height) {
     global LLMTranslateHost
     PanelHostResize(LLMTranslateHost, minMax)
-}
-
-LLMTranslateFocusHideGuard() {
-    global SettingsVisible
-    return SettingsVisible
 }
 
 LLMTranslateHide(*) {

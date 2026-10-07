@@ -61,6 +61,7 @@ WindowBarApplyNativeMode(host, nativeWindow, pageSetter := "setNativeWindowMode"
     PanelHostFill(host)
     if pageSetter != ""
         PanelHostExecute(host, "window." . pageSetter . "(" . (nativeWindow ? "true" : "false") . ");")
+    PanelHostLogFocus(host, "native-mode-applied")
     return true
 }
 
@@ -158,6 +159,11 @@ WindowBarApplyPinnedState(host, pinned, visible, focusCallback, options := 0) {
     WinSetAlwaysOnTop(pinned, "ahk_id " . panelGui.Hwnd)
     options := IsObject(options) ? options : Map()
     autoHide := !options.Has("autoHide") || options["autoHide"]
+    if options.Has("autoHideCallback")
+        focusCallback := options["autoHideCallback"]
+    reason := !autoHide ? "disabled" : pinned ? "pinned" : !visible ? "hidden"
+        : !IsObject(focusCallback) ? "missing-callback" : "enabled"
+    PanelHostLogFocus(host, "auto-hide-policy", " reason=" . reason)
     if !autoHide || pinned || !visible
         PanelHostStopAutoHide(host)
     else if IsObject(focusCallback)

@@ -7,6 +7,7 @@
 
 global AiChatHost := 0
 global AiChatVisible := false
+global AiChatHiddenByFocus := false
 global AiChatPendingQuestion := ""
 global AiChatRequestRunning := false
 global AiChatStreamId := 0
@@ -126,19 +127,20 @@ LLMAiBuildMessages(history, overrides := 0) {
 
 AiChatShow(question) {
     global AiChatHost, AiChatVisible, AiChatWindowInitialized
-    global AiChatPendingQuestion
+    global AiChatPendingQuestion, AiChatHiddenByFocus
     wasVisible := AiChatVisible
     question := Trim(question)
     if question != ""
         AiChatPendingQuestion := question
 
-    if !wasVisible
+    if !wasVisible && (!AiChatHiddenByFocus || question != "")
         AiChatStartNewSession(false)
     AiChatVisible := true
     if !AiChatEnsureWebView() {
         AiChatVisible := false
         return
     }
+    AiChatHiddenByFocus := false
     aiChatSize := ScreenFitSize(720, 560, 520, 400)
     if AiChatWindowInitialized
         PanelHostShow(AiChatHost, 0, 0, false)
@@ -255,7 +257,7 @@ AiChatWebMessageReceived(sender, args) {
     if WindowBarHandleDebugMessage(msg, "ai")
         return
     if WindowBarHandleMessage(AiChatHost, messageType, AiChatHide,
-        AiChatSetPinnedState, Map("autoHide", false))
+        AiChatSetPinnedState, Map("autoHideCallback", AiChatHideOnBlur))
         return
     if messageType = "streamDebug" {
         rawValid := false
@@ -983,9 +985,9 @@ AiChatSetPinned() {
 }
 
 AiChatApplyWindowState() {
-    global AiChatHost, AiChatPinned
-    WindowBarApplyPinnedState(AiChatHost, AiChatPinned, true, AiChatHide,
-        Map("autoHide", false))
+    global AiChatHost, AiChatPinned, AiChatVisible
+    WindowBarApplyPinnedState(AiChatHost, AiChatPinned, AiChatVisible, AiChatHide,
+        Map("autoHideCallback", AiChatHideOnBlur))
 }
 
 AiChatSetPinnedState(value) {
@@ -1016,7 +1018,7 @@ AiChatUpdateFocusBehavior() {
     global AiChatHost, AiChatVisible
     if !AiChatVisible || !IsObject(AiChatHost)
         return
-    PanelHostStopAutoHide(AiChatHost)
+    AiChatApplyWindowState()
 }
 
 AiChatResize(targetGui, minMax, width, height) {
@@ -1024,21 +1026,33 @@ AiChatResize(targetGui, minMax, width, height) {
     PanelHostResize(AiChatHost, minMax)
 }
 
+AiChatHideOnBlur(*) {
+    global AiChatHost, AiChatVisible, AiChatHiddenByFocus
+    ; Focus loss only hides the UI. Keep the current conversation, draft and
+    ; generation alive so an empty reopen resumes the same page.
+    AiChatHiddenByFocus := true
+    AiChatVisible := false
+    PanelHostHide(AiChatHost)
+}
+
 AiChatHide(*) {
-    global AiChatHost, AiChatVisible, AiChatPendingQuestion
+    global AiChatHost, AiChatVisible, AiChatPendingQuestion, AiChatHiddenByFocus
     AiChatInvalidateRequest("interrupted", true, true)
     AiChatPendingQuestion := ""
+    AiChatHiddenByFocus := false
     AiChatVisible := false
     PanelHostHide(AiChatHost)
 }
 
 AiChatShutdown(*) {
     global AiChatHost, AiChatVisible, AiChatWindowInitialized
+    global AiChatHiddenByFocus
     global AiChatTitleStreamId, AiChatTitleActiveRequest, AiChatTitleRunning
     global AiChatTitleRequestSerial, AiChatTitleSessionId, AiChatTitleAnswer
     global AiChatPendingQuestion
     AiChatInvalidateRequest("interrupted", true, false)
     AiChatPendingQuestion := ""
+    AiChatHiddenByFocus := false
     AiChatVisible := false
     titleStreamId := AiChatTitleStreamId
     AiChatTitleRequestSerial += 1

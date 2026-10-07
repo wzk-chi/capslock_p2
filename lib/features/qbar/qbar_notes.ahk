@@ -35,7 +35,7 @@ NotesShow(initialSearch := "", targetHwnd := 0, recordHistory := true) {
         WinActivate("ahk_id " . panelGui.Hwnd)
     WindowBarApplyNativeMode(NotesHost, WindowBarIsNative(NotesHost))
     WindowBarApplyPinnedState(NotesHost, WindowBarIsPinned(NotesHost),
-        NotesVisible, NotesHide, Map("autoHide", false))
+        NotesVisible, NotesHide, Map("guard", NotesFocusHideGuard))
     WindowBarSetPinnedPage(NotesHost, WindowBarIsPinned(NotesHost))
     if recordHistory
         QbarHistoryRemember(QbarHistoryNotesEntry(NotesPendingSearch))
@@ -52,6 +52,11 @@ NotesHide(*) {
     SetTimer(NotesSendInitialState, 0)
     PanelHostHide(NotesHost)
     return true
+}
+
+NotesFocusHideGuard() {
+    global NotesEditorSaving
+    return NotesEditorSaving
 }
 
 NotesIsActive() {
@@ -291,16 +296,19 @@ NotesHandleSave(msg) {
     if noteId = ""
         noteId := NotesEditorNoteId
     NotesEditorSaving := true
-    savedId := 0
-    ok := NotesStoreSaveNote(noteId, title, content, tags, editorId, &savedId)
-    result := ok
-        ? Map("type", "saveResult", "ok", JSON.true,
-            "saveSeq", Integer(saveSeq), "noteId", savedId)
-        : Map("type", "saveResult", "ok", JSON.false,
-            "saveSeq", Integer(saveSeq), "error", NotesStoreError)
-    NotesSaveResults[key] := result
-    NotesPost(result)
-    NotesEditorSaving := false
+    try {
+        savedId := 0
+        ok := NotesStoreSaveNote(noteId, title, content, tags, editorId, &savedId)
+        result := ok
+            ? Map("type", "saveResult", "ok", JSON.true,
+                "saveSeq", Integer(saveSeq), "noteId", savedId)
+            : Map("type", "saveResult", "ok", JSON.false,
+                "saveSeq", Integer(saveSeq), "error", NotesStoreError)
+        NotesSaveResults[key] := result
+        NotesPost(result)
+    } finally {
+        NotesEditorSaving := false
+    }
     if ok {
         NotesEditorId := ""
         NotesEditorNoteId := String(savedId)
@@ -600,7 +608,7 @@ NotesWebMessageReceived(sender, args) {
     if WindowBarHandleDebugMessage(msg, "notes")
         return
     if WindowBarHandleMessage(NotesHost, LLMMsgField(msg, "type"), NotesHide, 0,
-        Map("autoHide", false))
+        Map("guard", NotesFocusHideGuard))
         return
     NotesHandleMessage(msg)
 }

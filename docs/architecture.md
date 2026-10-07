@@ -146,7 +146,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 ## WebView2 面板
 
 所有 WebView2 面板共用 `lib/shared/panelHost.ahk` 的生命周期；功能模块只保存业务状态和页面回调。宿主统一持有 GUI、controller、WebView、导航就绪状态、事件 token 和焦点监视器。
-设置页、AI 页和 Everything 页是普通可调整大小的窗口；qbar、翻译、词典和 Everything 默认失焦隐藏。
+设置页保持显示；qbar、翻译、词典、AI、笔记、剪贴板历史和 Everything 默认失焦隐藏。置顶或切换为独立窗口时保持显示；宿主拥有的文件选择等弹窗不算离开面板。剪贴板粘贴、拖放及笔记保存期间暂缓失焦隐藏，操作结束后恢复。笔记隐藏保留编辑草稿；AI 失焦隐藏保留当前会话、输入草稿及正在生成的回答，空白重新打开时继续该会话，显式关闭仍沿用原有的中断行为。
 
 页面通信遵循同一套习惯：
 

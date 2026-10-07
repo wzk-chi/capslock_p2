@@ -237,11 +237,13 @@ PanelHostShow(host, width := 0, height := 0, center := true) {
     host["realized"] := true
     ShowSystemCursor()
     PanelHostFill(host)
+    PanelHostLogFocus(host, "shown")
 }
 
 PanelHostHide(host) {
     if !IsObject(host)
         return
+    PanelHostLogFocus(host, "hide-requested")
     wasVisible := host["visible"]
     PanelHostStopFocusMonitor(host)
     PanelHostStopAutoHide(host)
@@ -250,6 +252,7 @@ PanelHostHide(host) {
     host["visible"] := false
     if host.Has("windowBarNative")
         host["windowBarNative"] := false
+    PanelHostLogFocus(host, "hidden")
     ; Repeated hide requests must not extend an already-running countdown.
     ; A never-shown but initialized page still gets a deadline on first hide.
     if wasVisible || !host["destroyHiddenAt"]
@@ -258,9 +261,64 @@ PanelHostHide(host) {
 
 PanelHostRegister(host) {
     global PanelHostRegistry, PanelHostRegistrySequence
+    static activationLoggingRegistered := false
+    if !activationLoggingRegistered {
+        ; Observe focus events independently of the auto-hide timer, including
+        ; panels whose feature explicitly disables automatic hiding.
+        OnMessage(0x0006, PanelHostActivationChanged) ; WM_ACTIVATE
+        activationLoggingRegistered := true
+    }
     PanelHostRegistrySequence += 1
     host["registryId"] := PanelHostRegistrySequence
     PanelHostRegistry[host["registryId"]] := host
+}
+
+PanelHostActivationChanged(wParam, lParam, msg, hwnd) {
+    global PanelHostRegistry
+    for registryId, host in PanelHostRegistry {
+        panelGui := PanelHostGui(host)
+        if !IsObject(panelGui)
+            continue
+        try panelHwnd := panelGui.Hwnd
+        catch
+            continue ; A GUI may be in the middle of being destroyed.
+        if panelHwnd = hwnd {
+            PanelHostLogFocus(host, (wParam & 0xFFFF) ? "activated" : "deactivated",
+                " otherHwnd=" . lParam . " minimized=" . (wParam >> 16))
+            return
+        }
+    }
+}
+
+; Focus diagnostics contain only panel identity, window handles and state.
+; Keep them available even when debug logging is disabled so a missed hide
+; can be diagnosed without changing settings or logging user content.
+PanelHostLogFocus(host, stage, details := "") {
+    panelGui := PanelHostGui(host)
+    try hwnd := IsObject(panelGui) ? panelGui.Hwnd : 0
+    catch
+        hwnd := 0
+    foreground := DllCall("GetForegroundWindow", "ptr")
+    SplitPath(host["pagePath"], &pageName)
+    monitoring := host.Has("autoHideMonitor") && IsObject(host["autoHideMonitor"])
+    requireActive := host.Has("autoHideRequireActive") && host["autoHideRequireActive"]
+    seenActive := host.Has("autoHideSeenActive") && host["autoHideSeenActive"]
+    DiagnosticLogAlways("panel focus panel=" . host["registryId"] . " page=" . pageName
+        . " stage=" . stage . " hwnd=" . hwnd . " foreground=" . foreground
+        . " active=" . (hwnd != 0 && hwnd = foreground)
+        . " visible=" . host["visible"]
+        . " windowVisible=" . (hwnd ? DllCall("IsWindowVisible", "ptr", hwnd, "int") : 0)
+        . " pinned=" . WindowBarIsPinned(host) . " native=" . WindowBarIsNative(host)
+        . " monitoring=" . monitoring . " requireActive=" . requireActive
+        . " seenActive=" . seenActive . details)
+}
+
+PanelHostLogAutoHideState(host, state) {
+    ; The monitor runs every 100 ms; write only changes in its decision.
+    if host.Has("autoHideLogState") && host["autoHideLogState"] = state
+        return
+    host["autoHideLogState"] := state
+    PanelHostLogFocus(host, "auto-hide-" . state)
 }
 
 PanelHostUnregister(host) {
@@ -471,19 +529,25 @@ PanelHostStartAutoHide(host, hideCallback, options := 0) {
     host["autoHideCallback"] := hideCallback
     host["autoHideGuard"] := options.Has("guard") ? options["guard"] : 0
     host["autoHideRequireActive"] := options.Has("requireActive") && options["requireActive"]
-    host["autoHideSeenActive"] := false
+    ; Activation may already have completed before the first timer tick.
+    host["autoHideSeenActive"] := PanelHostWindowActive(host) != 0
     interval := options.Has("interval") ? options["interval"] : 100
     monitor := PanelHostAutoHideMonitor.Bind(host)
     host["autoHideMonitor"] := monitor
+    host["autoHideLogState"] := ""
     SetTimer(monitor, interval)
+    PanelHostLogFocus(host, "auto-hide-start", " interval=" . interval
+        . " guard=" . IsObject(host["autoHideGuard"]))
     return true
 }
 
 PanelHostStopAutoHide(host) {
     if !IsObject(host)
         return
-    if host.Has("autoHideMonitor") && IsObject(host["autoHideMonitor"])
+    if host.Has("autoHideMonitor") && IsObject(host["autoHideMonitor"]) {
+        PanelHostLogFocus(host, "auto-hide-stop")
         SetTimer(host["autoHideMonitor"], 0)
+    }
     if host.Has("autoHideMonitor")
         host["autoHideMonitor"] := 0
     if host.Has("autoHideCallback")
@@ -498,29 +562,47 @@ PanelHostAutoHideMonitor(host, *) {
     if !IsObject(host)
         return
     if !host["visible"] || !IsObject(host["gui"]) {
+        PanelHostLogAutoHideState(host, "unavailable")
         PanelHostStopAutoHide(host)
         return
     }
     ; A pinned or native-window panel is intentionally persistent. The timer
     ; remains registered so returning to the custom transient mode resumes
     ; the same behavior without feature-specific monitor code.
-    if (host.Has("windowBarPinned") && host["windowBarPinned"])
+    if (host.Has("windowBarPinned") && host["windowBarPinned"]) {
+        PanelHostLogAutoHideState(host, "pinned")
         return
-    if (host.Has("windowBarNative") && host["windowBarNative"])
+    }
+    if (host.Has("windowBarNative") && host["windowBarNative"]) {
+        PanelHostLogAutoHideState(host, "native")
         return
+    }
     guard := host.Has("autoHideGuard") ? host["autoHideGuard"] : 0
-    if IsObject(guard) && guard.Call()
+    if IsObject(guard) && guard.Call() {
+        PanelHostLogAutoHideState(host, "guarded")
         return
+    }
     if PanelHostWindowActive(host) {
         host["autoHideSeenActive"] := true
+        PanelHostLogAutoHideState(host, "active")
+        return
+    }
+    if PanelHostOwnedDialogActive(host) {
+        host["autoHideSeenActive"] := true
+        PanelHostLogAutoHideState(host, "owned-dialog")
         return
     }
     if host.Has("autoHideRequireActive") && host["autoHideRequireActive"]
-        if !host["autoHideSeenActive"]
+        if !host["autoHideSeenActive"] {
+            PanelHostLogAutoHideState(host, "waiting-activation")
             return
+        }
     hideCallback := host.Has("autoHideCallback") ? host["autoHideCallback"] : 0
-    if IsObject(hideCallback)
+    if IsObject(hideCallback) {
+        PanelHostLogAutoHideState(host, "hide")
         hideCallback.Call()
+    } else
+        PanelHostLogAutoHideState(host, "missing-callback")
 }
 
 PanelHostStopFocusMonitor(host) {
@@ -563,6 +645,22 @@ PanelHostPageReady(host) {
 PanelHostWindowActive(host) {
     panelGui := PanelHostGui(host)
     return IsObject(panelGui) && WinActive("ahk_id " . panelGui.Hwnd)
+}
+
+PanelHostOwnedDialogActive(host) {
+    panelGui := PanelHostGui(host)
+    if !IsObject(panelGui)
+        return false
+    ; WebView2 file pickers are separate top-level windows. Keep the panel
+    ; available while one of its owned dialogs has foreground focus.
+    hwnd := panelGui.Hwnd
+    owner := DllCall("GetForegroundWindow", "ptr")
+    while owner {
+        owner := DllCall("GetWindow", "ptr", owner, "uint", 4, "ptr") ; GW_OWNER
+        if owner = hwnd
+            return true
+    }
+    return false
 }
 
 PanelHostDestroy(host) {
