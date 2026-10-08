@@ -232,6 +232,8 @@ function diagError(prefix, error) {
 diag('page-load', 'vditor=' + typeof Vditor + ' preview=' + typeof NotesPreview);
 const dateFilter = $('dateFilter');
 const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), total: 0, dateFilter: 'all', selectedDate: '', dateAfter: '', dateBefore: '', page: 1, pageSize: 20, pageCount: 1 };
+let renderedPage = 1;
+let renderedPageSize = 20;
 let searchTimer = 0;
 
 function messageValue(value, fallback = '') { return value == null ? fallback : value; }
@@ -803,6 +805,10 @@ const handleHostMessage = event => {
     hideContextMenu();
     renderTags();
     renderNotes();
+    if (state.page !== renderedPage || state.pageSize !== renderedPageSize)
+      document.querySelector('.browse-inner').scrollTop = 0;
+    renderedPage = state.page;
+    renderedPageSize = state.pageSize;
     updateSelection();
     if (data.error) toast(data.error, 'error');
     return;

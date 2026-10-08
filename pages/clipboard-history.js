@@ -32,6 +32,8 @@ const state = {
   page: 1,
   pageSize: 20,
   pageCount: 1,
+  renderedPage: 1,
+  renderedPageSize: 20,
   counts: {},
   selectedId: '',
   contextId: '',
@@ -682,7 +684,10 @@ window.handleHostMessage=function(message){
     state.rows=Array.isArray(data.rows)?data.rows:[]; state.counts=data.counts||{};
     state.page=Number(data.page||state.page)||1; state.pageSize=Number(data.pageSize||state.pageSize)||20;
     state.pageCount=Math.max(1,Number(data.pageCount||1)); state.loading=false;
+    const resetScroll=state.page!==state.renderedPage||state.pageSize!==state.renderedPageSize;
     list.inert=false; list.setAttribute('aria-busy','false'); render();
+    if(resetScroll)list.scrollTop=0;
+    state.renderedPage=state.page; state.renderedPageSize=state.pageSize;
   } else if(data.type==='imagePreview'){
     if(data.sessionId!==state.sessionId)return; applyImagePreview(data.id,data.data);
   } else if(data.type==='nativeDragFinished'){
