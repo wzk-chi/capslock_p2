@@ -5,12 +5,12 @@
 ; data\capslock_p2.db. Legacy INI files are never packaged.
 
 #define MyAppName "capslock_p2"
-#define MyAppVersion "0.3.2"
+#define MyAppVersion "0.3.3"
 #define ProjectRoot "D:\develop\project\cpaslock_p2"
 #define PayloadDir ProjectRoot + "\build\payload"
 #define OutputDir ProjectRoot + "\dist"
 #ifndef OutputBaseFilename
-#define OutputBaseFilename "capslock_p2-setup-0.3.2"
+#define OutputBaseFilename "capslock_p2-setup-0.3.3"
 #endif
 
 [Setup]
