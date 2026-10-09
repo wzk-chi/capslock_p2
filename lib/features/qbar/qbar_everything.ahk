@@ -60,9 +60,9 @@ QbarEsLaunchBundled(seq, arg, querySeq) {
     }
     dataDir := EnvGet("LOCALAPPDATA") . "\capslock_p2\Everything"
     try DirCreate(dataDir)
-    command := QbarEsQuoteArg(exe) . " -instance " . QbarEsQuoteArg(QbarEsInstanceName())
-        . " -startup -config " . QbarEsQuoteArg(dataDir . "\Everything.ini")
-        . " -db " . QbarEsQuoteArg(dataDir . "\Everything.db")
+    command := QbarQuoteArg(exe) . " -instance " . QbarQuoteArg(QbarEsInstanceName())
+        . " -startup -config " . QbarQuoteArg(dataDir . "\Everything.ini")
+        . " -db " . QbarQuoteArg(dataDir . "\Everything.db")
     try Run("*RunAs " . command)
     catch {
         DebugLog("Bundled Everything start declined")
@@ -124,12 +124,12 @@ QbarEsStartProcess(kind, arg, useBundled, seq, timeoutMs, querySeq) {
     jobId := QbarEsJobId
     Critical(criticalState)
     tmp := QbarEsTempPath(seq, jobId)
-    instance := useBundled = 1 ? " -instance " . QbarEsQuoteArg(QbarEsInstanceName()) : ""
+    instance := useBundled = 1 ? " -instance " . QbarQuoteArg(QbarEsInstanceName()) : ""
     limit := SubStr(kind, 1, 6) = "probe-"
         ? 1 : Min(501, QbarEsMaxResults() + 1)
     query := SubStr(kind, 1, 6) = "probe-" ? "1" : arg
-    command := QbarEsQuoteArg(exe) . instance . " -csv -no-header -n " . limit
-        . " -full-path-and-name -export-csv " . QbarEsQuoteArg(tmp)
+    command := QbarQuoteArg(exe) . instance . " -csv -no-header -n " . limit
+        . " -full-path-and-name -export-csv " . QbarQuoteArg(tmp)
         . " -search* " . query
     pid := 0
     try Run(command, "", "Hide", &pid)
@@ -411,36 +411,6 @@ QbarEsExitCode(job) {
 QbarEsTempPath(seq, jobId) {
     processId := DllCall("GetCurrentProcessId", "uint")
     return A_Temp . "\capslock-p2-everything-es-" . processId . "-" . seq . "-" . A_TickCount . "-" . jobId . ".csv"
-}
-
-; Quote one argv element according to the standard Windows backslash/quote
-; rules used by C/C++ command-line parsers. es.exe is launched directly, so
-; shell metacharacters remain data.
-
-QbarEsQuoteArg(value) {
-    quote := Chr(34)
-    result := quote
-    slashes := 0
-    Loop Parse, String(value) {
-        character := A_LoopField
-        if character = "\" {
-            slashes += 1
-            continue
-        }
-        if character = quote
-            result .= QbarEsRepeat("\", slashes * 2 + 1) . quote
-        else
-            result .= QbarEsRepeat("\", slashes) . character
-        slashes := 0
-    }
-    return result . QbarEsRepeat("\", slashes * 2) . quote
-}
-
-QbarEsRepeat(text, count) {
-    result := ""
-    Loop count
-        result .= text
-    return result
 }
 
 ; es.exe -csv emits one quoted column per row: the full path. Lines cannot

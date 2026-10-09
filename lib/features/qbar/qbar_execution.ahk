@@ -96,9 +96,9 @@ QbarExecuteRegistered(commandId, args := "", ctrlHeld := false, registryGenerati
             commandLine := settings.Has("command") ? String(settings["command"]) : ""
             if commandLine = ""
                 return false
-            if settings.Has("runAs") && QbarExecutionBool(settings["runAs"])
-                commandLine := "*RunAs " . commandLine
-            if QbarRunCommandAction(QbarRunCommand(commandLine, args), commandLine)
+            runCommand := QbarExecutionBuildCommandLine(commandLine, args,
+                settings.Has("runAs") && QbarExecutionBool(settings["runAs"]), command["pluginId"])
+            if QbarRunCommandAction(runCommand, commandLine)
                 return QbarExecutionRememberRegistered(command, args,
                     QbarHistoryRunEntry(args, commandLine))
     }
@@ -146,4 +146,60 @@ QbarExecutionBool(value) {
         return value != 0
     raw := StrLower(Trim(String(value)))
     return raw = "true" || raw = "1"
+}
+
+QbarExecutionBuildCommandLine(commandLine, args := "", runAsAdmin := false, pluginId := "") {
+    commandLine := Trim(String(commandLine))
+    if commandLine = ""
+        return ""
+    if RegExMatch(commandLine, "i)^\*RunAs\s+(.+)$", &adminMatch) {
+        commandLine := Trim(adminMatch[1])
+        runAsAdmin := true
+    }
+
+    profileName := pluginId = "builtin.run.cmd" && StrLower(commandLine) = "cmd.exe"
+        ? "命令提示符"
+        : pluginId = "builtin.run.pwsh" && StrLower(commandLine) = "pwsh.exe"
+            ? "PowerShell" : ""
+    if profileName != "" {
+        terminalPath := EnvGet("LOCALAPPDATA") . "\Microsoft\WindowsApps\wt.exe"
+        if !FileExist(terminalPath)
+            return QbarRunCommand((runAsAdmin ? "*RunAs " : "") . commandLine, args)
+        terminalCommand := (runAsAdmin ? "*RunAs " : "")
+            . QbarQuoteArg(terminalPath) . " -w "
+            . QbarQuoteArg(runAsAdmin ? "CapsLockP2Admin" : "CapsLockP2")
+            . " new-tab --profile " . QbarQuoteArg(profileName)
+        if args != ""
+            terminalCommand .= " --appendCommandLine " . QbarQuoteArg(args)
+        return terminalCommand
+    }
+
+    return QbarRunCommand((runAsAdmin ? "*RunAs " : "") . commandLine, args)
+}
+
+; Quote one argv element using the standard Windows backslash/quote rules.
+QbarQuoteArg(value) {
+    quote := Chr(34)
+    result := quote
+    slashes := 0
+    Loop Parse, String(value) {
+        character := A_LoopField
+        if character = "\" {
+            slashes += 1
+            continue
+        }
+        if character = quote
+            result .= QbarRepeat("\", slashes * 2 + 1) . quote
+        else
+            result .= QbarRepeat("\", slashes) . character
+        slashes := 0
+    }
+    return result . QbarRepeat("\", slashes * 2) . quote
+}
+
+QbarRepeat(text, count) {
+    result := ""
+    Loop count
+        result .= text
+    return result
 }

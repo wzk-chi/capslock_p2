@@ -294,8 +294,10 @@ QbarHistoryExecuteEntry(entry, command, runArgs) {
     payload := entry["payload"]
     switch kind {
         case "run":
-            return QbarRunCommandAction(QbarRunCommand(payload["command"], runArgs),
-                command["displayName"])
+            settings := command["settings"]
+            runCommand := QbarExecutionBuildCommandLine(payload["command"], runArgs,
+                settings.Has("runAs") && QbarExecutionBool(settings["runAs"]), command["pluginId"])
+            return QbarRunCommandAction(runCommand, command["displayName"])
         case "shortcut":
             item := Map(
                 "label", entry["input"],
