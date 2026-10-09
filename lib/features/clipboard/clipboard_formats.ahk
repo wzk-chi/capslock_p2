@@ -1035,6 +1035,252 @@ ClipboardHistoryParseArchive(archive, manifestJson := "", copyPayloads := true, 
     return terminated ? entries : []
 }
 
+ClipboardHistoryPayloadEncode(archive, &payloadVersion, &storedPayload) {
+    payloadVersion := 1
+    storedPayload := archive
+    maxArchiveBytes := 512 * 1024 * 1024
+    if !IsObject(archive) || archive.Size < 12 || archive.Size > maxArchiveBytes
+        return false
+
+    blocks := ClipboardHistoryParseArchive(archive, "", false)
+    if !blocks.Length
+        return false
+    lastBlock := blocks[blocks.Length]
+    if lastBlock["dataOffset"] + lastBlock["dataSize"] + 4 != archive.Size
+        return false
+
+    hasDib := false
+    for block in blocks {
+        if (block["id"] = 8 || block["id"] = 17) && block["dataSize"] > 0 {
+            hasDib := true
+            break
+        }
+    }
+    if !hasDib
+        return true
+
+    compressor := 0
+    try {
+        if !DllCall("cabinet\CreateCompressor", "uint", 4, "ptr", 0,
+            "ptr*", &compressor, "int") {
+            errorCode := A_LastError
+            DebugLog("Clipboard payload compressor unavailable: error=" . errorCode)
+            return true
+        }
+
+        storedBlocks := []
+        hasCompressedBlock := false
+        for block in blocks {
+            formatId := block["id"]
+            rawLength := block["dataSize"]
+            packed := 0
+            storedLength := rawLength
+            encoding := 0
+            if (formatId = 8 || formatId = 17) && rawLength > 0 {
+                if ClipboardHistoryPayloadCompressBlock(compressor, archive, block,
+                    &packed, &storedLength) {
+                    encoding := 1
+                    hasCompressedBlock := true
+                }
+            }
+            storedBlocks.Push(Map("id", formatId, "encoding", encoding,
+                "rawLength", rawLength, "storedLength", storedLength,
+                "dataOffset", block["dataOffset"], "packed", packed))
+        }
+
+        if !hasCompressedBlock
+            return true
+
+        containerSize := 8
+        for block in storedBlocks {
+            containerSize += 16 + block["storedLength"]
+            if containerSize > maxArchiveBytes
+                return true
+        }
+        if containerSize >= archive.Size
+            return true
+
+        container := Buffer(containerSize, 0)
+        NumPut("uint", 0x325A5043, container, 0) ; ASCII CPZ2
+        NumPut("uchar", 2, container, 4)
+        NumPut("uchar", storedBlocks.Length, container, 5)
+        offset := 8
+        for block in storedBlocks {
+            NumPut("uint", block["id"], container, offset)
+            NumPut("uchar", block["encoding"], container, offset + 4)
+            NumPut("uint", block["rawLength"], container, offset + 8)
+            NumPut("uint", block["storedLength"], container, offset + 12)
+            dataOffset := offset + 16
+            if block["encoding"]
+                source := block["packed"].Ptr
+            else
+                source := archive.Ptr + block["dataOffset"]
+            if block["storedLength"]
+                DllCall("Kernel32\RtlMoveMemory", "ptr", container.Ptr + dataOffset,
+                    "ptr", source, "uptr", block["storedLength"])
+            offset := dataOffset + block["storedLength"]
+        }
+        if offset != container.Size
+            return true
+
+        storedPayload := container
+        payloadVersion := 2
+        return true
+    } catch as encodeError {
+        DebugLog("Clipboard payload compression fallback: " . encodeError.Message)
+        return true
+    } finally {
+        if compressor
+            DllCall("cabinet\CloseCompressor", "ptr", compressor, "int")
+    }
+}
+
+ClipboardHistoryPayloadCompressBlock(compressor, archive, block,
+    &packed, &storedLength) {
+    packed := 0
+    storedLength := block["dataSize"]
+    output := Buffer(storedLength)
+    actualSize := 0
+    ok := DllCall("cabinet\Compress", "ptr", compressor,
+        "ptr", archive.Ptr + block["dataOffset"], "uptr", block["dataSize"],
+        "ptr", output.Ptr, "uptr", output.Size, "uptr*", &actualSize, "int")
+    if !ok {
+        errorCode := A_LastError
+        if errorCode != 122
+            DebugLog("Clipboard payload compression failed: error=" . errorCode)
+        return false
+    }
+    if actualSize <= 0 || actualSize > output.Size {
+        DebugLog("Clipboard payload compression failed: invalid output size")
+        return false
+    }
+    if actualSize >= block["dataSize"]
+        return false
+    packed := output
+    storedLength := actualSize
+    return true
+}
+
+ClipboardHistoryPayloadDecode(storedPayload, payloadVersion, &archive) {
+    archive := 0
+    maxArchiveBytes := 512 * 1024 * 1024
+    if !IsObject(storedPayload) || storedPayload.Size < 4
+        return false
+    if storedPayload.Size > maxArchiveBytes
+        return false
+
+    if payloadVersion = 1 {
+        blocks := ClipboardHistoryParseArchive(storedPayload, "", false)
+        if !blocks.Length
+            return false
+        lastBlock := blocks[blocks.Length]
+        if lastBlock["dataOffset"] + lastBlock["dataSize"] + 4 != storedPayload.Size
+            return false
+        archive := storedPayload
+        return true
+    }
+    if payloadVersion != 2 || storedPayload.Size < 8
+        return false
+    if NumGet(storedPayload, 0, "uint") != 0x325A5043
+        return false
+    if NumGet(storedPayload, 4, "uchar") != 2
+        return false
+    blockCount := NumGet(storedPayload, 5, "uchar")
+    if blockCount < 1 || blockCount > 64 || NumGet(storedPayload, 6, "ushort") != 0
+        return false
+
+    blocks := []
+    offset := 8
+    archiveSize := 4 ; Reserve the final ClipboardAll terminator DWORD.
+    hasCompressedBlock := false
+    Loop blockCount {
+        if offset > storedPayload.Size || storedPayload.Size - offset < 16
+            return false
+        formatId := NumGet(storedPayload, offset, "uint")
+        encoding := NumGet(storedPayload, offset + 4, "uchar")
+        if !formatId || encoding > 1
+            return false
+        if (NumGet(storedPayload, offset + 5, "uchar")
+            || NumGet(storedPayload, offset + 6, "uchar")
+            || NumGet(storedPayload, offset + 7, "uchar"))
+            return false
+        rawLength := NumGet(storedPayload, offset + 8, "uint")
+        storedLength := NumGet(storedPayload, offset + 12, "uint")
+        offset += 16
+        if rawLength > 256 * 1024 * 1024
+            return false
+        if encoding {
+            if ((formatId != 8 && formatId != 17) || !rawLength
+                || !storedLength || storedLength >= rawLength)
+                return false
+            hasCompressedBlock := true
+        } else if storedLength != rawLength
+            return false
+        if offset > storedPayload.Size || storedLength > storedPayload.Size - offset
+            return false
+        if archiveSize > maxArchiveBytes - 8
+            return false
+        if rawLength > maxArchiveBytes - archiveSize - 8
+            return false
+
+        blocks.Push(Map("id", formatId, "encoding", encoding,
+            "rawLength", rawLength, "storedLength", storedLength,
+            "dataOffset", offset, "targetOffset", archiveSize + 4))
+        offset += storedLength
+        archiveSize += 8 + rawLength
+    }
+    if offset != storedPayload.Size || !hasCompressedBlock
+        return false
+    if storedPayload.Size >= archiveSize
+        return false
+
+    decompressor := 0
+    try {
+        decoded := Buffer(archiveSize, 0)
+        for block in blocks {
+            targetOffset := block["targetOffset"]
+            NumPut("uint", block["id"], decoded, targetOffset - 8)
+            NumPut("uint", block["rawLength"], decoded, targetOffset - 4)
+            if block["encoding"] {
+                if !decompressor {
+                    if !DllCall("cabinet\CreateDecompressor", "uint", 4, "ptr", 0,
+                        "ptr*", &decompressor, "int") {
+                        errorCode := A_LastError
+                        DebugLog("Clipboard payload decompressor unavailable: error="
+                            . errorCode)
+                        return false
+                    }
+                }
+                actualSize := 0
+                ok := DllCall("cabinet\Decompress", "ptr", decompressor,
+                    "ptr", storedPayload.Ptr + block["dataOffset"],
+                    "uptr", block["storedLength"], "ptr", decoded.Ptr + targetOffset,
+                    "uptr", block["rawLength"], "uptr*", &actualSize, "int")
+                if !ok {
+                    errorCode := A_LastError
+                    DebugLog("Clipboard payload decompression failed: error=" . errorCode)
+                    return false
+                }
+                if actualSize != block["rawLength"]
+                    return false
+            } else if block["rawLength"] {
+                DllCall("Kernel32\RtlMoveMemory", "ptr", decoded.Ptr + targetOffset,
+                    "ptr", storedPayload.Ptr + block["dataOffset"],
+                    "uptr", block["rawLength"])
+            }
+        }
+        NumPut("uint", 0, decoded, archiveSize - 4)
+        archive := decoded
+        return true
+    } catch as decodeError {
+        DebugLog("Clipboard payload decode failed: " . decodeError.Message)
+        return false
+    } finally {
+        if decompressor
+            DllCall("cabinet\CloseDecompressor", "ptr", decompressor, "int")
+    }
+}
+
 ClipboardHistoryRestoreArchive(archive, ownerHwnd := 0, manifestJson := "", &restoredArchive := 0) {
     global A_Clipboard, SystemClipboard, WhichClipboardNow
     restoredArchive := 0

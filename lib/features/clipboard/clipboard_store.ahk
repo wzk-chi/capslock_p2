@@ -151,9 +151,10 @@ ClipboardHistoryStoreFindByHash(contentHash) {
     return ClipboardHistoryStoreRowMap(table, table.Rows[1])
 }
 
-ClipboardHistoryStoreSave(item, snapshot, manifestJson, retentionCutoff := "", maxItems := 0) {
+ClipboardHistoryStoreSave(item, storedPayload, manifestJson, retentionCutoff := "",
+    maxItems := 0, payloadVersion := 1) {
     global ClipboardHistoryDb, ClipboardHistoryStoreError
-    if !IsObject(item) || !IsObject(snapshot) || !ClipboardHistoryStoreInit()
+    if !IsObject(item) || !IsObject(storedPayload) || !ClipboardHistoryStoreInit()
         return false
     id := String(item["id"])
     if id = ""
@@ -203,7 +204,7 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson, retentionCutoff := "", m
 
         statement := ClipboardHistoryDb.Prepare(
             "INSERT INTO clipboard_payloads(item_id,snapshot_blob,format_manifest_json,payload_version) "
-            . "VALUES (?,?,?,1) ON CONFLICT(item_id) DO UPDATE SET "
+            . "VALUES (?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET "
             . "snapshot_blob=excluded.snapshot_blob,format_manifest_json=excluded.format_manifest_json,"
             . "payload_version=excluded.payload_version;")
         if !statement
@@ -211,12 +212,14 @@ ClipboardHistoryStoreSave(item, snapshot, manifestJson, retentionCutoff := "", m
         try {
             if !ClipboardHistoryDb.StatementBindText(statement, 1, id)
                 throw Error("绑定剪贴板历史 ID 失败")
-            ; `snapshot` remains strongly referenced by this stack frame until
-            ; the statement is finalized, so avoid a second SQLite-owned copy.
-            if !ClipboardHistoryDb.StatementBindBlob(statement, 2, snapshot, false)
+            ; `storedPayload` remains strongly referenced until statement finalize,
+            ; so avoid a second SQLite-owned copy.
+            if !ClipboardHistoryDb.StatementBindBlob(statement, 2, storedPayload, false)
                 throw Error("绑定剪贴板历史 BLOB 失败")
             if !ClipboardHistoryDb.StatementBindText(statement, 3, manifestJson)
                 throw Error("绑定剪贴板历史格式清单失败")
+            if !ClipboardHistoryDb.StatementBindInteger(statement, 4, payloadVersion)
+                throw Error("绑定剪贴板历史存储版本失败")
             if ClipboardHistoryDb.StatementStep(statement) != 101
                 throw Error("写入剪贴板历史 BLOB 失败")
         } finally {
@@ -323,7 +326,8 @@ ClipboardHistoryStoreReadPayload(id, &manifestJson := "") {
     if !ClipboardHistoryStoreInit()
         return 0
     statement := ClipboardHistoryDb.Prepare(
-        "SELECT snapshot_blob,format_manifest_json FROM clipboard_payloads WHERE item_id=?;")
+        "SELECT snapshot_blob,format_manifest_json,payload_version "
+        . "FROM clipboard_payloads WHERE item_id=?;")
     if !statement
         return 0
     payload := 0
@@ -335,10 +339,17 @@ ClipboardHistoryStoreReadPayload(id, &manifestJson := "") {
         payload := ClipboardHistoryDb.StatementColumnBlob(statement, 0, &size,
             512 * 1024 * 1024)
         manifestJson := ClipboardHistoryDb.StatementColumnText(statement, 1)
+        payloadVersion := ClipboardHistoryDb.StatementColumnInteger(statement, 2)
     } finally {
         ClipboardHistoryDb.StatementFinalize(statement)
     }
-    return payload
+    if !IsObject(payload)
+        return 0
+    if !ClipboardHistoryPayloadDecode(payload, payloadVersion, &archive) {
+        DebugLog("Clipboard history payload decode failed: version=" . payloadVersion)
+        return 0
+    }
+    return archive
 }
 
 ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := false,

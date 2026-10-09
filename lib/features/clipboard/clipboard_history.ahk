@@ -543,9 +543,18 @@ ClipboardHistoryRemember(record, event := 0) {
     global ClipboardHistoryStoreMaxItems, ClipboardHistoryEpoch, ClipboardHistoryStoreError
     result := false
     capacityFull := false
+    if !IsObject(record)
+        return false
+    if IsObject(event) && event.Has("epoch") && event["epoch"] != ClipboardHistoryEpoch
+        return false
+    if !ClipboardHistoryPayloadEncode(record["snapshot"], &payloadVersion, &storedPayload) {
+        ClipboardHistoryStoreError := "无法保存此次剪贴板内容。"
+        return false
+    }
+
     Critical("On")
     try {
-        if !IsObject(record) || !ClipboardHistoryStoreInit()
+        if !ClipboardHistoryStoreInit()
             return false
         if IsObject(event) && event.Has("epoch") && event["epoch"] != ClipboardHistoryEpoch
             return false
@@ -565,8 +574,8 @@ ClipboardHistoryRemember(record, event := 0) {
             record["pinOrder"] := 0
         }
         record["lastCapturedAtUtc"] := now
-        if ClipboardHistoryStoreSave(record, record["snapshot"], record["manifestJson"],
-            ClipboardHistoryRetentionCutoff(), ClipboardHistoryStoreMaxItems) {
+        if ClipboardHistoryStoreSave(record, storedPayload, record["manifestJson"],
+            ClipboardHistoryRetentionCutoff(), ClipboardHistoryStoreMaxItems, payloadVersion) {
             ClipboardHistoryImagePreviewCachePrune()
             result := true
         } else {
