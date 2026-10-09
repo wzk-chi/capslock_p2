@@ -1,7 +1,8 @@
 /* Shared modal service for WebView2 pages.
    Simple interactions use AppDialog.alert/confirm/prompt. Complex dialogs use
    AppDialog.open({ render, actions, onAction }); the shell owns lifecycle,
-   focus, dismissal, action buttons, busy state and the result Promise. */
+   focus, dismissal, action buttons, busy state and the result Promise.
+   initialFocus: false leaves focus management to asynchronously rendered content. */
 (function () {
   'use strict';
 
@@ -238,17 +239,17 @@
 
     if (options.initialFocus === 'content') {
       requestAnimationFrame(() => {
-        if (!currentShell.dialog.open) return;
+        if (!api.isOpen()) return;
         const target = currentShell.content.querySelector('[autofocus], input, select, textarea, button');
         if (target && !target.disabled) target.focus();
       });
-    } else {
+    } else if (options.initialFocus !== false) {
       const target = currentShell.buttons.get(options.initialFocus)
         || currentShell.buttons.get((descriptors.find(item => item.role === 'cancel') || {}).id)
         || (primaryAction && currentShell.buttons.get(primaryAction.id))
         || currentShell.closeButton;
       requestAnimationFrame(() => {
-        if (currentShell.dialog.open && !target.hidden && !target.disabled) target.focus();
+        if (api.isOpen() && !target.hidden && !target.disabled) target.focus();
       });
     }
     currentShell.dialog.showModal();

@@ -26,6 +26,8 @@ global ClipboardHistoryHeight := ScreenFitSize(860, 640, 720, 480)[2]
 global ClipboardHistoryPasteBusy := false
 global ClipboardHistoryDragBusy := false
 global ClipboardHistoryClearTokens := Map()
+global ClipboardHistoryViewRequestId := 0
+global ClipboardHistoryViewItemId := ""
 
 ClipboardHistoryOpen(*) {
     shown := ClipboardHistoryShow()
@@ -107,6 +109,7 @@ ClipboardHistoryFocusHideGuard() {
 }
 
 ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget := true) {
+    global ClipboardHistoryViewRequestId, ClipboardHistoryViewItemId
     global ClipboardHistorySessionSerial, ClipboardHistorySessionId
     global ClipboardHistoryTargetHwnd, ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
     global ClipboardHistoryPendingSearch, ClipboardHistoryPendingType, ClipboardHistoryPendingFavorite
@@ -114,6 +117,8 @@ ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget 
     global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
     global ClipboardHistoryPendingPage, ClipboardHistoryQuerySerial, ClipboardHistoryClearTokens
     global ClipboardHistoryDeferredPanelQuery, ClipboardHistoryDeferredPanelUpdate
+    ClipboardHistoryViewRequestId := 0
+    ClipboardHistoryViewItemId := ""
     if !IsObject(targetContext) {
         if targetContext
             targetContext := ClipboardHistoryTargetContextFromHwnd(targetContext)
@@ -140,9 +145,12 @@ ClipboardHistoryResetSession(initialSearch, targetContext, captureMissingTarget 
 }
 
 ClipboardHistoryHide(*) {
+    global ClipboardHistoryViewRequestId, ClipboardHistoryViewItemId
     global ClipboardHistoryHost, ClipboardHistoryVisible, ClipboardHistorySessionId, ClipboardHistoryPageReady
     global ClipboardHistoryClearTokens, ClipboardHistoryTargetHwnd
     global ClipboardHistoryTargetPid, ClipboardHistoryTargetContext
+    ClipboardHistoryViewRequestId := 0
+    ClipboardHistoryViewItemId := ""
     DebugLog("ClipboardHistoryHide session=" . ClipboardHistorySessionId
         . " windowVisible=" . ClipboardHistoryWindowVisible())
     ClipboardHistoryPost(Map("type", "sessionEnd", "sessionId", ClipboardHistorySessionId))
@@ -400,6 +408,7 @@ ClipboardHistoryWebMessageReceived(sender, args) {
     global ClipboardHistoryPendingDateAfter, ClipboardHistoryPendingDateBefore
     global ClipboardHistoryPendingPageSize
     global ClipboardHistoryClearTokens
+    global ClipboardHistoryViewRequestId, ClipboardHistoryViewItemId
     try message := args.TryGetWebMessageAsString()
     catch
         return
@@ -428,6 +437,29 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             LLMMsgNumber(msg, "page", &pageValid, 1, true),
             LLMMsgNumber(msg, "pageSize", &pageSizeValid, 20, true), sessionId,
             LLMMsgNumber(msg, "queryId", &queryValid, 0, true)), -1)
+    } else if messageType = "view" || messageType = "fileOpen" || messageType = "cancelView" {
+        requestId := LLMMsgNumber(msg, "requestId", &requestValid, 0, true)
+        if !requestValid || requestId < 1 || requestId > 2147483647
+            return
+        if messageType = "view" {
+            itemId := LLMMsgField(msg, "id")
+            if itemId = ""
+                return
+            ClipboardHistoryViewRequestId := requestId
+            ClipboardHistoryViewItemId := itemId
+            SetTimer(ClipboardHistoryPanelView.Bind(itemId,
+                sessionId, requestId), -1)
+        } else if requestId = ClipboardHistoryViewRequestId {
+            if messageType = "cancelView" {
+                ClipboardHistoryViewRequestId := 0
+                ClipboardHistoryViewItemId := ""
+            } else {
+                fileIndex := LLMMsgNumber(msg, "fileIndex", &indexValid, 0, true)
+                if indexValid && fileIndex >= 1
+                    SetTimer(ClipboardHistoryPanelOpenFile.Bind(LLMMsgField(msg, "id"),
+                        fileIndex, sessionId, requestId), -1)
+            }
+        }
     } else if messageType = "imagePreview" {
         SetTimer(ClipboardHistoryPanelImagePreview.Bind(LLMMsgField(msg, "id"), sessionId), -1)
     } else if messageType = "fileDrag" || messageType = "imageDrag" {
@@ -469,6 +501,118 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             ClipboardHistoryClearTokens.Delete(token)
     } else if messageType = "clear" {
         SetTimer(ClipboardHistoryPanelClear.Bind(LLMMsgField(msg, "token"), sessionId), -1)
+    }
+}
+
+ClipboardHistoryViewCurrent(sessionId, requestId, id) {
+    global ClipboardHistorySessionId, ClipboardHistoryVisible
+    global ClipboardHistoryViewRequestId, ClipboardHistoryViewItemId
+    return ClipboardHistoryVisible && sessionId = ClipboardHistorySessionId
+        && requestId = ClipboardHistoryViewRequestId && id = ClipboardHistoryViewItemId
+}
+
+ClipboardHistoryViewFiles(item) {
+    if !IsObject(item) || item["primary_type"] != "file"
+        return []
+    entries := ClipboardHistoryParseArchive(item["snapshot"], item["manifestJson"], true, "files")
+    for entry in entries {
+        if entry["id"] = 15
+            return ClipboardHistoryDecodeFiles(entry["data"])
+    }
+    return []
+}
+
+ClipboardHistoryPanelView(id, sessionId, requestId, *) {
+    if !ClipboardHistoryViewCurrent(sessionId, requestId, id)
+        return
+    try {
+        item := ClipboardHistoryStoreGetItem(id, true)
+        if !IsObject(item) {
+            ClipboardHistoryViewError(id, sessionId, requestId, "这条历史已不可用，请刷新列表后重试。")
+            return
+        }
+        kind := item["primary_type"]
+        if kind = "image" {
+            data := ClipboardHistoryImageBytesFromArchive(item["snapshot"], item["manifestJson"])
+            if !IsObject(data) || !data.Size {
+                ClipboardHistoryViewError(id, sessionId, requestId, "无法读取这张图片，请尝试复制后在图片应用中打开。")
+                return
+            }
+            size := data.Size
+        } else {
+            if kind = "file" {
+                files := ClipboardHistoryViewFiles(item)
+                if !files.Length {
+                    ClipboardHistoryViewError(id, sessionId, requestId, "这条历史没有可打开的文件。")
+                    return
+                }
+                text := JSON.stringify(files, 0)
+            } else if kind = "text" {
+                text := item["text_plain"]
+                if text = "" {
+                    ClipboardHistoryViewError(id, sessionId, requestId,
+                        "这条历史没有可查看的文字，请复制后在支持原格式的应用中粘贴。")
+                    return
+                }
+            } else
+                return
+            data := Buffer(StrPut(text, "UTF-8"), 0)
+            StrPut(text, data, "UTF-8")
+            size := data.Size - 1
+        }
+        ClipboardHistorySendViewBuffer(data, size,
+            Map("type", "historyViewContent", "sessionId", sessionId,
+                "requestId", requestId, "id", id, "kind", kind))
+    } catch as viewError {
+        DebugLog("Clipboard history view failed: " . viewError.Message)
+        ClipboardHistoryViewError(id, sessionId, requestId, "无法查看这条历史，请稍后重试。")
+    }
+}
+
+ClipboardHistorySendViewBuffer(data, size, metadata) {
+    global ClipboardHistoryHost
+    if !ClipboardHistoryViewCurrent(metadata["sessionId"], metadata["requestId"], metadata["id"])
+        return
+    webView := ClipboardHistoryHost["webView"]
+    shared := webView.Environment.CreateSharedBuffer(size)
+    try {
+        DllCall("Kernel32\RtlMoveMemory", "ptr", shared.Buffer, "ptr", data.Ptr, "uptr", size)
+        if ClipboardHistoryViewCurrent(metadata["sessionId"], metadata["requestId"], metadata["id"])
+            webView.PostSharedBufferToScript(shared, WebView2.SHARED_BUFFER_ACCESS.READ_ONLY,
+                JSON.stringify(metadata, 0))
+    } finally {
+        shared.Close()
+    }
+}
+
+ClipboardHistoryViewError(id, sessionId, requestId, message) {
+    if ClipboardHistoryViewCurrent(sessionId, requestId, id)
+        ClipboardHistoryPost(Map("type", "viewError", "id", id,
+            "sessionId", sessionId, "requestId", requestId, "message", message))
+}
+
+ClipboardHistoryPanelOpenFile(id, fileIndex, sessionId, requestId, *) {
+    if !ClipboardHistoryViewCurrent(sessionId, requestId, id)
+        return
+    try {
+        files := ClipboardHistoryViewFiles(ClipboardHistoryStoreGetItem(id))
+        if fileIndex > files.Length {
+            ClipboardHistoryViewError(id, sessionId, requestId, "这个文件已不可用，请刷新列表后重试。")
+            return
+        }
+        path := files[fileIndex]
+        if !FileExist(path) && !DirExist(path) {
+            ClipboardHistoryViewError(id, sessionId, requestId, "文件已移动或删除，无法打开。")
+            return
+        }
+        if !ClipboardHistoryViewCurrent(sessionId, requestId, id)
+            return
+        Run(QbarFilesystemTarget(path))
+        ClipboardHistoryPost(Map("type", "viewOpened", "id", id,
+            "sessionId", sessionId, "requestId", requestId))
+    } catch as openError {
+        DebugLog("Clipboard history file open failed: " . openError.Message)
+        ClipboardHistoryViewError(id, sessionId, requestId, "无法打开这个文件，请检查系统是否设置了默认应用。")
     }
 }
 

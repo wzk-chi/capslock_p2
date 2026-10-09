@@ -541,7 +541,13 @@ async function contextAction(action) {
   hideMenu();
   if (!id || !row) return;
 
-  if (action === 'copy') post({ type: 'copy', sessionId, id });
+  if (action === 'view') ClipboardView.open(row, sessionId, () => {
+    if (state.sessionId !== sessionId) return;
+    const article = findRowElement(id);
+    if (article) article.focus();
+    else list.focus();
+  });
+  else if (action === 'copy') post({ type: 'copy', sessionId, id });
   else if (action === 'paste') post({ type: 'paste', sessionId, id });
   else if (action === 'favorite') toggleFavorite(row);
   else if (action === 'note') editNote(row);
@@ -656,6 +662,7 @@ bulkDeleteButton.addEventListener('click',deleteBulkSelection);
 clearButton.addEventListener('click',()=>{post({type:'prepareClear',sessionId:state.sessionId});});
 window.handleHostMessage=function(message){
   const data=message||{};
+  if(ClipboardView.handleHostMessage(data))return;
   if(data.type==='sessionEnd'){
     if(data.sessionId!==state.sessionId)return;
     clearTimeout(state.queryTimer);

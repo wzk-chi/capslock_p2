@@ -654,6 +654,12 @@ ClipboardHistoryImagePreviewCacheStore(key, preview) {
 }
 
 ClipboardHistoryImagePreviewFromArchive(archive, manifestJson, maxWidth, maxHeight) {
+    bytes := ClipboardHistoryImageBytesFromArchive(archive, manifestJson, maxWidth, maxHeight)
+    return IsObject(bytes) ? "data:image/png;base64," . IconBase64(bytes) : ""
+}
+
+; Without dimensions, return the original PNG or a full-resolution conversion of DIB.
+ClipboardHistoryImageBytesFromArchive(archive, manifestJson, maxWidth := 0, maxHeight := 0) {
     global ClipboardHistoryMaxImageBytes, ClipboardHistoryMaxImagePixels
     if !IsObject(archive) || archive.Size < 4
         return ""
@@ -713,8 +719,12 @@ ClipboardHistoryImagePreviewFromArchive(archive, manifestJson, maxWidth, maxHeig
         imageKind := kind = "png" ? "png" : "dib"
         break
     }
-    if !IsObject(imageData) || !IconGdiplusStart()
-        return ""
+    if !IsObject(imageData)
+        return 0
+    if imageKind = "png" && !maxWidth && !maxHeight
+        return imageData
+    if !IconGdiplusStart()
+        return 0
 
     image := 0
     stream := 0
@@ -750,11 +760,14 @@ ClipboardHistoryImagePreviewFromArchive(archive, manifestJson, maxWidth, maxHeig
             return ""
     }
 
-    preview := ClipboardHistoryGdipThumbnailUri(image, maxWidth, maxHeight)
-    DllCall("gdiplus\GdipDisposeImage", "ptr", image)
-    if stream
-        ObjRelease(stream)
-    return preview
+    try return maxWidth > 0 && maxHeight > 0
+        ? ClipboardHistoryGdipThumbnailBytes(image, maxWidth, maxHeight)
+        : ClipboardHistoryGdipSavePngBytes(image)
+    finally {
+        DllCall("gdiplus\GdipDisposeImage", "ptr", image)
+        if stream
+            ObjRelease(stream)
+    }
 }
 
 ClipboardHistoryDibPixelOffset(data) {
@@ -779,7 +792,7 @@ ClipboardHistoryDibPixelOffset(data) {
     return offset < data.Size ? offset : -1
 }
 
-ClipboardHistoryGdipThumbnailUri(image, maxWidth, maxHeight) {
+ClipboardHistoryGdipThumbnailBytes(image, maxWidth, maxHeight) {
     global ClipboardHistoryStoreMaxThumbnailChars
     width := 0
     height := 0
@@ -798,21 +811,16 @@ ClipboardHistoryGdipThumbnailUri(image, maxWidth, maxHeight) {
             "uint", thumbWidth, "uint", thumbHeight, "ptr*", &thumbnail,
             "ptr", 0, "ptr", 0, "int") != 0 || !thumbnail
             return ""
-        uri := ClipboardHistoryGdipSavePng(thumbnail)
-        DllCall("gdiplus\GdipDisposeImage", "ptr", thumbnail)
-        if uri != "" && StrLen(uri) <= ClipboardHistoryStoreMaxThumbnailChars
-            return uri
+        try bytes := ClipboardHistoryGdipSavePngBytes(thumbnail)
+        finally DllCall("gdiplus\GdipDisposeImage", "ptr", thumbnail)
+        if IsObject(bytes) && 22 + 4 * Ceil(bytes.Size / 3) <= ClipboardHistoryStoreMaxThumbnailChars
+            return bytes
         if thumbWidth <= 64 && thumbHeight <= 36
             return ""
         thumbWidth := Max(1, Round(thumbWidth * 0.65))
         thumbHeight := Max(1, Round(thumbHeight * 0.65))
     }
     return ""
-}
-
-ClipboardHistoryGdipSavePng(image) {
-    bytes := ClipboardHistoryGdipSavePngBytes(image)
-    return IsObject(bytes) ? "data:image/png;base64," . IconBase64(bytes) : ""
 }
 
 ClipboardHistoryGdipSavePngBytes(image) {

@@ -374,13 +374,16 @@ ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := f
     return rows
 }
 
-ClipboardHistoryStoreGetItem(id) {
-    sql := "SELECT id,primary_type "
+ClipboardHistoryStoreGetItem(id, forView := false) {
+    sql := "SELECT id,primary_type" . (forView ? ",text_plain " : " ")
         . "FROM clipboard_items WHERE id="
         . ClipboardHistoryStoreSql(id) . ";"
     if !ClipboardHistoryStoreRows(sql, &table) || table.RowCount < 1
         return 0
     row := ClipboardHistoryStoreRowMap(table, table.Rows[1])
+    ; Full text is already stored separately; viewing it need not decode the snapshot.
+    if forView && row["primary_type"] = "text"
+        return row
     payload := ClipboardHistoryStoreReadPayload(id, &manifest)
     if !IsObject(payload)
         return 0

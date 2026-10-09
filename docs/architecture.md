@@ -73,6 +73,7 @@ lib\
 pages\                             WebView2 面板页面
   qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
   chat.js / clipboard-history.js / settings-page.js            大型页面的 classic script 业务逻辑
+  clipboard-view.js                                           剪贴板全文/原图查看小窗、缩放拖动和文件选择
   theme.css / icons.js / windowbar.js / panel.js / dialog.js / toast.js 共享主题、图标、窗口栏、指针恢复、对话框和 Toast
   notes-preview.js                   把 Vditor 渲染出的笔记正文拍平成可复制行并算行数预算
   vendor\                            Vditor（笔记页编辑器与预览渲染）、marked + DOMPurify（AI 回答）、图标、拼音

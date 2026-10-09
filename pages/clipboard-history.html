@@ -49,6 +49,23 @@ button { cursor: pointer; }
 .row-main { min-width: 0; }
 .preview { display: -webkit-box; max-height: 10.8em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 8; color: var(--ui-text); font-size: 13px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview.multiline { max-height: 18.9em; -webkit-line-clamp: 14; }
+.app-dialog.history-view-dialog { width: min(740px, calc(100% - 32px)); max-width: none; }
+.history-view-text { height: min(420px, calc(100vh - 220px)); min-height: 100px; margin: 0; padding: 14px; overflow: auto; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-text); font: 13px/1.6 Consolas, "Microsoft YaHei", monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; user-select: text; }
+.history-view-loading { margin: 0; padding: 22px 0; color: var(--ui-muted); text-align: center; font-size: 12px; }
+.history-view-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.history-view-tool { min-width: 30px; height: 29px; padding: 0 9px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-text); font-size: 12px; }
+.history-view-tool:hover { background: var(--ui-accent-quiet); }
+.history-view-zoom { min-width: 48px; color: var(--ui-muted); font-size: 11px; text-align: center; }
+.history-view-hint { margin: 0; color: var(--ui-muted); font-size: 11px; }
+.history-view-toolbar .history-view-hint { margin-left: auto; }
+.history-view-stage { position: relative; height: min(360px, calc(100vh - 270px)); min-height: 120px; overflow: hidden; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control); background: var(--ui-surface-muted); outline: none; cursor: grab; touch-action: none; }
+.history-view-stage:focus-visible { border-color: var(--ui-accent); }
+.history-view-stage.dragging { cursor: grabbing; }
+.history-view-stage .history-view-loading { display: block; }
+.history-view-image { position: absolute; top: 0; left: 0; max-width: none; max-height: none; transform-origin: 0 0; user-select: none; pointer-events: none; }
+.history-view-files { width: 100%; min-height: 130px; padding: 7px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-text); font-size: 12px; }
+.history-view-files option { padding: 5px 7px; }
+.history-view-file-path { margin: 0; color: var(--ui-muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .note { display: flex; align-items: center; gap: 4px; margin-top: 5px; overflow: hidden; color: var(--ui-muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .note .lucide { flex: none; width: 13px; height: 13px; }
 .meta { display: flex; gap: 8px; margin-top: 5px; overflow: hidden; color: var(--ui-subtle); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
@@ -112,6 +129,7 @@ button { cursor: pointer; }
   <footer class="footer"><div class="footer-left"><span id="status">暂无历史</span><div class="pagination"><button class="page-button" id="prevPage" aria-label="上一页"><i data-lucide="chevron-left"></i></button><span class="page-label" id="pageLabel">第 1 / 1 页</span><button class="page-button" id="nextPage" aria-label="下一页"><i data-lucide="chevron-right"></i></button><select id="pageSize" class="page-size" aria-label="每页数量"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></div></div><div class="footer-right"><span id="selectionCount" class="selection-count" hidden></span><button class="footer-button" id="multiSelectButton">多选</button><button class="footer-button" id="bulkNoteButton" hidden disabled>添加备注</button><button class="footer-button danger" id="bulkDeleteButton" hidden disabled>删除</button><button class="clear-button" id="clearButton" disabled>清空</button></div></footer>
 </div>
 <div id="contextMenu" class="hidden" role="menu">
+  <button class="menu-item" role="menuitem" data-action="view"><i data-lucide="eye"></i><span>查看</span></button>
   <button class="menu-item" role="menuitem" data-action="copy"><i data-lucide="copy"></i><span>复制</span></button>
   <button class="menu-item" role="menuitem" data-action="paste"><i data-lucide="clipboard-paste"></i><span>粘贴</span></button>
   <button class="menu-item" role="menuitem" data-action="favorite"><i data-lucide="star"></i><span>收藏</span></button>
@@ -119,6 +137,7 @@ button { cursor: pointer; }
   <button class="menu-item" role="menuitem" data-action="pin"><i data-lucide="pin"></i><span>置顶</span></button>
   <button class="menu-item danger" role="menuitem" data-action="delete"><i data-lucide="trash-2"></i><span>删除</span></button>
 </div>
+<script src="clipboard-view.js"></script>
 <script src="clipboard-history.js"></script>
 </body>
 </html>
