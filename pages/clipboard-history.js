@@ -12,7 +12,8 @@ const favoriteFilter = document.getElementById('favoriteFilter');
 const favoriteCount = document.getElementById('favoriteCount');
 const prevPage = document.getElementById('prevPage');
 const nextPage = document.getElementById('nextPage');
-const pageLabel = document.getElementById('pageLabel');
+const pageInput = document.getElementById('pageInput');
+const pageCountLabel = document.getElementById('pageCountLabel');
 const pageSize = document.getElementById('pageSize');
 const contextMenu = document.getElementById('contextMenu');
 const multiSelectButton = document.getElementById('multiSelectButton');
@@ -73,10 +74,10 @@ function timeText(value) {
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
   if (seconds < 60) return '刚刚';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`;
-  return `${Math.floor(seconds / 86400)} 天前`;
+  const pad = part => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
-function sizeText(bytes) { if (!bytes) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024*1024) return `${Math.round(bytes/1024)} KB`; return `${(bytes/1024/1024).toFixed(1)} MB`; }
 function utcTimestamp(date) { return date.toISOString(); }
 function localDateInputValue(date = new Date()) {
   const pad = value => String(value).padStart(2, '0');
@@ -153,12 +154,6 @@ function requestQuery(reset = true, page = state.page) {
 }
 function rowPreview(row) {
   return row.preview || typeName(row.type);
-}
-function rowMeta(row) {
-  if (row.type === 'image' && row.imageWidth && row.imageHeight)
-    return `${row.imageWidth} × ${row.imageHeight}`;
-  if (row.type === 'file') return `${row.itemCount || 0} 项`;
-  return row.byteSize ? sizeText(row.byteSize) : typeName(row.type);
 }
 function requestImagePreview(id) {
   const key = String(id);
@@ -245,7 +240,10 @@ function updateSummary() {
     ? '历史存储不可用' : `共 ${total} 条 · 当前 ${matching} 条`;
   clearButton.disabled = !!state.counts.error || nonFavorite <= 0;
   favoriteFilter.classList.toggle('active', state.favoriteOnly);
-  pageLabel.textContent = `第 ${state.page} / ${state.pageCount} 页`;
+  pageInput.value = String(state.page);
+  pageInput.max = String(state.pageCount);
+  pageInput.disabled = !!state.counts.error || state.pageCount <= 1;
+  pageCountLabel.textContent = String(state.pageCount);
   prevPage.disabled = !!state.counts.error || state.page <= 1;
   nextPage.disabled = !!state.counts.error || state.page >= state.pageCount;
   pageSize.value = String(state.pageSize);
@@ -253,6 +251,16 @@ function updateSummary() {
 function findRowElement(id) {
   return Array.from(list.querySelectorAll('.history-row'))
     .find(item => item.dataset.id === String(id));
+}
+function jumpToPage() {
+  const value = pageInput.value.trim();
+  if (!/^\d+$/.test(value)) {
+    pageInput.value = String(state.page);
+    return;
+  }
+  const target = Math.min(state.pageCount, Math.max(1, Number(value)));
+  pageInput.value = String(target);
+  if (target !== state.page) requestQuery(false, target);
 }
 function selectRow(id) {
   const key = String(id);
@@ -459,7 +467,7 @@ function renderRow(row) {
   }
   const meta = document.createElement('div');
   meta.className = 'meta';
-  meta.textContent = `${timeText(row.capturedAt)} · ${typeName(row.type)} · ${rowMeta(row)}`;
+  meta.textContent = timeText(row.capturedAt);
   if (row.pinned) {
     const pinBadge = document.createElement('span');
     pinBadge.className = 'pin-badge';
@@ -655,6 +663,13 @@ dateFilter.addEventListener('change', () => {
 favoriteFilter.addEventListener('click',()=>{state.favoriteOnly=!state.favoriteOnly;requestQuery(true);});
 prevPage.addEventListener('click',()=>{if(state.page>1)requestQuery(false,state.page-1);});
 nextPage.addEventListener('click',()=>{if(state.page<state.pageCount)requestQuery(false,state.page+1);});
+pageInput.addEventListener('change', jumpToPage);
+pageInput.addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  jumpToPage();
+  pageInput.blur();
+});
 pageSize.addEventListener('change',()=>{state.pageSize=Math.max(1,Number(pageSize.value)||20);requestQuery(false,1);});
 multiSelectButton.addEventListener('click',()=>setMultiSelectMode(!state.multiSelectMode));
 bulkNoteButton.addEventListener('click',addBulkNote);

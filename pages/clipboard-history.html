@@ -84,7 +84,11 @@ button { cursor: pointer; }
 .page-button { width: 26px; height: 27px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--ui-line-strong); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
 .page-button:hover:not(:disabled) { background: var(--ui-accent-quiet); color: var(--ui-text); }
 .page-button:disabled { opacity: .4; cursor: default; }
-.page-label { min-width: 58px; text-align: center; font-size: 10px; }
+.page-label { min-width: 82px; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; font-size: 10px; }
+.page-input { width: 42px; height: 25px; padding: 0 3px; border: 1px solid var(--ui-line-strong); border-radius: 6px; background: var(--ui-surface-soft); color: var(--ui-text); font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; appearance: textfield; outline: none; }
+.page-input::-webkit-inner-spin-button, .page-input::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.page-input:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
+.page-input:disabled { opacity: .5; }
 .page-size { width: 70px; height: 27px; padding: 0 5px; border: 1px solid var(--ui-line-strong); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); font-size: 10px; }
 .selection-count { color: var(--ui-muted); font-size: 10px; white-space: nowrap; }
 .footer-button { min-width: 50px; height: 29px; padding: 0 8px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); font-size: 10px; white-space: nowrap; }
@@ -126,7 +130,7 @@ button { cursor: pointer; }
     <button class="filter favorite" id="favoriteFilter"><i data-lucide="star"></i><span>收藏</span><span id="favoriteCount">0</span></button>
   </div>
   <main class="content"><div id="list" tabindex="0" role="listbox" aria-label="剪贴板历史列表"></div></main>
-  <footer class="footer"><div class="footer-left"><span id="status">暂无历史</span><div class="pagination"><button class="page-button" id="prevPage" aria-label="上一页"><i data-lucide="chevron-left"></i></button><span class="page-label" id="pageLabel">第 1 / 1 页</span><button class="page-button" id="nextPage" aria-label="下一页"><i data-lucide="chevron-right"></i></button><select id="pageSize" class="page-size" aria-label="每页数量"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></div></div><div class="footer-right"><span id="selectionCount" class="selection-count" hidden></span><button class="footer-button" id="multiSelectButton">多选</button><button class="footer-button" id="bulkNoteButton" hidden disabled>添加备注</button><button class="footer-button danger" id="bulkDeleteButton" hidden disabled>删除</button><button class="clear-button" id="clearButton" disabled>清空</button></div></footer>
+  <footer class="footer"><div class="footer-left"><span id="status">暂无历史</span><div class="pagination"><button class="page-button" id="prevPage" aria-label="上一页"><i data-lucide="chevron-left"></i></button><span class="page-label">第 <input class="page-input" id="pageInput" type="number" min="1" max="1" value="1" aria-label="页码，输入后跳转" title="输入页码并按 Enter 跳转"> / <span id="pageCountLabel">1</span> 页</span><button class="page-button" id="nextPage" aria-label="下一页"><i data-lucide="chevron-right"></i></button><select id="pageSize" class="page-size" aria-label="每页数量"><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></div></div><div class="footer-right"><span id="selectionCount" class="selection-count" hidden></span><button class="footer-button" id="multiSelectButton">多选</button><button class="footer-button" id="bulkNoteButton" hidden disabled>添加备注</button><button class="footer-button danger" id="bulkDeleteButton" hidden disabled>删除</button><button class="clear-button" id="clearButton" disabled>清空</button></div></footer>
 </div>
 <div id="contextMenu" class="hidden" role="menu">
   <button class="menu-item" role="menuitem" data-action="view"><i data-lucide="eye"></i><span>查看</span></button>
