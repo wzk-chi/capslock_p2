@@ -444,8 +444,10 @@ function renderRow(row) {
     fillImagePreview(preview, cachedImagePreview || '');
   } else {
     preview = document.createElement('div');
-    preview.className = 'preview' + (row.richText ? ' rich' : '');
-    preview.textContent = rowPreview(row);
+    const previewText = rowPreview(row);
+    preview.className = 'preview' + (row.richText ? ' rich' : '')
+      + (/[\r\n]/.test(previewText) ? ' multiline' : '');
+    preview.textContent = previewText;
   }
   const note = document.createElement('div');
   if (row.note) {

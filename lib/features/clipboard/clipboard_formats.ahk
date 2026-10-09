@@ -944,7 +944,7 @@ ClipboardHistoryPreview(text, files, primaryType, isRichText := false) {
         return SubStr(preview, 1, 240)
     }
     if text != ""
-        return SubStr(RegExReplace(text, "[`r`n]+", " ↵ "), 1, 240)
+        return SubStr(text, 1, 240)
     return isRichText ? "富文本" : primaryType = "image" ? "图片" : "剪贴板内容"
 }
 

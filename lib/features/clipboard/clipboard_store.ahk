@@ -359,7 +359,9 @@ ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := f
     offset := (page - 1) * limit
     whereClause := ClipboardHistoryStoreWhere(searchText, primaryType, favoriteOnly,
         dateAfter, dateBefore)
-    sql := "SELECT id,primary_type,is_rich_text,preview_text,file_count,"
+    sql := "SELECT id,primary_type,is_rich_text,"
+        . "CASE WHEN primary_type IN ('text','rich') AND text_plain<>'' "
+        . "THEN substr(text_plain,1,240) ELSE preview_text END AS preview_text,file_count,"
         . "image_width,image_height,byte_size,last_captured_at_utc,is_favorite,note_text,is_pinned,pin_order FROM clipboard_items WHERE "
         . whereClause
         . " ORDER BY is_pinned DESC,pin_order DESC,last_captured_at_utc DESC,id DESC LIMIT " . limit
