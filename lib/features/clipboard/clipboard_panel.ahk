@@ -468,6 +468,8 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             LLMMsgField(msg, "id"), sessionId, dragKind), -1)
     } else if messageType = "copy" {
         SetTimer(ClipboardHistoryPanelCopy.Bind(LLMMsgField(msg, "id"), sessionId), -1)
+    } else if messageType = "copyPaths" {
+        SetTimer(ClipboardHistoryPanelCopyPaths.Bind(LLMMsgField(msg, "id"), sessionId), -1)
     } else if messageType = "paste" {
         SetTimer(ClipboardHistoryPanelPaste.Bind(LLMMsgField(msg, "id"), sessionId), -1)
     } else if messageType = "favorite" {
@@ -622,6 +624,29 @@ ClipboardHistoryPanelCopy(id, sessionId, *) {
         return
     ok := ClipboardHistoryCopyItem(id)
     ClipboardHistoryActionResult("copy", ok, ok ? "已复制" : "复制失败", "", false, sessionId)
+}
+
+ClipboardHistoryPanelCopyPaths(id, sessionId, *) {
+    global A_Clipboard, WhichClipboardNow, ClipboardHistorySessionId
+    if sessionId != ClipboardHistorySessionId
+        return
+
+    ok := false
+    try {
+        item := ClipboardHistoryStoreGetItem(id)
+        if !IsObject(item) || item["primary_type"] != "file"
+            throw Error("剪贴板历史记录不是文件类型")
+        paths := ClipboardHistoryViewFiles(item)
+        if !paths.Length
+            throw Error("剪贴板历史记录中没有可复制的文件路径")
+        A_Clipboard := ClipboardHistoryJoin(paths, "`r`n")
+        WhichClipboardNow := 0
+        ok := true
+    } catch as copyError {
+        DebugLog("Clipboard history path copy failed: " . copyError.Message)
+    }
+    ClipboardHistoryActionResult("copyPaths", ok,
+        ok ? "路径已复制" : "复制路径失败", "", false, sessionId)
 }
 
 ClipboardHistoryPanelNativeDrag(id, sessionId, dragKind, *) {

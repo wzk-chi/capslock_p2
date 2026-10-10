@@ -521,6 +521,7 @@ function focusHistoryRow(index) {
 }
 function showMenu(x, y, row) {
   contextMenu.classList.remove('hidden');
+  contextMenu.querySelector('[data-action="copyPaths"]').hidden = row.type !== 'file';
   contextMenu.querySelector('[data-action="favorite"] span').textContent =
     row.favorite ? '取消收藏' : '收藏';
   contextMenu.querySelector('[data-action="note"] span').textContent =
@@ -556,6 +557,7 @@ async function contextAction(action) {
     else list.focus();
   });
   else if (action === 'copy') post({ type: 'copy', sessionId, id });
+  else if (action === 'copyPaths') post({ type: 'copyPaths', sessionId, id });
   else if (action === 'paste') post({ type: 'paste', sessionId, id });
   else if (action === 'favorite') toggleFavorite(row);
   else if (action === 'note') editNote(row);

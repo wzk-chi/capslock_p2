@@ -101,6 +101,7 @@ button { cursor: pointer; }
 #contextMenu { position: fixed; z-index: 20; min-width: 150px; padding: 5px; border: 1px solid var(--ui-line-strong); border-radius: 9px; background: var(--ui-surface-raised); box-shadow: var(--ui-shadow-soft); }
 #contextMenu.hidden { display: none; }
 .menu-item { width: 100%; min-height: 31px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text); text-align: left; font-size: 12px; }
+.menu-item[hidden] { display: none; }
 .menu-item:hover { background: var(--ui-accent-quiet); color: var(--ui-accent-strong); }
 .menu-item.danger:hover { color: var(--ui-danger); background: var(--ui-danger-soft); }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -135,6 +136,7 @@ button { cursor: pointer; }
 <div id="contextMenu" class="hidden" role="menu">
   <button class="menu-item" role="menuitem" data-action="view"><i data-lucide="eye"></i><span>查看</span></button>
   <button class="menu-item" role="menuitem" data-action="copy"><i data-lucide="copy"></i><span>复制</span></button>
+  <button class="menu-item" role="menuitem" data-action="copyPaths" hidden><i data-lucide="copy"></i><span>复制路径</span></button>
   <button class="menu-item" role="menuitem" data-action="paste"><i data-lucide="clipboard-paste"></i><span>粘贴</span></button>
   <button class="menu-item" role="menuitem" data-action="favorite"><i data-lucide="star"></i><span>收藏</span></button>
   <button class="menu-item" role="menuitem" data-action="note"><i data-lucide="message-square-plus"></i><span>添加备注</span></button>
