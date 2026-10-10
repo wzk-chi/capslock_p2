@@ -48,6 +48,8 @@ AppStoreInit() {
             throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法验证数据库日志模式")
 
         AppStoreMigrate(db, isNew)
+        if !isNew
+            AppStoreVacuumIfNeeded(db)
         if isNew {
             if !AppStoreVerifyDatabase(db)
                 throw Error("应用数据库完整性检查失败")
@@ -76,6 +78,34 @@ AppStoreInit() {
         if IsObject(db)
             try db.CloseDB()
         AppStoreLogInitializationFailure(Type(initError), initError.Message)
+        return false
+    }
+}
+
+AppStoreVacuumIfNeeded(db) {
+    try {
+        if !db.GetTable("PRAGMA page_size;", &pageSizeTable)
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法读取数据库页面大小")
+        if !db.GetTable("PRAGMA page_count;", &pageCountTable)
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法读取数据库页面数量")
+        if !db.GetTable("PRAGMA freelist_count;", &freePageTable)
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法读取数据库空闲页面数量")
+
+        pageSize := pageSizeTable.RowCount ? Integer(pageSizeTable.Rows[1][1]) : 0
+        pageCount := pageCountTable.RowCount ? Integer(pageCountTable.Rows[1][1]) : 0
+        freePages := freePageTable.RowCount ? Integer(freePageTable.Rows[1][1]) : 0
+        if pageSize < 1 || pageCount < 1 || freePages < 0 || freePages > pageCount
+            throw Error("数据库页面统计值无效")
+
+        freeBytes := freePages * pageSize
+        if freeBytes < 32 * 1024 * 1024 || freePages * 4 < pageCount
+            return true
+        if !db.Exec("VACUUM;")
+            throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "SQLite VACUUM 执行失败")
+        try DebugLog("AppStore startup vacuum complete reclaimedBytes=" . freeBytes)
+        return true
+    } catch as vacuumError {
+        try DebugLog("AppStore startup vacuum skipped detail=" . vacuumError.Message)
         return false
     }
 }

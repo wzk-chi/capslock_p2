@@ -11,7 +11,7 @@
 不做以下处理：
 
 - 不批量转换、重写或扫描已有历史记录。现有 payload_version=1 记录继续按当前原始快照路径读取。
-- 不做数据库 VACUUM、WAL checkpoint 或空间压实。启用压缩不会自动缩小当前数据库文件。
+- 清空历史时不立即压实数据库。每次初始化现有数据库后，在注册功能热键和剪贴板监听前检查 SQLite 页面统计；空闲页空间至少 32 MiB 且空闲页占比至少 25% 时才执行一次 VACUUM。检查或压实失败只记录日志，不阻止应用启动。启用压缩本身不会缩小当前数据库文件。
 - 不压缩文本、CF_HDROP 文件列表、HTML、RTF 或其他非位图格式块。
 - 不压缩 PNG 等已经压缩的图像块；不把 DIB 转成 PNG/JPEG，也不重新编码像素。
 - 不改变 manifest、预览、缩略图、内容哈希、记录时间、收藏、置顶、备注或排序。
@@ -219,7 +219,7 @@ packed 的 Buffer.Size 是容量，storedLength 才是有效长度；构造 CPZ2
 
 版本 2 解码失败时拒绝该条目恢复；页面沿用现有用户可理解的失败反馈，底层 Win32 状态码和 SQLite 错误类别写日志，不直接展示技术异常。日志可记录操作阶段、payloadVersion、块数、原始/存储字节和错误码，但不写载荷内容。
 
-已有历史不做批量扫描或迁移，未再次捕获的版本 1 记录继续走原始快照读取路径。正常再次捕获相同内容时，现有 contentHash 去重会复用条目 ID，StoreSave 的 UPSERT 会把此次新捕获载荷和版本写回该条目；允许这条正常更新路径，不增加保留旧载荷的特殊分支。无需 app_meta 游标、后台迁移 timer、启动导入、VACUUM 或 WAL 整理。
+已有历史不做批量扫描或迁移，未再次捕获的版本 1 记录继续走原始快照读取路径。正常再次捕获相同内容时，现有 contentHash 去重会复用条目 ID，StoreSave 的 UPSERT 会把此次新捕获载荷和版本写回该条目；允许这条正常更新路径，不增加保留旧载荷的特殊分支。无需 app_meta 游标、后台迁移 timer 或启动导入；数据库空间回收按第 1 节的启动阈值执行。
 
 ## 8. 文件落点与实施验收边界
 
@@ -228,5 +228,6 @@ packed 的 Buffer.Size 是容量，storedLength 才是有效长度；构造 CPZ2
 | lib/features/clipboard/clipboard_formats.ahk | 复用原快照零复制解析；新增编码、解码及单次压缩辅助函数；只压格式 8/17；一次构造 CPZ2、直接解压进最终快照 |
 | lib/features/clipboard/clipboard_history.ahk | Remember 在 Critical 前编码，局部载荷和版本传入 StoreSave；保持 record 的原始快照语义 |
 | lib/features/clipboard/clipboard_store.ahk | Save 使用 storedPayload 并绑定 payload_version；ReadPayload 读版本并在 finalize 后解码；预算仍按实际 BLOB 大小 |
+| lib/app/store.ahk | 初始化现有数据库并提交迁移后，检查空闲页阈值，必要时执行可失败但不阻断启动的 VACUUM |
 
 不新增 schema 表、WebView 页面逻辑、第三方库或并行存储路径。AHK v2 /validate 已通过且无警告；项目未运行，实际剪贴板恢复仍待运行验收。后续修改 AHK 源码时，按 AGENTS.md 使用 PowerShell AutoHotkey v2 /validate，并检查退出码与全部警告；禁止启动项目，不编写测试。语法验证不能替代实际剪贴板恢复验证；此前离线压缩结果也不代表 AHK 运行验收。
