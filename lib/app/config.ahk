@@ -119,6 +119,14 @@ ConfigBuildSchema() {
             "region", ConfigDefineField("text", "cn-north-1", "Region", "volcengine", "order", 10, "wide", true))),
         "QAI", Map("kind", "static", "keys", Map(
             "systemPrompt", ConfigDefineField("text", "You are the assistant built into the capslock_p2 launcher. The user's message is either a question to answer or a text to explain; decide which one it is. If it is a question, answer it directly and completely. If it is a text (a word, sentence, paragraph, error message, log entry, code snippet or URL), explain what it means. Reply in the language of the user's message; if the message is not in Chinese or English, reply in {{uiLanguage}}. Be concise.", "系统提示词", "ai", "codec", "jsonScalar", "wide", true, "multiline", true))),
+        "KeyRepeat", Map("kind", "static", "keys", Map(
+            ; Keep the v7 field so existing in-flight databases continue to load.
+            ; Runtime state is owned by KeyRepeatStatus, not this stored value.
+            "enabled", ConfigDefineField("bool", "0", "", "keyrepeat", "order", 10,
+                "internal", true, "hidden", true),
+            "repeatKey", ConfigDefineField("singleInput", "lbutton", "连发按键", "keyrepeat", "order", 20, "wide", true),
+            "startupDelayMs", ConfigDefineField("int", "500", "启动延迟（毫秒）", "keyrepeat", "order", 30, "min", 0, "max", 5000),
+            "intervalMs", ConfigDefineField("int", "100", "连发间隔（毫秒）", "keyrepeat", "order", 40, "min", 20, "max", 2000))),
         "Keys", Map("kind", "keys", "defaults", ConfigDefaultShortcuts()),
         "TabHotString", Map("kind", "dynamic", "codec", "hotString"),
         "CustomHotkey", Map("kind", "dynamic", "codec", "plain"))
@@ -292,6 +300,8 @@ ConfigEditorSchema() {
             continue
         fields[section] := Map()
         for key, field in definition["keys"] {
+            if field.Get("internal", false)
+                continue
             publicField := Map()
             for name, value in field
                 if name != "default" && name != "codec"
@@ -305,6 +315,7 @@ ConfigEditorSchema() {
             "hint", "按住 CapsLock + 左 Alt 时生效，松开后恢复系统鼠标速度。"),
         Map("id", "llm", "page", "llm", "title", "共用 LLM", "action", "testLlm"),
         Map("id", "translate", "page", "translate", "title", "翻译共用配置"),
+        Map("id", "keyrepeat", "page", "keyrepeat", "title", "长按连发"),
         Map("id", "llmTranslate", "page", "translate", "title", "LLM 翻译", "action", "openLlm"),
         Map("id", "youdao", "page", "translate", "title", "有道翻译", "action", "testYoudao"),
         Map("id", "volcengine", "page", "translate", "title", "火山翻译", "action", "testVolcengine"),
@@ -387,6 +398,44 @@ ConfigValidateCustomHotkeyTrigger(trigger) {
         "i)^(?:Wheel(?:Up|Down|Left|Right)|[LRM]Button|XButton[12]|Joy(?:[1-9]|[12][0-9]|3[0-2]))$")
 }
 
+ConfigValidateSingleInput(value, &normalized := "") {
+    normalized := ""
+    raw := Trim(String(value))
+    if raw = "" {
+        normalized := ""
+        return true
+    }
+    if StrLen(raw) > 80 || InStr("^!+#", SubStr(raw, 1, 1))
+        return false
+    keyName := ConfigNormalizeCustomHotkeyTrigger(raw)
+    if keyName = "" || RegExMatch(keyName, "[{}\s`r`n]")
+        return false
+
+    if RegExMatch(keyName, "i)^(?:lbutton|rbutton|mbutton|xbutton[12])$") {
+        normalized := keyName
+        return true
+    }
+    keyCode := 0
+    try keyCode := GetKeyVK(keyName)
+    catch
+        return false
+    if !keyCode || keyCode = 0x14
+        return false
+    scanCode := 0
+    try scanCode := GetKeySC(keyName)
+    catch
+        return false
+    if !scanCode
+        return false
+    if keyCode = 0x10 || keyCode = 0xA0 || keyCode = 0xA1
+        || keyCode = 0x11 || keyCode = 0xA2 || keyCode = 0xA3
+        || keyCode = 0x12 || keyCode = 0xA4 || keyCode = 0xA5
+        || keyCode = 0x5B || keyCode = 0x5C
+        return false
+    normalized := keyName
+    return true
+}
+
 ConfigValidateValue(section, key, value, &normalized := "") {
     normalized := ""
     if IsObject(value)
@@ -465,6 +514,8 @@ ConfigValidateValue(section, key, value, &normalized := "") {
             }
             if !enumMatch
                 return false
+        case "singleInput":
+            return ConfigValidateSingleInput(text, &normalized)
         case "text", "secret":
             if (!field.Has("codec") || field["codec"] != "jsonScalar") {
                 if RegExMatch(text, "[`r`n]")

@@ -90,6 +90,8 @@ PasteSystemHotkey(*) {
 }
 
 CapsLockLayerActive(*) {
+    if SettingsShortcutCaptureActive()
+        return false
     ; Do not depend on the CapsLock hotkey thread reaching its cleanup code.
     ; Long-running panel/clipboard actions can keep that thread alive after the
     ; physical key has already been released. The physical state is the only
@@ -116,15 +118,16 @@ HandleCapsLockPress(runTapAction) {
         return
     }
 
+    captureActive := SettingsShortcutCaptureActive()
     CapsLockHeld := true
-    CapsLockUsed := false
+    CapsLockUsed := captureActive
     CtrlZPending := true
     targetWindow := GetActiveWindowInfo()
     CapsLockTargetPath := targetWindow ? targetWindow.path : ""
     CapsLockTargetHwnd := targetWindow ? targetWindow.id : 0
     ; The reference implementation only treats a release within 300ms as a
     ; tap (setCapsLock2 timer), so a long hold never fires press_caps.
-    tapPending := runTapAction
+    tapPending := runTapAction && !captureActive
     SetTimer(() => (tapPending := false), -300)
     DebugLog("CapsLockDown tapAction=" . runTapAction)
 
@@ -137,7 +140,8 @@ HandleCapsLockPress(runTapAction) {
         CapsLockHeld := false
         DebugLog("CapsLockUp used=" . CapsLockUsed . " tapAction=" . tapPending)
 
-        if tapPending && !CapsLockUsed && CapsLockTapTargetStillActive() {
+        if tapPending && !CapsLockUsed && !SettingsShortcutCaptureActive()
+            && CapsLockTapTargetStillActive() {
             fallbackAction := KeySet.Has("press_caps") ? KeySet["press_caps"] : "keyFunc_toggleCapsLock"
             action := AppProfileResolveAction("Keys", "press_caps", fallbackAction, CapsLockTargetPath)
             if action != "@block" && action != "@native"
@@ -154,6 +158,13 @@ HandleCapsLockPress(runTapAction) {
 RunLayerAction(actionKey) {
     global CapsLockUsed, KeySet
     CapsLockUsed := true
+    if SettingsShortcutCaptureActive()
+        return
+    if actionKey = "caps_f8" {
+        KeyRepeatToggle()
+        KeyWait("F8")
+        return
+    }
     DebugLog("Layer action=" . actionKey)
     fallbackAction := KeySet.Has(actionKey) ? KeySet[actionKey] : "keyFunc_doNothing"
     action := AppProfileResolveAction("Keys", actionKey, fallbackAction)

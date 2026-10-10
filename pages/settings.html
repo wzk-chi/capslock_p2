@@ -86,10 +86,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
 .custom-hotkey-control select.custom-hotkey-action { min-width: 0; width: auto; flex: 1; }
 .custom-hotkey-control input:disabled { color: var(--ui-muted); cursor: default; }
 .custom-hotkey-record { flex: none; padding: 6px 8px; font-size: 11px; }
+.single-input-row { display: flex; align-items: center; gap: 8px; }
+.single-input-value { min-width: 0; flex: 1; cursor: default; }
+.single-input-record.recording { background: var(--ui-danger); }
+.key-repeat-toggle-card { max-width: 840px; margin: 0 auto 14px; padding: 12px; }
+.key-repeat-status { max-width: 840px; margin: 10px auto 0; color: var(--ui-accent-strong); font-size: 12px; font-weight: 600; }
+.key-repeat-status:empty { display: none; }
 .custom-hotkey-empty { padding: 12px 2px; color: var(--ui-muted); font-size: 12px; }
 .shortcut-row { grid-template-columns: 180px minmax(0, 1fr) minmax(48px, auto); }
 .shortcut-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .shortcut-label { color: var(--ui-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shortcut-reserved { color: var(--ui-accent-strong); font-size: 12px; font-weight: 600; }
+.shortcut-reserved-note { color: var(--ui-muted); font-size: 10px; white-space: nowrap; }
 .shortcut-record { padding: 6px 7px; font-size: 11px; white-space: nowrap; }
 .shortcut-record.recording { background: var(--ui-danger); }
 .shortcut-empty, .custom-hotkey-filter-empty { padding: 12px 2px; color: var(--ui-muted); font-size: 12px; }
@@ -246,6 +254,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
     <nav class="nav" id="nav">
       <button class="active" data-page="general"><i data-lucide="sliders-horizontal"></i><span>通用</span></button>
       <button data-page="mouse"><i data-lucide="mouse-pointer-2"></i><span>鼠标</span></button>
+      <button data-page="keyrepeat"><i data-lucide="repeat"></i><span>长按连发</span></button>
       <button data-page="llm"><i data-lucide="cpu"></i><span>LLM</span></button>
       <button data-page="translate"><i data-lucide="languages"></i><span>翻译</span></button>
       <button data-page="ai"><i data-lucide="message-circle-question-mark"></i><span>AI 问答</span></button>
@@ -270,6 +279,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
 
       <section class="page" data-page-view="mouse">
         <div class="cards settings-groups"></div>
+      </section>
+
+      <section class="page" data-page-view="keyrepeat">
+        <section class="card key-repeat-toggle-card">
+          <label class="ui-form-check">
+            <span class="ui-form-copy">
+              <span>启用长按连发</span>
+              <small class="ui-form-hint">此开关与 CapsLock + F8 控制同一个启停状态，任选其一即可。启动后按住录制的按键，达到启动延迟后开始连发；松开停止本次连发。</small>
+            </span>
+            <input type="checkbox" id="keyRepeatToggle" disabled>
+          </label>
+        </section>
+        <div class="cards settings-groups"></div>
+        <div class="key-repeat-status" id="keyRepeatStatus" aria-live="polite"></div>
       </section>
 
       <section class="page" data-page-view="llm">

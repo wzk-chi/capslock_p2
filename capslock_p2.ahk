@@ -37,6 +37,7 @@ A_HotkeyInterval := 2000
 #Include lib\features\settings.ahk
 #Include lib\features\settings\settings_editor.ahk
 #Include lib\features\settings\settings_capture.ahk
+#Include lib\input\keyRepeat.ahk
 #Include lib\features\settings\settings_picker.ahk
 #Include lib\features\translate\youdaoTranslate.ahk
 #Include lib\features\translate\volcengineTranslate.ahk

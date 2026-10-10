@@ -740,8 +740,9 @@ WinTransparentKeyCheck(*) {
 
 RegisterFeatureHotkeys() {
     global WinTransparentActive
-    HotIf((*) => WinTransparentActive)
+    HotIf((*) => WinTransparentActive && !SettingsShortcutCaptureActive())
     Hotkey("WheelUp", WinTransparentAdd)
     Hotkey("WheelDown", WinTransparentReduce)
     HotIf()
+    SettingsShortcutCaptureRegisterMouseHotkeys()
 }

@@ -74,6 +74,7 @@ Initialize() {
         ExitApp()
         return false
     }
+    KeyRepeatInitialize()
     EnsureConfiguredElevation()
     BuildKeySet()
     ApplyGlobalSettings()
@@ -135,6 +136,7 @@ EnsureConfiguredElevation() {
 
 Shutdown(*) {
     global AppInstanceMutex
+    try KeyRepeatStop(true)
     try ClipboardHistoryShutdown()
     try SetTimer(MouseSpeedTick, 0)
     try RestoreMouseSpeed()
@@ -208,11 +210,13 @@ ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
     loadError := ""
     loadedUserDocument := 0
     if !ConfigLoad(&loadError, &loadedUserDocument) {
+        KeyRepeatStop(true)
         SettingsReloadPending := true
         return []
     }
     appProfilesChanged := false
     if !AppProfilesLoad(&appProfilesChanged, true) {
+        KeyRepeatStop(true)
         Config := previousConfig
         ConfigDefaults := previousDefaults
         SettingsReloadPending := true
@@ -442,6 +446,11 @@ ApplyConfigChanges(changes, deferCustomHotkeys := false) {
     }
     if refreshPanelDestroySchedule
         PanelHostRefreshDestroySchedule()
+    if changes.Has("KeyRepeat") {
+        KeyRepeatCancelCurrentPress()
+        KeyRepeatRefreshInputHooks()
+        KeyRepeatPublishStatus()
+    }
 }
 
 EnsureAutostartShortcut(enabled) {

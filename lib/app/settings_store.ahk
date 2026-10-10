@@ -1,5 +1,5 @@
 ; Configuration defaults, user overrides and secrets in the shared AppStore.
-global SettingsStoreSourceVersion := 5
+global SettingsStoreSourceVersion := 8
 
 SettingsStoreRetireSelectedTextAction(db) {
     ; Retire saved bindings in the same transaction as the new default layout.

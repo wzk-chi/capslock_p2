@@ -147,10 +147,17 @@ SettingsWebMessageReceived(sender, args) {
     }
     else if messageType = "testSettings"
         SettingsStartTest(message)
+    else if messageType = "setKeyRepeatArmed" {
+        armed := LLMMsgBoolean(msg, "armed", &armedValid, false)
+        if armedValid
+            KeyRepeatSetArmed(armed, "settings")
+    }
     else if messageType = "startShortcutRecording"
         SettingsQueueShortcutCapture(message)
     else if messageType = "stopShortcutRecording"
         SettingsStopShortcutCaptureMessage(message)
+    else if messageType = "singleInputMouse"
+        SettingsCaptureSingleInputMouse(msg)
     else if messageType = "selectOpenWindow"
         SetTimer(SettingsOpenWindowPicker.Bind(message), -1)
     else if messageType = "selectOpenApplication"
@@ -261,7 +268,8 @@ SettingsSendSecretResult(result, msg) {
 
 SettingsPageIsAllowed(page) {
     return page = "general" || page = "mouse" || page = "llm" || page = "translate"
-        || page = "ai" || page = "shortcuts" || page = "tab" || page = "qbar" || page = "windows"
+        || page = "keyrepeat" || page = "ai" || page = "shortcuts" || page = "tab"
+        || page = "qbar" || page = "windows"
 }
 
 SettingsSetPendingPage(page) {
@@ -424,7 +432,7 @@ SettingsShutdown(*) {
     global SettingsWindowSelectionTokens, SettingsSaving
     if WindowPickerVisible
         SettingsCloseWindowPicker(false)
-    SettingsStopShortcutCapture()
+    SettingsShortcutCaptureShutdown()
     SettingsTestInvalidate()
     SettingsInvalidateEditSession()
     SettingsVisible := false

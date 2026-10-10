@@ -187,10 +187,9 @@ CustomHotkeyCollectTriggers(triggers, actions) {
 }
 
 CustomHotkeyActive(trigger, *) {
-    global SettingsShortcutHook, SettingsShortcutCapturePending
     if CapsLockLayerActive()
         return false
-    if IsObject(SettingsShortcutHook) || SettingsShortcutCapturePending
+    if SettingsShortcutCaptureActive()
         return false
     action := CustomHotkeyResolve(trigger)
     return action != "" && action != "@native"

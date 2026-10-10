@@ -14,6 +14,8 @@ const pendingRequests = new Map();
 let requestSequence = 0;
 let shortcutRecording = null;
 let shortcutCaptureSequence = 0;
+const singleInputPointerModes = new Map();
+const SINGLE_INPUT_MOUSE_BUTTONS = ['lbutton', 'mbutton', 'rbutton', 'xbutton1', 'xbutton2'];
 const CUSTOM_HOTKEY_BUILTIN_PREFIX = '@builtin:shortcut/';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -329,6 +331,28 @@ function setStatus(text, error = false) {
   node.classList.toggle('error', !!error);
   $('#saveBtn').disabled = state.status !== 'editing' || !hasChanges();
 }
+function showKeyRepeatStatus(status) {
+  if (!status || typeof status !== 'object') return;
+  const node = $('#keyRepeatStatus');
+  if (!node) return;
+  const toggle = $('#keyRepeatToggle');
+  const enabled = status.enabled === '1';
+  const hasKey = !!String(status.repeatKey || '').trim();
+  if (toggle) {
+    toggle.checked = enabled;
+    toggle.disabled = !hasKey;
+  }
+  if (!hasKey)
+    node.textContent = '请先录制一个键盘键或鼠标按键';
+  else if (status.status === 'waiting')
+    node.textContent = '已按住，' + Number(status.delayMs || 0) + ' 毫秒后开始连发';
+  else if (status.status === 'running')
+    node.textContent = '正在连发：' + singleInputLabel(status.repeatKey);
+  else if (enabled)
+    node.textContent = '已启动，等待按住连发按键';
+  else
+    node.textContent = '';
+}
 function updateDirtyStatus() {
 
   setStatus(hasChanges() ? '未保存' : '');
@@ -339,7 +363,24 @@ function setDraftValue(sectionName, key, value) {
     ? { op: value ? 'set' : 'clear', ...(value ? { value } : {}) } : value;
   updateDirtyStatus(sectionName, key);
 }
+function singleInputLabel(value) {
+  const key = String(value || '').toLowerCase();
+  const labels = {
+    space: 'Space', tab: 'Tab', enter: 'Enter', numpadenter: '小键盘 Enter',
+    esc: 'Esc', escape: 'Esc', backspace: 'Backspace', delete: 'Delete',
+    insert: 'Insert', home: 'Home', end: 'End', pgup: 'PageUp', pgdn: 'PageDown',
+    capslock: 'CapsLock', printscreen: 'PrintScreen', scrolllock: 'ScrollLock',
+    pause: 'Pause', appskey: '菜单键', lbutton: '鼠标左键', rbutton: '鼠标右键',
+    mbutton: '鼠标中键', xbutton1: '鼠标侧键 1', xbutton2: '鼠标侧键 2'
+  };
+  if (labels[key]) return labels[key];
+  if (/^f(?:[1-9]|1[0-9]|2[0-4])$/.test(key)) return key.toUpperCase();
+  if (/^numpad/.test(key)) return '小键盘 ' + key.slice(6);
+  return key.length === 1 ? key.toUpperCase() : key;
+}
 function readControl(node) {
+  if (state.schema?.fields?.[node.dataset.section]?.[node.dataset.key]?.type === 'singleInput')
+    return node.dataset.singleInputValue || '';
   if (isSecretSetting(node.dataset.section, node.dataset.key)
     && node.dataset.secretSaved === 'true' && node.dataset.secretEdited !== 'true')
     return section(node.dataset.section)[node.dataset.key];
@@ -347,6 +388,49 @@ function readControl(node) {
 }
 
 function createSettingsField(schema, value, onChange = null) {
+  if (schema.type === 'singleInput') {
+    const field = document.createElement('div');
+    field.className = 'field ui-form-field wide single-input-field';
+    const label = document.createElement('span');
+    label.textContent = schema.label;
+    const row = document.createElement('div');
+    row.className = 'single-input-row';
+    const input = document.createElement('input');
+    input.className = 'ui-form-control single-input-value';
+    input.type = 'text';
+    input.readOnly = true;
+    input.dataset.singleInputValue = String(value || '');
+    input.value = singleInputLabel(input.dataset.singleInputValue);
+    input.setAttribute('aria-label', schema.label);
+    const record = document.createElement('button');
+    record.type = 'button';
+    record.className = 'btn mini single-input-record';
+    record.textContent = '录制';
+    record.addEventListener('click', () => startSingleInputRecording(input, record));
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'btn ghost mini single-input-clear';
+    clear.dataset.singleInputClear = 'true';
+    clear.textContent = '清空';
+    clear.disabled = !input.dataset.singleInputValue;
+    clear.addEventListener('click', () => {
+      if (shortcutRecording?.kind === 'singleInput') stopShortcutRecording();
+      input.dataset.singleInputValue = '';
+      input.value = '未设置';
+      clear.disabled = true;
+      onChange?.('');
+    });
+    row.append(input, record, clear);
+    field.append(label, row);
+    if (schema.hint) {
+      const hint = document.createElement('small');
+      hint.className = 'ui-form-hint';
+      hint.textContent = schema.hint;
+      field.append(hint);
+    }
+    if (!input.dataset.singleInputValue) input.value = '未设置';
+    return { field, input };
+  }
   const checkbox = schema.type === 'bool' || schema.type === 'boolean';
   const numeric = ['int', 'integer', 'optionalNumber', 'optionalPositiveInt'].includes(schema.type);
   const wide = schema.wide ?? (checkbox || schema.type === 'secret' || schema.multiline === true);
@@ -411,7 +495,8 @@ function renderSettingsForms() {
         .map(([key, schema]) => ({ sectionName, key, schema }))
     ).sort((a, b) => compareSettingsFields(a.schema, b.schema));
     for (const { sectionName, key, schema } of fields) {
-      const { field, input } = createSettingsField(schema, section(sectionName)[key]);
+      const { field, input } = createSettingsField(schema, section(sectionName)[key],
+        next => setDraftValue(sectionName, key, next));
       input.dataset.section = sectionName; input.dataset.key = key;
       if (schema.when) {
         field.dataset.visibleSection = sectionName;
@@ -478,6 +563,13 @@ function updateTranslateModeFields() {
 
 function writeControl(node) {
   const value = section(node.dataset.section)[node.dataset.key];
+  if (state.schema?.fields?.[node.dataset.section]?.[node.dataset.key]?.type === 'singleInput') {
+    node.dataset.singleInputValue = String(value || '');
+    node.value = singleInputLabel(node.dataset.singleInputValue) || '未设置';
+    const clear = node.parentElement.querySelector('.single-input-clear');
+    if (clear) clear.disabled = !node.dataset.singleInputValue;
+    return;
+  }
   const secret = isSecretSetting(node.dataset.section, node.dataset.key);
   if (secret) {
     const saved = value.op === 'keep' && value.present;
@@ -798,11 +890,141 @@ function shortcutActionGroups(values, allowNative = true) {
 }
 function stopShortcutRecording(notifyHost = true) {
   if (!shortcutRecording) return;
-  if (notifyHost) post({ type: 'stopShortcutRecording', captureId: shortcutRecording.captureId });
-  shortcutRecording.button.classList.remove('recording');
-  shortcutRecording.button.textContent = '录制';
+  const capture = shortcutRecording;
+  if (notifyHost) post({ type: 'stopShortcutRecording', captureId: capture.captureId });
+  capture.button.classList.remove('recording');
+  capture.button.textContent = '录制';
+  delete capture.button.dataset.singleInputCancel;
+  if (capture.kind === 'singleInput') {
+    for (const [pointerKey, pointer] of singleInputPointerModes) {
+      singleInputPointerModes.set(pointerKey, {
+        ...pointer,
+        mode: pointer.mode === 'capture' || pointer.mode === 'cancel'
+          ? 'stale-press' : 'stale-click'
+      });
+    }
+  }
   shortcutRecording = null;
 }
+function startSingleInputRecording(input, button) {
+  if (shortcutRecording?.button === button) {
+    stopShortcutRecording();
+    setStatus('已取消录制');
+    return;
+  }
+  stopShortcutRecording();
+  const captureId = ++shortcutCaptureSequence;
+  shortcutRecording = {
+    kind: 'singleInput', section: 'KeyRepeat', key: 'repeatKey', input, button, captureId
+  };
+  button.dataset.singleInputCancel = 'true';
+  button.classList.add('recording');
+  button.textContent = '取消';
+  setStatus('按下一个键或点击鼠标；左键点击取消按钮结束录制');
+  if (!post({ type: 'startShortcutRecording', key: 'singleInput', mode: 'singleInput', captureId })) {
+    stopShortcutRecording(false);
+    setStatus('无法启动按键录制，请重试。', true);
+  }
+}
+function singleInputCancelTarget(event, captureId = shortcutRecording?.captureId) {
+  return event.button === 0 && shortcutRecording?.kind === 'singleInput'
+    && shortcutRecording.captureId === captureId && event.target instanceof Element
+    && event.target.closest('button[data-single-input-cancel]') === shortcutRecording.button;
+}
+function singleInputMouseButton(button) {
+  return SINGLE_INPUT_MOUSE_BUTTONS[button] || '';
+}
+function singleInputPointerKey(event) {
+  return String(event.button);
+}
+function suppressSingleInputEvent(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+function beginSingleInputMouse(event, capturePointer = false) {
+  const pointerKey = singleInputPointerKey(event);
+  if (shortcutRecording?.kind !== 'singleInput') {
+    // A new press cannot belong to a completed capture's pending click.
+    singleInputPointerModes.delete(pointerKey);
+    return;
+  }
+  const prior = singleInputPointerModes.get(pointerKey);
+  if (prior?.captureId === shortcutRecording.captureId
+    && (prior.mode === 'capture' || prior.mode === 'cancel')) {
+    if (prior.mode !== 'cancel') suppressSingleInputEvent(event);
+    return;
+  }
+  const mode = singleInputCancelTarget(event) ? 'cancel' : 'capture';
+  const captureId = shortcutRecording.captureId;
+  singleInputPointerModes.set(pointerKey, { mode, captureId });
+  if (mode !== 'capture') return;
+  if (capturePointer) {
+    try { event.target.setPointerCapture(event.pointerId); } catch { /* The target may have been detached. */ }
+  }
+  suppressSingleInputEvent(event);
+  const button = singleInputMouseButton(event.button);
+  if (button) post({ type: 'singleInputMouse', phase: 'down', button, captureId,
+    modified: !!(event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) });
+}
+function finishSingleInputMouse(event) {
+  const pointerKey = singleInputPointerKey(event);
+  const pointer = singleInputPointerModes.get(pointerKey);
+  if (!pointer) return;
+  const { mode, captureId } = pointer;
+  if (mode === 'capture' || mode === 'stale-press') {
+    const recording = mode === 'capture' && shortcutRecording?.kind === 'singleInput'
+      && shortcutRecording.captureId === captureId;
+    singleInputPointerModes.set(pointerKey, { mode: recording ? 'capture-click' : 'stale-click', captureId });
+    if (recording) {
+      const button = singleInputMouseButton(event.button);
+      if (button) post({ type: 'singleInputMouse', phase: 'up', button, captureId });
+    }
+    suppressSingleInputEvent(event);
+  } else if (mode === 'cancel') {
+    singleInputPointerModes.set(pointerKey, {
+      mode: singleInputCancelTarget(event, captureId) ? 'cancel-click' : 'cancel-drag', captureId
+    });
+  }
+}
+function consumeSingleInputClick(event) {
+  if (event.detail === 0) return;
+  const pointerKey = singleInputPointerKey(event);
+  const pointer = singleInputPointerModes.get(pointerKey);
+  if (pointer && ['capture-click', 'stale-click', 'cancel-click', 'cancel-drag'].includes(pointer.mode)) {
+    // Clear the press before the cancel button's click handler stops recording.
+    singleInputPointerModes.delete(pointerKey);
+    if (pointer.mode === 'cancel-click' && singleInputCancelTarget(event, pointer.captureId)) return;
+    suppressSingleInputEvent(event);
+  } else if (shortcutRecording?.kind === 'singleInput') {
+    suppressSingleInputEvent(event);
+  }
+}
+document.addEventListener('pointerdown', event => {
+  if (event.pointerType === 'mouse') beginSingleInputMouse(event, true);
+}, true);
+document.addEventListener('mousedown', event => beginSingleInputMouse(event), true);
+document.addEventListener('pointerup', event => finishSingleInputMouse(event), true);
+document.addEventListener('mouseup', event => finishSingleInputMouse(event), true);
+document.addEventListener('pointercancel', event => {
+  for (const [pointerKey, pointer] of singleInputPointerModes) {
+    singleInputPointerModes.delete(pointerKey);
+    if (pointer.mode !== 'capture' && pointer.mode !== 'stale-press') continue;
+    suppressSingleInputEvent(event);
+    const button = singleInputMouseButton(Number(pointerKey));
+    if (button && shortcutRecording?.kind === 'singleInput'
+      && shortcutRecording.captureId === pointer.captureId)
+      post({ type: 'singleInputMouse', phase: 'cancel', button, captureId: pointer.captureId });
+  }
+}, true);
+document.addEventListener('click', consumeSingleInputClick, true);
+document.addEventListener('auxclick', consumeSingleInputClick, true);
+document.addEventListener('keydown', event => {
+  if (shortcutRecording?.kind === 'singleInput') suppressSingleInputEvent(event);
+}, true);
+document.addEventListener('contextmenu', event => {
+  if (shortcutRecording?.kind === 'singleInput' || (event.button === 2 && singleInputPointerModes.has('2')))
+    suppressSingleInputEvent(event);
+}, true);
 function ensureShortcutOption(select, action) {
   if ([...select.options].some(option => option.value === action)) return;
   const option = document.createElement('option');
@@ -814,6 +1036,17 @@ function receiveShortcutCapture(capture) {
   if (!shortcutRecording || !capture || !capture.value
     || capture.sessionId !== state.sessionId || isSaving()
     || Number(capture.captureId) !== shortcutRecording.captureId) return;
+  if (shortcutRecording.kind === 'singleInput') {
+    const { section: sectionName, key, input } = shortcutRecording;
+    input.dataset.singleInputValue = capture.value;
+    input.value = singleInputLabel(capture.value);
+    const clear = input.parentElement.querySelector('.single-input-clear');
+    if (clear) clear.disabled = false;
+    setDraftValue(sectionName, key, capture.value);
+    stopShortcutRecording(false);
+    setStatus('已录制 ' + singleInputLabel(capture.value) + '，请保存');
+    return;
+  }
   if (shortcutRecording.kind === 'custom') {
     if (shortcutRecording.field === 'trigger') {
       shortcutRecording.input.value = capture.label || formatCustomTrigger(capture.value);
@@ -972,11 +1205,31 @@ function renderShortcuts(preserveExpandedGroups = true) {
     for (const entry of entries) {
       const row = document.createElement('div');
       row.className = 'shortcut-row';
-      row.dataset.label = (prettyKey(entry.key) + ' ' + shortcutActionLabel(entry.action) + ' ' + entry.action + ' ' + group.label).toLowerCase();
+      const isRepeatReserved = entry.key.toLowerCase() === 'caps_f8';
+      row.dataset.label = (prettyKey(entry.key) + ' '
+        + (isRepeatReserved ? '启动 关闭 长按连发 ' : shortcutActionLabel(entry.action) + ' ' + entry.action + ' ')
+        + group.label).toLowerCase();
       const label = document.createElement('span');
       label.className = 'shortcut-label';
       label.title = prettyKey(entry.key);
       label.textContent = prettyKey(entry.key);
+      if (isRepeatReserved) {
+        const reserved = document.createElement('span');
+        reserved.className = 'shortcut-reserved';
+        reserved.textContent = '启动 / 关闭长按连发';
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'shortcut-row-actions';
+        if (entry.action && entry.action !== 'keyFunc_doNothing') {
+          const note = document.createElement('span');
+          note.className = 'shortcut-reserved-note';
+          note.textContent = '旧设置已保留，当前不执行';
+          note.title = entry.action;
+          actionButtons.append(note);
+        }
+        row.append(label, reserved, actionButtons);
+        list.append(row);
+        continue;
+      }
       const select = document.createElement('select');
       for (const group of actionGroups) {
         const optgroup = document.createElement('optgroup');
@@ -1915,7 +2168,7 @@ function renderAll(previousProfileId = state.hotkeyProfileId) {
   renderBindings();
 }
 function setPage(page, syncHost = true) {
-  if (page !== 'shortcuts') stopShortcutRecording();
+  if (page !== state.page) stopShortcutRecording();
   state.page = page;
   $$('.nav button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $$('.page').forEach(node => node.classList.toggle('active', node.dataset.pageView === page));
@@ -1954,6 +2207,7 @@ function applySettingsSnapshot(snapshot, committed = false) {
   if (!committed && isSaving()) return false;
   if (!committed && state.sessionId === snapshot.sessionId && isLoaded()) {
     setPage(snapshot.page || state.page, false);
+    showKeyRepeatStatus(snapshot.keyRepeatStatus);
     if (snapshot.toast) showToast(snapshot.toast);
     return true;
   }
@@ -1977,6 +2231,7 @@ function applySettingsSnapshot(snapshot, committed = false) {
   document.documentElement.lang = snapshot.uiLanguage === 'en' ? 'en' : 'zh-CN';
   $('.side-foot').textContent = 'v' + snapshot.appVersion;
   renderAll(selectedProfileId);
+  showKeyRepeatStatus(snapshot.keyRepeatStatus);
   setSettingsLoaded(true);
   setPage(snapshot.page || state.page || 'general', false);
   if (!committed) setStatus('');
@@ -2147,6 +2402,13 @@ $('#addCustomHotkey').addEventListener('click', () => {
   row.querySelector('input')?.focus();
 });
 $('#shortcutFilter').addEventListener('input', applyShortcutFilter);
+$('#keyRepeatToggle').addEventListener('change', event => {
+  const desired = event.currentTarget.checked;
+  if (!post({ type: 'setKeyRepeatArmed', armed: desired })) {
+    event.currentTarget.checked = !desired;
+    setStatus('无法切换长按连发，请重试。', true);
+  }
+});
 $$('[data-add-pair]').forEach(button => button.addEventListener('click', () => {
   const sectionName = button.dataset.addPair;
   const rootId = 'tabList';
@@ -2160,6 +2422,9 @@ const messageHandlers = {
   applicationSelected: payload => hotkeyApplicationSelected(payload.profile, payload.sessionId),
   bindingCandidate: receiveBindingCandidate, pickerFailed: payload => settingsPickerFailed(payload.sessionId),
   shortcutCapture: receiveShortcutCapture, shortcutCaptureFailed,
+  keyRepeatState: payload => {
+    if (payload?.sessionId === state.sessionId) showKeyRepeatStatus(payload);
+  },
   testResult: payload => settingsTestResult(payload.ok, payload.text, payload.sessionId),
   loadFailed: settingsLoadFailed, requestClose: () => requestSettingsExit('close'),
   openApplicationDialog: openHotkeyApplicationDialog

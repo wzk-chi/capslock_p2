@@ -161,6 +161,7 @@ SettingsBuildSnapshot(data) {
         "appVersion", AppVersion, "uiLanguage", LLMUiLanguage(),
         "languageCatalog", TranslateLanguageCatalogSnapshot(), "page", SettingsPendingPage,
         "toast", SettingsPendingToast, "schema", schema,
+        "keyRepeatStatus", KeyRepeatStatusSnapshot(),
         "customHotkeyActions", CustomHotkeyBuiltinActionSnapshot(), "bindingModes", WindowBindingModes(),
         "config", Map("sections", sections, "profiles", data["profiles"], "plugins", tools, "bindings", bindings))
 }
@@ -224,6 +225,13 @@ SettingsNormalizeDraft(raw, &document, &errorText) {
                 && normalized != SettingsEditData["effective"][section][key] {
                 errorText := "部分设置无法在此页面修改。"
                 return false
+            }
+            if section = "Keys" && StrLower(String(key)) = "caps_f8" {
+                originalKeys := SettingsEditData["effective"]["Keys"]
+                if !originalKeys.Has(key) || String(normalized) != String(originalKeys[key]) {
+                    errorText := "CapsLock+F8 已固定用于长按连发。"
+                    return false
+                }
             }
             document[section][key] := normalized
         }
@@ -321,6 +329,7 @@ SettingsApplyDraft(message) {
                 throw Error("设置草稿缺少必要分组")
         if !SettingsNormalizeDraft(draft["sections"], &document, &errorText)
             || !AppProfilesNormalizeDraft(draft["profiles"], &profiles, &errorText)
+            || !SettingsValidateCapsF8ProfileDraft(profiles, &errorText)
             || !SettingsValidateBindingDraft(draft["bindings"], &bindings, &errorText)
             || !SettingsPrepareToolDraft(draft["plugins"], &plugins, &deleted, &errorText) {
             SettingsSendSaved(false, errorText, 0, requestId, sessionId)
@@ -371,6 +380,56 @@ SettingsApplyDraft(message) {
     } finally {
         SettingsSaving := false
     }
+}
+
+SettingsValidateCapsF8ProfileDraft(profiles, &errorText) {
+    global SettingsEditData
+    errorText := ""
+    if Type(profiles) != "Array" || !IsObject(SettingsEditData)
+        return false
+    baseline := Map()
+    for profile in SettingsEditData["profiles"] {
+        keys := profile["sections"].Get("Keys", Map())
+        reserved := []
+        for key, value in keys
+            if StrLower(String(key)) = "caps_f8"
+                reserved.Push(Map("key", String(key), "value", String(value)))
+        baseline[profile["id"]] := reserved
+    }
+    for profile in profiles {
+        profileId := String(profile["id"])
+        keys := profile["sections"].Get("Keys", Map())
+        reserved := []
+        for key, value in keys
+            if StrLower(String(key)) = "caps_f8"
+                reserved.Push(Map("key", String(key), "value", String(value)))
+        if !baseline.Has(profileId) {
+            if reserved.Length {
+                errorText := "CapsLock+F8 已固定用于长按连发。"
+                return false
+            }
+            continue
+        }
+        saved := baseline[profileId]
+        if reserved.Length != saved.Length {
+            errorText := "CapsLock+F8 已固定用于长按连发。"
+            return false
+        }
+        for oldValue in saved {
+            unchanged := false
+            for currentValue in reserved
+                if currentValue["key"] = oldValue["key"]
+                    && currentValue["value"] = oldValue["value"] {
+                    unchanged := true
+                    break
+                }
+            if !unchanged {
+                errorText := "CapsLock+F8 已固定用于长按连发。"
+                return false
+            }
+        }
+    }
+    return true
 }
 
 SettingsBindingLogicalValue(row) {

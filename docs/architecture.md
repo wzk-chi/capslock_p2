@@ -39,6 +39,7 @@ lib\
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
   appProfiles.ahk                  EXE 路径应用配置、继承解析与持久化
   customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射
+  keyRepeat.ahk                    CapsLock+F8 启停、长按单个按键/鼠标按键连发
   panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行、共用失焦隐藏与隐藏页延迟释放生命周期
   windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
   icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
@@ -66,7 +67,7 @@ lib\
   aiChat_store.ahk                 AI 会话表仓储，借用 AppStore 连接
   settings.ahk                     设置面板生命周期、消息路由及辅助操作
   settings/settings_editor.ahk     单一基线、完整草稿校验、一次提交和最终快照
-  settings/settings_capture.ahk    快捷键录制 InputHook 生命周期与页面回执
+  settings/settings_capture.ahk    快捷键及单输入录制、鼠标捕获、取消和按下/松开清理
   settings/settings_picker.ahk     设置窗口/应用选择器状态、回执和取消恢复
   WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
   CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
