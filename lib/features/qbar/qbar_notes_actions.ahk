@@ -326,19 +326,42 @@ NotesPasteImageToTarget(path, targetHwnd := 0) {
 }
 
 NotesSetClipboard(text, reason := "user-copy") {
-    global A_Clipboard, WhichClipboardNow
+    global A_Clipboard, WhichClipboardNow, SystemClipboard
     sequence := 0
+    snapshot := 0
     suspendToken := ClipboardSuspendBegin(reason)
     try {
-        A_Clipboard := String(text)
-        sequence := ClipboardSequenceNumber()
-        ClipboardHistoryMarkOwnedSequence(sequence, reason)
-        WhichClipboardNow := 0
+        ; Keep other AHK writers out of this short write/state commit. Capture
+        ; the full snapshot afterward, outside the critical section.
+        criticalState := Critical("On")
+        try {
+            A_Clipboard := String(text)
+            sequence := ClipboardSequenceNumber()
+            WhichClipboardNow := 0
+            SystemClipboard := 0
+        } finally {
+            Critical(criticalState)
+        }
+        try ClipboardHistoryMarkOwnedSequence(sequence, reason)
+        catch as ownershipError {
+            try DebugLog("Notes copy ownership failed errorType=" . Type(ownershipError))
+        }
+        try {
+            snapshot := SaveClipboardSlot(0, sequence)
+            if !IsObject(snapshot)
+                DebugLog("Notes copy system snapshot skipped: clipboard changed")
+        } catch as snapshotError {
+            try DebugLog("Notes copy system snapshot failed errorType=" . Type(snapshotError))
+        }
     } finally {
         ClipboardSuspendEnd(suspendToken)
     }
-    if reason = "user-copy"
-        ClipboardHistoryPublishExplicit(sequence, 0, reason)
+    if reason = "user-copy" && sequence {
+        try ClipboardHistoryPublishExplicit(sequence, snapshot, reason)
+        catch as historyError {
+            try DebugLog("Notes copy history failed errorType=" . Type(historyError))
+        }
+    }
     return sequence != 0
 }
 

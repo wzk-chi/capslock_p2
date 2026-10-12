@@ -56,6 +56,7 @@ CustomHotkeyBuiltinActions() {
         "@builtin:shortcut/keyFunc_qbar", "keyFunc_qbar",
         "@builtin:shortcut/keyFunc_clipboardHistory", "keyFunc_clipboardHistory",
         "@builtin:shortcut/keyFunc_notes", "keyFunc_notes",
+        "@builtin:shortcut/keyFunc_notesCyclePrompt", "keyFunc_notesCyclePrompt",
         "@builtin:shortcut/keyFunc_aiChat", "keyFunc_aiChat",
         "@builtin:shortcut/keyFunc_translate", "keyFunc_translate",
         "@builtin:shortcut/keyFunc_tabHotString", "keyFunc_tabHotString",
@@ -101,6 +102,19 @@ CustomHotkeyBuiltinActionSnapshot() {
     for actionId in CustomHotkeyBuiltinActions()
         actions.Push(actionId)
     return actions
+}
+
+; Wait on the physical trigger only for actions that advance once per press.
+; Layer and custom shortcuts share this policy, including mouse remappings.
+RunShortcutAction(actionText, triggerKey) {
+    waitForRelease := triggerKey != "" && !RegExMatch(triggerKey, "i)^Wheel")
+        && SettingsStoreParseAction(actionText, &actionName)
+        && actionName = "keyFunc_notesCyclePrompt"
+    try return RunConfiguredAction(actionText)
+    finally {
+        if waitForRelease
+            KeyWait(triggerKey)
+    }
 }
 
 RegisterCustomHotkeys() {
@@ -234,7 +248,8 @@ CustomHotkeySend(trigger, *) {
             DebugLog("Custom hotkey builtin action rejected idLength=" . StrLen(action))
             return
         }
-        RunConfiguredAction(builtinActions[action])
+        triggerKey := RegExReplace(trigger, "^[\^!+#]+")
+        RunShortcutAction(builtinActions[action], triggerKey)
         return
     }
     try SendInput(action)

@@ -263,6 +263,10 @@ keyFunc_notes(*) {
     return QbarExecuteRegistered("builtin.notes.search")
 }
 
+keyFunc_notesCyclePrompt(*) {
+    return NotesCycleCopyNextPrompt()
+}
+
 keyFunc_aiChat(*) {
     return QbarExecuteRegistered("builtin.ai.ask")
 }

@@ -23,8 +23,8 @@ BuildKeySet() {
     DebugLog("KeySet press_caps=" . (KeySet.Has("press_caps") ? KeySet["press_caps"] : "<missing>"))
 }
 
-MakeActionHandler(actionKey) {
-    return (*) => RunLayerAction(actionKey)
+MakeActionHandler(actionKey, physicalKey) {
+    return (*) => RunLayerAction(actionKey, physicalKey)
 }
 
 ; Centralize the hook prefix so every CapsLock-layer hotkey is protected from
@@ -57,13 +57,13 @@ RegisterCapsLayerHotkeys() {
         ; Backspace which is itself a layer key; without `$` it becomes
         ; caps_backspace and changes the action into delete-line.
         for physicalKey, suffix in LayerKeyNames
-            RegisterCapsLayerHotkey(physicalKey, MakeActionHandler("caps_" . suffix))
+            RegisterCapsLayerHotkey(physicalKey, MakeActionHandler("caps_" . suffix, physicalKey))
         RegisterCapsLayerHotkey("LAlt", (*) => 0)
 
         for physicalKey, suffix in LayerKeyNames
-            RegisterCapsLayerHotkey("<!" . physicalKey, MakeActionHandler("caps_lalt_" . suffix))
-        RegisterCapsLayerHotkey("<!WheelUp", MakeActionHandler("caps_lalt_wheelUp"))
-        RegisterCapsLayerHotkey("<!WheelDown", MakeActionHandler("caps_lalt_wheelDown"))
+            RegisterCapsLayerHotkey("<!" . physicalKey, MakeActionHandler("caps_lalt_" . suffix, physicalKey))
+        RegisterCapsLayerHotkey("<!WheelUp", MakeActionHandler("caps_lalt_wheelUp", "WheelUp"))
+        RegisterCapsLayerHotkey("<!WheelDown", MakeActionHandler("caps_lalt_wheelDown", "WheelDown"))
 
         DebugLog("Caps layer static registration complete")
     } finally {
@@ -155,7 +155,7 @@ HandleCapsLockPress(runTapAction) {
     }
 }
 
-RunLayerAction(actionKey) {
+RunLayerAction(actionKey, physicalKey) {
     global CapsLockUsed, KeySet
     CapsLockUsed := true
     if SettingsShortcutCaptureActive()
@@ -170,7 +170,7 @@ RunLayerAction(actionKey) {
     action := AppProfileResolveAction("Keys", actionKey, fallbackAction)
     if action = "@block" || action = "@native"
         return
-    RunConfiguredAction(action)
+    RunShortcutAction(action, physicalKey)
 }
 
 CapsLockTapTargetStillActive() {

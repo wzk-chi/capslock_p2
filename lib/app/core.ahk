@@ -700,7 +700,7 @@ ConfiguredActionFunctionAllowed(functionName) {
         "keyFunc_cut_1", true, "keyFunc_copy_1", true, "keyFunc_paste_1", true,
         "keyFunc_undoRedo", true, "keyFunc_cut_2", true, "keyFunc_copy_2", true,
         "keyFunc_paste_2", true, "keyFunc_qbar", true, "keyFunc_clipboardHistory", true,
-        "keyFunc_notes", true, "keyFunc_aiChat", true,
+        "keyFunc_notes", true, "keyFunc_notesCyclePrompt", true, "keyFunc_aiChat", true,
         "keyFunc_translate", true, "keyFunc_tabPrve", true, "keyFunc_tabNext", true,
         "keyFunc_jumpPageTop", true, "keyFunc_jumpPageBottom", true,
         "keyFunc_selectUp", true, "keyFunc_selectDown", true, "keyFunc_selectLeft", true,
@@ -794,6 +794,8 @@ getSelText() {
 clipSaver(clipX) {
     global WhichClipboardNow
     slot := clipX = "s" ? 0 : (clipX = "c" ? 1 : 2)
+    if slot && !PrepareClipboardSlotChange()
+        return
     SaveClipboardSlot(slot)
     WhichClipboardNow := slot
 }
@@ -826,15 +828,40 @@ HandleClipboardChange(dataType) {
 SaveClipboardSlot(slot, expectedSequence := 0) {
     global CapsClipboard, CapsAltClipboard, SystemClipboard
     savedClipboard := ClipboardAll()
-    if expectedSequence && ClipboardSequenceNumber() != expectedSequence
-        return 0
-    if slot = 0
-        SystemClipboard := savedClipboard
-    else if slot = 1
-        CapsClipboard := savedClipboard
-    else
-        CapsAltClipboard := savedClipboard
-    return savedClipboard
+    criticalState := Critical("On")
+    try {
+        if expectedSequence && ClipboardSequenceNumber() != expectedSequence
+            return 0
+        if slot = 0
+            SystemClipboard := savedClipboard
+        else if slot = 1
+            CapsClipboard := savedClipboard
+        else
+            CapsAltClipboard := savedClipboard
+        return savedClipboard
+    } finally {
+        Critical(criticalState)
+    }
+}
+
+; Capture a missing system mirror before a slot operation can replace it.
+; Once another slot is current, its contents cannot reconstruct that mirror.
+PrepareClipboardSlotChange() {
+    global SystemClipboard, WhichClipboardNow
+    if WhichClipboardNow != 0 || IsObject(SystemClipboard)
+        return true
+    try {
+        snapshot := SaveClipboardSlot(0, ClipboardSequenceNumber())
+        if IsObject(snapshot)
+            return true
+        DebugLog("System clipboard snapshot initialization skipped: clipboard changed")
+    } catch as snapshotError {
+        try DebugLog("System clipboard snapshot initialization failed errorType=" . Type(snapshotError))
+    }
+    ShowMsg(LLMText(
+        "The current clipboard could not be kept. Try again shortly.",
+        "当前剪贴板暂时无法保留，请稍后重试。"), 2500)
+    return false
 }
 
 RestoreClipboard(data) {
@@ -859,6 +886,8 @@ CopyToClipboardSlot(slot, isCut := false) {
     global A_Clipboard, WhichClipboardNow
     if !ClipboardEnabled()
         return
+    if !PrepareClipboardSlotChange()
+        return false
 
     success := false
     copySequence := 0
@@ -910,6 +939,8 @@ PasteClipboardSlot(slot) {
         return
 
     if WhichClipboardNow != slot {
+        if !PrepareClipboardSlotChange()
+            return false
         suspendToken := ClipboardSuspendBegin("slot-restore")
         try {
             A_Clipboard := savedClipboard
@@ -923,7 +954,13 @@ PasteClipboardSlot(slot) {
 
 PasteSystemClipboard() {
     global A_Clipboard, SystemClipboard, WhichClipboardNow
-    if WhichClipboardNow != 0 && IsObject(SystemClipboard) {
+    if WhichClipboardNow != 0 {
+        if !IsObject(SystemClipboard) {
+            ShowMsg(LLMText(
+                "The last copied content could not be kept. Copy it again before pasting.",
+                "上次复制的内容未能保留，请重新复制。"), 2500)
+            return false
+        }
         suspendToken := ClipboardSuspendBegin("slot-restore")
         try {
             A_Clipboard := SystemClipboard
@@ -933,6 +970,7 @@ PasteSystemClipboard() {
         WhichClipboardNow := 0
     }
     SendInput("^v")
+    return true
 }
 
 ShowMsg(message, duration := 2000) {

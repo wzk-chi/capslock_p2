@@ -38,7 +38,7 @@ lib\
   windows.ahk                      窗口管理、winbind、热键注册
   keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
   appProfiles.ahk                  EXE 路径应用配置、继承解析与持久化
-  customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射
+  customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射、共享按次触发策略
   keyRepeat.ahk                    CapsLock+F8 启停、长按单个按键/鼠标按键连发
   panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行、共用失焦隐藏与隐藏页延迟释放生命周期
   windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
@@ -54,6 +54,7 @@ lib\
   qbar_navigation.ahk              文件夹导航和路径补全
   qbar_notes.ahk                   笔记页生命周期、编辑会话和页面协议
   qbar_notes_store.ahk             安装目录下 SQLite 正文/元数据存储
+  qbar_notes_cycle.ahk             按“提示词”标签循环复制完整正文、内存游标和鼠标旁标题提示
   qbar_notes_actions.ahk           原始图片文件、WebView2 文件句柄和笔记剪贴板动作
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   languageDetect.ahk               Windows ELS 候选识别、A/B 方向判断与回退状态

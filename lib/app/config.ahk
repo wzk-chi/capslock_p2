@@ -185,7 +185,7 @@ ConfigDefaultShortcuts() {
         "caps_x", "keyFunc_cut_1",
         "caps_y", "keyFunc_selectUp(10)",
         "caps_z", "keyFunc_clipboardHistory",
-        "caps_backquote", "keyFunc_doNothing",
+        "caps_backquote", "keyFunc_notesCyclePrompt",
         "caps_1", "keyFunc_winbind_activate(1)",
         "caps_2", "keyFunc_winbind_activate(2)",
         "caps_3", "keyFunc_winbind_activate(3)",

@@ -298,6 +298,38 @@ NotesStoreAssetUrlIndex(noteIds) {
     return index
 }
 
+; Read one complete note in stable creation order, with one extra query on wrap.
+NotesStoreReadNextTaggedNote(tagName, afterId) {
+    global NotesStoreError
+    tagName := Trim(String(tagName))
+    if tagName = "" || !RegExMatch(String(afterId), "^\d+$") {
+        NotesStoreError := "循环笔记参数无效"
+        return Map("status", "error")
+    }
+    if !NotesStoreInit()
+        return Map("status", "error")
+    cursor := Integer(afterId)
+    tagSql := NotesStoreSql(tagName)
+    Loop 2 {
+        sql := "SELECT n.id,n.title,n.content_md FROM tags t"
+            . " JOIN note_tags nt ON nt.tag_id=t.id JOIN notes n ON n.id=nt.note_id"
+            . " WHERE t.name=" . tagSql . " AND nt.note_id>" . cursor
+            . " AND trim(n.content_md,char(32,9,10,13))<>''"
+            . " ORDER BY nt.note_id ASC LIMIT 1;"
+        if !NotesStoreQuery(sql, &table)
+            return Map("status", "error")
+        if table.RowCount {
+            raw := table.Rows[1]
+            return Map("status", "ok", "id", Integer(raw[1]),
+                "title", raw[2], "content", raw[3])
+        }
+        if !cursor
+            break
+        cursor := 0
+    }
+    return Map("status", "empty")
+}
+
 NotesStoreReadNote(noteId) {
     if !NotesStoreInit() || !RegExMatch(String(noteId), "^\d+$")
         return 0
