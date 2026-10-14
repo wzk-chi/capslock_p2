@@ -1,24 +1,49 @@
-; Copy complete saved note bodies from the fixed prompt tag, once per action.
+; Copy complete saved note bodies from the selected notes tag, once per action.
 global NotesCycleLastCopiedNoteId := 0
+global NotesCycleLastCopiedTagId := 0
 global NotesCycleRunning := false
 
-NotesCycleCopyNextPrompt() {
-    global NotesCycleLastCopiedNoteId, NotesCycleRunning
+NotesCycleResetProgress() {
+    global NotesCycleLastCopiedNoteId, NotesCycleLastCopiedTagId
+    NotesCycleLastCopiedNoteId := 0
+    NotesCycleLastCopiedTagId := 0
+}
+
+NotesCycleCopyNextNote() {
+    global NotesCycleLastCopiedNoteId, NotesCycleLastCopiedTagId, NotesCycleRunning
     if NotesCycleRunning
         return false
     NotesCycleRunning := true
     stage := "read"
     noteId := 0
+    tagId := 0
     try {
-        note := NotesStoreReadNextTaggedNote("提示词", NotesCycleLastCopiedNoteId)
+        tag := NotesStoreGetCycleCopyTag()
+        if tag["status"] = "error"
+            throw Error("Cycle tag setting could not be read")
+        tagId := tag["id"]
+        if !tagId {
+            NotesCycleLastCopiedTagId := 0
+            NotesCycleLastCopiedNoteId := 0
+            DebugLog("Notes cycle tag not selected")
+            ShowMsg(LLMText(
+                "Choose a cycle tag in Notes settings first.",
+                "请先在笔记设置中选择循环标签。"), 2500)
+            return false
+        }
+        if tagId != NotesCycleLastCopiedTagId
+            NotesCycleLastCopiedNoteId := 0
+        note := NotesStoreReadNextTaggedNote(tagId, NotesCycleLastCopiedNoteId)
         if note["status"] = "error"
             throw Error("Note query failed")
         if note["status"] = "empty" {
             NotesCycleLastCopiedNoteId := 0
-            DebugLog("Notes cycle empty")
-            ShowMsg(LLMText(
-                "No note body is available under the “提示词” tag. Add the tag and save some content.",
-                "“提示词”标签下没有可复制的正文，请给笔记添加该标签并保存内容。"), 2500)
+            DebugLog("Notes cycle empty tagId=" . tagId)
+            emptyMessage := IsChineseLanguage()
+                ? "标签“" . tag["name"] . "”下没有可复制的正文，请添加笔记内容或选择其他标签。"
+                : "No note body is available under tag " . tag["name"]
+                    . ". Add note content or select another tag."
+            ShowMsg(emptyMessage, 2500)
             return false
         }
         noteId := note["id"]
@@ -26,12 +51,13 @@ NotesCycleCopyNextPrompt() {
         text := NotesExternalizeMarkdown(note["content"])
         if Trim(text, " `t`r`n") = "" || !NotesSetClipboard(text, "user-copy")
             throw Error("Note body could not be copied")
+        NotesCycleLastCopiedTagId := tagId
         NotesCycleLastCopiedNoteId := noteId
         try {
             title := Trim(RegExReplace(String(note["title"]), "\s+", " "))
             if title = ""
                 title := LLMText("Untitled", "无标题")
-            ShowMsg(LLMText("Copied: ", "已复制：") . title, 1400)
+            ShowMsg(title, 1400)
         } catch as noticeError {
             try DebugLog("Notes cycle notice failed errorType=" . Type(noticeError))
         }

@@ -53,8 +53,8 @@ lib\
   everything_actions.ahk           打开、定位、文件剪贴板和路径复制
   qbar_navigation.ahk              文件夹导航和路径补全
   qbar_notes.ahk                   笔记页生命周期、编辑会话和页面协议
-  qbar_notes_store.ahk             安装目录下 SQLite 正文/元数据存储
-  qbar_notes_cycle.ahk             按“提示词”标签循环复制完整正文、内存游标和鼠标旁标题提示
+  qbar_notes_store.ahk             安装目录下 SQLite 正文、元数据和笔记功能设置
+  qbar_notes_cycle.ahk             按笔记设置中所选标签循环复制完整正文、内存游标和鼠标旁标题提示
   qbar_notes_actions.ahk           原始图片文件、WebView2 文件句柄和笔记剪贴板动作
   translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
   languageDetect.ahk               Windows ELS 候选识别、A/B 方向判断与回退状态

@@ -41,6 +41,7 @@ button { color: inherit; cursor: default; }
 .workspace:not(.edit-mode) .editor-page { display: none; }
 .sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 17px 10px; border-right: 1px solid var(--ui-line); background: var(--ui-surface-soft); }
 .side-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 9px; font-size: 15px; font-weight: 650; }
+.side-heading-actions { display: flex; align-items: center; gap: 6px; }
 .side-count { color: var(--ui-subtle); font-size: 10px; font-weight: 400; }
 .tag-actions { display: flex; gap: 5px; margin: 0 3px 10px; }
 .tag-action { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-surface); color: var(--ui-muted); }
@@ -151,7 +152,7 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
   </header>
   <div id="workspace" class="workspace">
     <aside class="sidebar" aria-label="标签列表">
-      <div class="side-heading"><span>标签</span><span id="tagCount" class="side-count"></span></div>
+      <div class="side-heading"><span>标签</span><span class="side-heading-actions"><span id="tagCount" class="side-count"></span><button id="cycleCopySettings" class="tag-action" type="button" aria-label="循环复制设置" title="循环复制设置"><i data-lucide="settings-2"></i></button></span></div>
       <div class="tag-actions"><button id="addTag" class="tag-action" type="button" aria-label="添加标签" title="添加标签"><i data-lucide="plus"></i></button><button id="renameTag" class="tag-action" type="button" aria-label="修改标签" title="修改标签"><i data-lucide="pencil"></i></button><button id="deleteTag" class="tag-action" type="button" aria-label="删除标签" title="删除标签"><i data-lucide="trash"></i></button></div>
       <div id="tags" class="tag-list"></div>
     </aside>
@@ -231,7 +232,7 @@ function diagError(prefix, error) {
 }
 diag('page-load', 'vditor=' + typeof Vditor + ' preview=' + typeof NotesPreview);
 const dateFilter = $('dateFilter');
-const state = { notes: [], tags: [], selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), total: 0, dateFilter: 'all', selectedDate: '', dateAfter: '', dateBefore: '', page: 1, pageSize: 20, pageCount: 1 };
+const state = { notes: [], tags: [], tagsLoadError: '', selectedIds: new Set(), contextNoteId: '', currentTag: '', search: '', editor: null, multi: false, pendingUploads: new Map(), total: 0, dateFilter: 'all', selectedDate: '', dateAfter: '', dateBefore: '', page: 1, pageSize: 20, pageCount: 1, cycleCopyTagId: '0', cycleCopyTagName: '', cycleCopyDialog: null, cycleCopyRequestSeq: 0, cycleCopyPendingRequestId: '' };
 let renderedPage = 1;
 let renderedPageSize = 20;
 let searchTimer = 0;
@@ -463,6 +464,66 @@ async function stopWritable(writable) { if (!writable) return; try { if (typeof 
 async function cancelPendingUploads(editorId) { const pendingItems = Array.from(state.pendingUploads.entries()); for (const [requestId, pending] of pendingItems) { pending.cancelled = true; await stopWritable(pending.writable); pending.writable = null; state.pendingUploads.delete(requestId); if (pending.reject) pending.reject(new Error('图片上传已取消')); if (!pending.cancelRequested) { pending.cancelRequested = true; post({ type: 'assetCancel', editorId, requestId, assetId: pending.assetId || '' }); } } }
 async function receiveAssetHandle(data, objects) { const requestId = String(data.requestId || ''); const pending = state.pendingUploads.get(requestId); const handle = objects && objects[0]; if (!pending || !handle || !state.editor || data.editorId !== state.editor.editorId) return; pending.assetId = String(data.assetId || ''); try { const writable = await handle.createWritable(); pending.writable = writable; if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.write(pending.file); if (pending.cancelled || !state.pendingUploads.has(requestId)) { await stopWritable(writable); pending.writable = null; post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } await writable.close(); pending.writable = null; if (pending.cancelled || !state.pendingUploads.has(requestId)) { post({ type: 'assetCancel', editorId: data.editorId, requestId, assetId: pending.assetId }); return; } post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: true }); } catch (error) { pending.writable = null; if (!pending.cancelled && state.pendingUploads.has(requestId)) post({ type: 'assetWritten', editorId: data.editorId, requestId, assetId: pending.assetId, ok: false }); } }
 function renderTags() { const root = $('tags'); root.textContent = ''; const all = document.createElement('button'); all.className = `tag-row${state.currentTag === '' ? ' active' : ''}`; all.type = 'button'; all.innerHTML = '<span>全部笔记</span><span class="tag-count">' + state.total + '</span>'; all.onclick = () => { state.currentTag = ''; requestQuery(); renderTags(); }; root.appendChild(all); const none = document.createElement('button'); none.className = `tag-row${state.currentTag === '__none__' ? ' active' : ''}`; none.type = 'button'; none.innerHTML = '<span>无标签</span><span class="tag-count"> </span>'; none.onclick = () => { state.currentTag = '__none__'; requestQuery(); renderTags(); }; root.appendChild(none); state.tags.forEach(tag => { const row = document.createElement('button'); row.className = `tag-row${state.currentTag === tag.name ? ' active' : ''}`; row.type = 'button'; row.innerHTML = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.count}</span>`; row.onclick = () => { state.currentTag = tag.name; requestQuery(); renderTags(); }; root.appendChild(row); }); $('tagCount').textContent = `${state.tags.reduce((sum, tag) => sum + Number(tag.count || 0), 0)} 篇`; }
+function openCycleCopySettings() {
+  if (state.cycleCopyDialog && state.cycleCopyDialog.isOpen()) return;
+  let tagSelect = null;
+  let controller = null;
+  let dialogRequestId = '';
+  controller = AppDialog.open({
+    title: '循环复制设置',
+    initialFocus: 'content',
+    actions: [
+      { id: 'cancel', text: '取消', role: 'cancel', kind: 'ghost' },
+      { id: 'save', text: '保存' }
+    ],
+    render(root, api) {
+      const field = document.createElement('label');
+      field.className = 'app-dialog-field';
+      const label = document.createElement('span');
+      label.textContent = '循环标签';
+      tagSelect = document.createElement('select');
+      tagSelect.className = 'ui-form-control';
+      tagSelect.disabled = !!state.tagsLoadError;
+      const unset = document.createElement('option');
+      unset.value = '0';
+      unset.textContent = '未设置';
+      tagSelect.appendChild(unset);
+      state.tags.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = String(tag.id);
+        option.textContent = String(tag.name);
+        tagSelect.appendChild(option);
+      });
+      tagSelect.value = state.tags.some(tag => String(tag.id) === state.cycleCopyTagId)
+        ? state.cycleCopyTagId : '0';
+      field.append(label, tagSelect);
+      const hint = document.createElement('p');
+      hint.className = 'app-dialog-message';
+      hint.textContent = state.tagsLoadError
+        ? '暂时无法读取标签，请关闭后重试。'
+        : state.tags.length
+          ? '快捷键会按笔记创建顺序复制所选标签下的正文。'
+          : '目前没有标签，请先在笔记中创建标签。';
+      api.setActionEnabled('save', !state.tagsLoadError);
+      root.append(field, hint);
+    },
+    onAction(id, api) {
+      if (id !== 'save' || !tagSelect) return api.keepOpen();
+      dialogRequestId = `${Date.now()}-${++state.cycleCopyRequestSeq}`;
+      state.cycleCopyPendingRequestId = dialogRequestId;
+      api.setError('');
+      api.setBusy(true, '保存中…', 'save');
+      post({ type: 'setCycleCopyTag', requestId: dialogRequestId, tagId: tagSelect.value });
+      return false;
+    },
+    onClose() {
+      if (state.cycleCopyDialog === controller) state.cycleCopyDialog = null;
+      if (dialogRequestId && state.cycleCopyPendingRequestId === dialogRequestId)
+        state.cycleCopyPendingRequestId = '';
+    }
+  });
+  state.cycleCopyDialog = controller;
+}
 function editorHasTag(name) { return !!state.editor && (state.editor.tags || []).some(tag => String(tag).toLowerCase() === String(name).toLowerCase()); }
 function renderEditorTagOptions(show = false) { if (!state.editor) return; const root = $('editorTagOptions'); const query = $('editorTagInput').value.trim().toLowerCase(); root.textContent = ''; state.tags.filter(tag => !query || String(tag.name).toLowerCase().includes(query)).forEach(tag => { const option = document.createElement('button'); option.type = 'button'; option.className = `tag-option${editorHasTag(tag.name) ? ' selected' : ''}`; const label = document.createElement('span'); label.textContent = tag.name; const mark = document.createElement('span'); if (editorHasTag(tag.name)) mark.appendChild(createIcon('check')); option.append(label, mark); option.onclick = event => { event.preventDefault(); const index = (state.editor.tags || []).findIndex(value => String(value).toLowerCase() === String(tag.name).toLowerCase()); if (index >= 0) state.editor.tags.splice(index, 1); else state.editor.tags.push(tag.name); renderEditorTags(true); $('editorTagInput').focus(); }; root.appendChild(option); }); if (!root.children.length) { const empty = document.createElement('div'); empty.className = 'muted'; empty.textContent = query ? '按 Enter 添加新标签' : '暂无标签'; empty.style.padding = '6px 8px'; root.appendChild(empty); } root.classList.toggle('hidden', !show); refreshIcons(); }
 function renderEditorTags(showOptions = false) { if (!state.editor) return; const unique = []; const seen = new Set(); (state.editor.tags || []).forEach(value => { const name = String(value).trim(); const key = name.toLowerCase(); if (name && !seen.has(key)) { seen.add(key); unique.push(name); } }); state.editor.tags = unique; const chips = $('editorTagChips'); chips.textContent = ''; state.editor.tags.forEach((tag, index) => { const chip = document.createElement('span'); chip.className = 'tag-chip'; const label = document.createElement('span'); label.textContent = tag; const remove = document.createElement('button'); remove.type = 'button'; remove.title = '移除标签'; remove.appendChild(createIcon('x')); remove.onclick = event => { event.preventDefault(); event.stopPropagation(); state.editor.tags.splice(index, 1); renderEditorTags(true); $('editorTagInput').focus(); }; chip.append(label, remove); chips.appendChild(chip); }); renderEditorTagOptions(showOptions); refreshIcons(); }
@@ -783,9 +844,28 @@ const handleHostMessage = event => {
   if (data.type === 'assetHandle') { receiveAssetHandle(data, event.additionalObjects || []); return; }
   if (data.type === 'setTags') {
     state.tags = data.tags || [];
+    state.tagsLoadError = String(data.error || '');
+    state.cycleCopyTagId = String(data.cycleCopyTagId || '0');
+    state.cycleCopyTagName = String(data.cycleCopyTagName || '');
+    $('cycleCopySettings').title = state.cycleCopyTagName
+      ? `循环复制设置（当前：${state.cycleCopyTagName}）` : '循环复制设置（尚未选择标签）';
     renderTags();
     if (data.error) toast(data.error, 'error');
+    if (data.cycleCopyTagError) toast(data.cycleCopyTagError, 'error');
     if (state.editor) renderEditorTags();
+    return;
+  }
+  if (data.type === 'setCycleCopyTagResult') {
+    if (String(data.requestId || '') !== state.cycleCopyPendingRequestId) return;
+    state.cycleCopyPendingRequestId = '';
+    const dialog = state.cycleCopyDialog;
+    if (data.ok) {
+      if (dialog && dialog.isOpen()) dialog.close({ action: 'save' });
+      toast('循环标签已保存。', 'success');
+    } else if (dialog && dialog.isOpen()) {
+      dialog.setBusy(false);
+      dialog.setError(data.error || '无法保存循环标签，请稍后重试。');
+    } else toast(data.error || '无法保存循环标签，请稍后重试。', 'error');
     return;
   }
   if (data.type === 'setNotes') {
@@ -848,6 +928,7 @@ const handleHostMessage = event => {
   if (data.type === 'confirmCancel') requestCancelEditor();
 };
 if (window.chrome && chrome.webview) chrome.webview.addEventListener('message', handleHostMessage);
+$('cycleCopySettings').addEventListener('click', openCycleCopySettings);
 
 setTimeout(() => post({ type: 'ready' }), 0);
 </script>

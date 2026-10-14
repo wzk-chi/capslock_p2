@@ -174,8 +174,15 @@ NotesScheduleStateSync() {
 NotesSendTags() {
     global NotesCurrentTag, NotesStoreError
     tags := NotesStoreTagList()
+    tagsError := NotesStoreError != "" ? "无法读取标签，请稍后重试。" : ""
+    cycleTag := NotesStoreGetCycleCopyTag()
+    cycleTagId := cycleTag["status"] = "ok" ? cycleTag["id"] : 0
+    cycleTagName := cycleTag["status"] = "ok" ? cycleTag["name"] : ""
+    cycleTagError := cycleTag["status"] = "error"
+        ? "无法读取循环标签设置，请稍后重试。" : ""
     NotesPost(Map("type", "setTags", "tags", tags, "current", NotesCurrentTag,
-        "error", NotesStoreError))
+        "error", tagsError, "cycleCopyTagId", cycleTagId,
+        "cycleCopyTagName", cycleTagName, "cycleCopyTagError", cycleTagError))
 }
 
 NotesSendList(searchText := "", tagName := "", dateFilter := "", selectedDate := "",
@@ -436,9 +443,16 @@ NotesHandleMessage(msg) {
             NotesSendTags()
             NotesSendList(NotesPendingSearch, NotesCurrentTag)
         case "deleteTag":
-            NotesStoreDeleteTag(LLMMsgField(msg, "tagId"))
+            tagId := LLMMsgField(msg, "tagId")
+            cycleTag := NotesStoreGetCycleCopyTag()
+            if NotesStoreDeleteTag(tagId) {
+                if cycleTag["status"] = "ok" && String(cycleTag["id"]) = tagId
+                    NotesCycleResetProgress()
+            }
             NotesSendTags()
             NotesSendList(NotesPendingSearch, NotesCurrentTag)
+        case "setCycleCopyTag":
+            NotesHandleSetCycleCopyTag(msg)
         case "diagnostic":
             ; The page reports editor and renderer lifecycle facts so a WebView2
             ; failure can be diagnosed from this log instead of from a
@@ -448,6 +462,24 @@ NotesHandleMessage(msg) {
         case "hide":
             NotesHide()
     }
+}
+
+NotesHandleSetCycleCopyTag(msg) {
+    requestId := LLMMsgField(msg, "requestId")
+    currentTag := NotesStoreGetCycleCopyTag()
+    if NotesStoreSetCycleCopyTag(LLMMsgField(msg, "tagId")) {
+        nextTag := NotesStoreGetCycleCopyTag()
+        if currentTag["status"] != "ok" || nextTag["status"] != "ok"
+            || currentTag["id"] != nextTag["id"]
+            NotesCycleResetProgress()
+        NotesSendTags()
+        NotesPost(Map("type", "setCycleCopyTagResult", "requestId", requestId,
+            "ok", JSON.true))
+        return
+    }
+    DebugLog("notes cycle tag setting failed")
+    NotesPost(Map("type", "setCycleCopyTagResult", "requestId", requestId,
+        "ok", JSON.false, "error", "无法保存循环标签，请检查标签并重试。"))
 }
 
 NotesHandleAssetCancel(msg) {

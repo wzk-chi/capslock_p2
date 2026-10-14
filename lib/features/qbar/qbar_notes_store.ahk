@@ -25,9 +25,14 @@ NotesStoreEnsureSchema(db) {
         . "id TEXT PRIMARY KEY,note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,"
         . "relative_path TEXT NOT NULL,mime TEXT NOT NULL,original_name TEXT NOT NULL DEFAULT '',"
         . "created_at INTEGER NOT NULL);"
+        . "CREATE TABLE IF NOT EXISTS qbar_notes_preferences ("
+        . "id INTEGER PRIMARY KEY CHECK(id=1),"
+        . "cycle_copy_tag_id INTEGER NULL REFERENCES tags(id) ON DELETE SET NULL);"
         . "CREATE INDEX IF NOT EXISTS idx_notes_order ON notes(pinned DESC,updated_at DESC,id DESC);"
         . "CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id,note_id);"
         . "CREATE INDEX IF NOT EXISTS idx_assets_note ON note_assets(note_id);"
+        . "INSERT OR IGNORE INTO qbar_notes_preferences(id,cycle_copy_tag_id) "
+        . "VALUES(1,(SELECT id FROM tags WHERE name='提示词' LIMIT 1));"
     if !db.Exec(schema)
         throw Error(db.ErrorMsg != "" ? db.ErrorMsg : "无法创建笔记数据表")
     return true
@@ -298,22 +303,73 @@ NotesStoreAssetUrlIndex(noteIds) {
     return index
 }
 
-; Read one complete note in stable creation order, with one extra query on wrap.
-NotesStoreReadNextTaggedNote(tagName, afterId) {
+NotesStoreGetCycleCopyTag() {
+    if !NotesStoreInit()
+        return Map("status", "error", "id", 0, "name", "")
+    sql := "SELECT COALESCE(p.cycle_copy_tag_id,0),COALESCE(t.name,'')"
+        . " FROM qbar_notes_preferences p LEFT JOIN tags t ON t.id=p.cycle_copy_tag_id"
+        . " WHERE p.id=1;"
+    if !NotesStoreQuery(sql, &table) || table.RowCount != 1
+        return Map("status", "error", "id", 0, "name", "")
+    raw := table.Rows[1]
+    return Map("status", "ok", "id", Integer(raw[1]), "name", String(raw[2]))
+}
+
+NotesStoreSetCycleCopyTag(tagId) {
     global NotesStoreError
-    tagName := Trim(String(tagName))
-    if tagName = "" || !RegExMatch(String(afterId), "^\d+$") {
+    value := Trim(String(tagId))
+    if !RegExMatch(value, "^\d+$") {
+        NotesStoreError := "循环标签编号无效"
+        return false
+    }
+    try tagId := Integer(value)
+    catch {
+        NotesStoreError := "循环标签编号无效"
+        return false
+    }
+    if !NotesStoreInit()
+        return false
+    if !AppStoreTransaction("notes-cycle-copy-tag", NotesStoreSetCycleCopyTagTransaction.Bind(tagId)) {
+        if NotesStoreError = ""
+            NotesStoreError := "循环标签设置保存失败"
+        return false
+    }
+    return true
+}
+
+NotesStoreSetCycleCopyTagTransaction(tagId) {
+    global NotesStoreError
+    if tagId > 0 {
+        if !NotesStoreQuery("SELECT id FROM tags WHERE id=" . Integer(tagId) . ";", &table)
+            return false
+        if table.RowCount != 1 {
+            NotesStoreError := "所选循环标签不存在"
+            return false
+        }
+        value := String(Integer(tagId))
+    } else {
+        value := "NULL"
+    }
+    return NotesStoreExec("UPDATE qbar_notes_preferences SET cycle_copy_tag_id=" . value
+        . " WHERE id=1;")
+}
+
+; Read one complete note in stable creation order, with one extra query on wrap.
+NotesStoreReadNextTaggedNote(tagId, afterId) {
+    global NotesStoreError
+    if !RegExMatch(String(tagId), "^\d+$") || Integer(tagId) < 1
+        || !RegExMatch(String(afterId), "^\d+$") {
         NotesStoreError := "循环笔记参数无效"
         return Map("status", "error")
     }
     if !NotesStoreInit()
         return Map("status", "error")
+    tagId := Integer(tagId)
     cursor := Integer(afterId)
-    tagSql := NotesStoreSql(tagName)
     Loop 2 {
         sql := "SELECT n.id,n.title,n.content_md FROM tags t"
             . " JOIN note_tags nt ON nt.tag_id=t.id JOIN notes n ON n.id=nt.note_id"
-            . " WHERE t.name=" . tagSql . " AND nt.note_id>" . cursor
+            . " WHERE t.id=" . tagId . " AND nt.note_id>" . cursor
             . " AND trim(n.content_md,char(32,9,10,13))<>''"
             . " ORDER BY nt.note_id ASC LIMIT 1;"
         if !NotesStoreQuery(sql, &table)

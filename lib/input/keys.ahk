@@ -264,7 +264,7 @@ keyFunc_notes(*) {
 }
 
 keyFunc_notesCyclePrompt(*) {
-    return NotesCycleCopyNextPrompt()
+    return NotesCycleCopyNextNote()
 }
 
 keyFunc_aiChat(*) {
