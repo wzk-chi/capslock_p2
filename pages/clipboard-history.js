@@ -453,8 +453,7 @@ function renderRow(row) {
   } else {
     preview = document.createElement('div');
     const previewText = rowPreview(row);
-    preview.className = 'preview' + (row.richText ? ' rich' : '')
-      + (/[\r\n]/.test(previewText) ? ' multiline' : '');
+    preview.className = 'preview' + (row.richText ? ' rich' : '');
     preview.textContent = previewText;
   }
   const note = document.createElement('div');
