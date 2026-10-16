@@ -16,13 +16,28 @@
 ;               where a wrong guess is visible and editable (qbar prefill).
 GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := false) {
     global A_Clipboard, CapsLockHeld
+    static serial := 0
+    requestId := ++serial
+    started := A_TickCount
+    sourceHwnd := WinExist("A")
+    processName := ""
+    windowClass := ""
+    try processName := WinGetProcessName("ahk_id " . sourceHwnd)
+    try windowClass := WinGetClass("ahk_id " . sourceHwnd)
+    DebugLog("selection begin id=" . requestId . " mode=" . mode
+        . " hwnd=" . sourceHwnd . " process=" . processName . " class=" . windowClass
+        . " ctrlCFallback=" . allowCtrlCFallback . " waitMs=" . Round(waitSeconds * 1000))
 
     ; Prefer UI Automation so reading a selection does not touch the system
     ; clipboard.
     uiaSupported := false
     uiaText := GetSelectedTextViaUIA(&uiaSupported)
+    DebugLog("selection UIA id=" . requestId . " supported=" . uiaSupported
+        . " rawLength=" . StrLen(uiaText) . " elapsedMs=" . (A_TickCount - started))
     if uiaSupported {
-        return NormalizeSelectedText(uiaText, mode)
+        result := NormalizeSelectedText(uiaText, mode)
+        SelectionLogResult(requestId, "uia", uiaText, result, started)
+        return result
     }
 
     oldClipboard := ClipboardAll()
@@ -34,6 +49,9 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
         sequenceBefore := ClipboardSequenceNumber()
         SendInput("^{Insert}")
         success := WaitClipboardSequenceChange(sequenceBefore, waitSeconds, &copySequence)
+        DebugLog("selection copy id=" . requestId . " method=ctrl-insert changed=" . success
+            . " before=" . sequenceBefore . " after=" . copySequence
+            . " foreground=" . WinExist("A") . " elapsedMs=" . (A_TickCount - started))
         if !success && allowCtrlCFallback {
             ; Chrome accepts Ctrl+C more consistently in this state. The
             ; CapsLock layer is briefly stood down so this synthetic C cannot
@@ -45,15 +63,21 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
                 sequenceBefore := ClipboardSequenceNumber()
                 SendInput("^c")
                 success := WaitClipboardSequenceChange(sequenceBefore, waitSeconds, &copySequence)
+                DebugLog("selection copy id=" . requestId . " method=ctrl-c changed=" . success
+                    . " before=" . sequenceBefore . " after=" . copySequence
+                    . " foreground=" . WinExist("A") . " elapsedMs=" . (A_TickCount - started))
             } finally {
                 CapsLockHeld := previousCapsLockHeld && GetKeyState("CapsLock", "P")
             }
         }
         if success {
             ClipboardHistoryMarkOwnedSequence(copySequence, "temporary-selection")
-            result := A_Clipboard
-            result := NormalizeSelectedText(result, mode)
-        }
+            rawText := A_Clipboard
+            result := NormalizeSelectedText(rawText, mode)
+            SelectionLogResult(requestId, "clipboard", rawText, result, started)
+        } else
+            DebugLog("selection result id=" . requestId . " source=clipboard reason=copy-timeout"
+                . " elapsedMs=" . (A_TickCount - started))
     } finally {
         ; A failed copy must not change the clipboard. On success, restore only
         ; while the clipboard still contains this copy; otherwise preserve the
@@ -65,6 +89,18 @@ GetSelectedText(mode := "strict", waitSeconds := 0.15, allowCtrlCFallback := fal
         ClipboardSuspendEnd(suspendToken)
     }
     return result
+}
+
+; Record shape and outcome only; selected text and window titles stay private.
+SelectionLogResult(requestId, source, rawText, result, started) {
+    reason := rawText = "" ? "empty-text"
+        : result = "" ? "newline-filtered"
+        : Trim(result) = "" ? "whitespace-only" : "selected"
+    DebugLog("selection result id=" . requestId . " source=" . source . " reason=" . reason
+        . " rawLength=" . StrLen(rawText) . " resultLength=" . StrLen(result)
+        . " trailingLF=" . (SubStr(rawText, -1) = "`n")
+        . " multipleLF=" . !!InStr(rawText, "`n", , 1, 2)
+        . " elapsedMs=" . (A_TickCount - started))
 }
 
 NormalizeSelectedText(text, mode) {

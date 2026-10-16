@@ -272,11 +272,9 @@ keyFunc_aiChat(*) {
 }
 
 keyFunc_translate(*) {
-    ; "multiline": a real multi-paragraph selection ends with a newline, which
-    ; strict mode would discard.
-    ; Keep the clipboard wait unchanged; GetSelectedText retries with Ctrl+C
-    ; only when Ctrl+Insert produced no clipboard event.
-    selectedText := GetSelectedText("multiline", 0.15, true)
+    ; Browser selections can contain just one trailing newline. Keep that
+    ; text too: the translation panel lets the user review and edit the source.
+    selectedText := GetSelectedText("any", 0.15, true)
     if selectedText != "" {
         ; A single English word the local dictionary knows opens the
         ; dictionary card; everything else goes to the translate panel.
