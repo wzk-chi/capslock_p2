@@ -9,6 +9,13 @@ global PanelHostRegistry := Map()
 global PanelHostRegistrySequence := 0
 global PanelHostDestroyRetryMs := 60000
 
+PanelHostReportFailure(panelName, stage, detail) {
+    message := IsObject(detail) ? detail.Message : String(detail)
+    DiagnosticLogAlways("Panel failure panel=" . panelName . " stage=" . stage . " detail=" . message)
+    ShowMsg(LLMText("Unable to open this window. Try again or restart the app.",
+        "无法打开此窗口，请重试或重新启动应用。"), 5000)
+}
+
 PanelHostCreate(pagePath, title, options := 0) {
     options := IsObject(options) ? options : Map()
     guiOptions := options.Has("guiOptions") ? options["guiOptions"] : "+AlwaysOnTop +Resize +ToolWindow"

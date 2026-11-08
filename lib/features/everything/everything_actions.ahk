@@ -98,44 +98,19 @@ EverythingCopyFiles(path, attempt := 0, *) {
     DllCall("kernel32\GlobalUnlock", "ptr", hGlobal)
     locked := 0
 
-    if !DllCall("user32\OpenClipboard", "ptr", 0) {
-        DllCall("kernel32\GlobalFree", "ptr", hGlobal)
-        if attempt < 5 {
+    entries := [Map("id", 15, "kind", "raw", "hGlobal", hGlobal)]
+    success := ClipboardWriteFormats(entries, "user-copy", &copySequence, &errorKind)
+    if !success {
+        if attempt < 5 && (errorKind = "busy" || errorKind = "snapshot" || errorKind = "changed") {
             SetTimer(EverythingCopyFiles.Bind(path, attempt + 1), -60)
             return true
         }
-        EverythingActionFeedback(EverythingText("The clipboard is busy.", "剪贴板正忙。"), true)
+        EverythingActionFeedback(EverythingText("Copy failed. Please try again.", "复制失败，请重试。"), true)
         return false
     }
-
-    suspendToken := ClipboardSuspendBegin("user-copy")
-    success := false
-    try {
-        if !DllCall("user32\EmptyClipboard")
-            throw Error("EmptyClipboard failed")
-        if !DllCall("user32\SetClipboardData", "uint", 15, "ptr", hGlobal)
-            throw Error("SetClipboardData failed")
-        hGlobal := 0 ; ownership transferred to the clipboard
-        copySequence := ClipboardSequenceNumber()
-        ClipboardHistoryMarkOwnedSequence(copySequence, "user-copy")
-        success := true
-    } catch as copyError {
-        DebugLog("Everything file copy failed")
-    } finally {
-        if locked
-            try DllCall("kernel32\GlobalUnlock", "ptr", hGlobal)
-        if hGlobal
-            DllCall("kernel32\GlobalFree", "ptr", hGlobal)
-        DllCall("user32\CloseClipboard")
-        ClipboardSuspendEnd(suspendToken)
-    }
-    if success
-        ClipboardHistoryPublishExplicit(copySequence, 0, "user-copy")
-    if success
-        EverythingActionFeedback(EverythingText("Copied", "已复制"), false)
-    else
-        EverythingActionFeedback(EverythingText("Copy failed", "复制失败"), true)
-    return success
+    ClipboardHistoryPublishExplicit(copySequence, 0, "user-copy")
+    EverythingActionFeedback(EverythingText("Copied", "已复制"), false)
+    return true
 }
 
 EverythingActionFeedback(message, isError := false) {

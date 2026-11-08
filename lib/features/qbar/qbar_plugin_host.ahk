@@ -49,8 +49,11 @@ QbarPluginHostRegisterCatalog(&nextRegistry, initializeDefaults := false, transa
     retiredPluginIds := QbarPluginCatalogRetiredBuiltinPluginIds()
     DebugLog("Qbar catalog registration start definitions=" . definitions.Length
         . " instances=" . instances.Length . " retired=" . retiredPluginIds.Length)
-    if !transactionOwned && !QbarStoreBegin()
-        throw Error(QbarStoreError != "" ? QbarStoreError : "无法开始 Qbar 插件注册")
+    if !transactionOwned {
+        transaction := AppStoreBegin("qbar-catalog")
+        if !IsObject(transaction)
+            throw Error("无法开始 Qbar 插件注册")
+    }
     try {
         if !QbarStoreLoadPluginSettings(&storedSettings, &invalidStoredSettings)
             throw Error(QbarStoreError != "" ? QbarStoreError : "读取现有插件设置失败")
@@ -109,11 +112,11 @@ QbarPluginHostRegisterCatalog(&nextRegistry, initializeDefaults := false, transa
         }
         if !QbarRegistryBuild(&nextRegistry)
             throw Error(QbarRegistryError != "" ? QbarRegistryError : "Qbar 注册表构建失败")
-        if !transactionOwned && !QbarStoreCommit()
+        if !transactionOwned && !transaction.Commit()
             throw Error(QbarStoreError != "" ? QbarStoreError : "提交 Qbar 插件注册失败")
     } catch as registerError {
         if !transactionOwned
-            try QbarStoreRollback()
+            transaction.Rollback()
         DebugLog("Qbar catalog registration failed: " . registerError.Message)
         throw registerError
     }

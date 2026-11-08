@@ -7,7 +7,6 @@
 global ClipboardHistoryDb := 0
 global ClipboardHistoryDbReady := false
 global ClipboardHistoryStoreError := ""
-global ClipboardHistoryStoreVersion := 5
 global ClipboardHistoryStoreRoot := A_ScriptDir . "\data"
 global ClipboardHistoryStoreMaxItems := 500
 global ClipboardHistoryStoreMaxBytes := 512 * 1024 * 1024
@@ -43,7 +42,7 @@ ClipboardHistoryStoreInit() {
     global ClipboardHistoryDb, ClipboardHistoryDbReady, ClipboardHistoryStoreError
     global AppStoreDb
     if ClipboardHistoryDbReady && IsObject(ClipboardHistoryDb)
-        return true
+        return AppStoreConnectionIsUsable(ClipboardHistoryDb)
 
     ClipboardHistoryStoreError := ""
     try {
@@ -88,7 +87,7 @@ ClipboardHistoryStoreNow() {
 ClipboardHistoryStoreExec(sql) {
     global ClipboardHistoryDb, ClipboardHistoryDbReady, ClipboardHistoryStoreError
     ClipboardHistoryStoreError := ""
-    if !ClipboardHistoryDbReady || !IsObject(ClipboardHistoryDb) {
+    if !ClipboardHistoryDbReady || !AppStoreConnectionIsUsable(ClipboardHistoryDb) {
         ClipboardHistoryStoreError := "剪贴板历史数据库尚未初始化"
         return false
     }
@@ -104,7 +103,7 @@ ClipboardHistoryStoreRows(sql, &table := 0) {
     global ClipboardHistoryDb, ClipboardHistoryDbReady, ClipboardHistoryStoreError
     table := 0
     ClipboardHistoryStoreError := ""
-    if !ClipboardHistoryDbReady || !IsObject(ClipboardHistoryDb) {
+    if !ClipboardHistoryDbReady || !AppStoreConnectionIsUsable(ClipboardHistoryDb) {
         ClipboardHistoryStoreError := "剪贴板历史数据库尚未初始化"
         return false
     }
@@ -159,7 +158,7 @@ ClipboardHistoryStoreSave(item, storedPayload, manifestJson, retentionCutoff := 
     id := String(item["id"])
     if id = ""
         return false
-    if !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+    if !IsObject(transaction := AppStoreBegin("ClipboardHistoryStoreSave"))
         return false
     committed := false
     try {
@@ -236,11 +235,11 @@ ClipboardHistoryStoreSave(item, storedPayload, manifestJson, retentionCutoff := 
             throw Error(ClipboardHistoryStoreError)
         ClipboardHistoryStoreTrimToByteBudget(id)
 
-        if !ClipboardHistoryStoreExec("COMMIT;")
+        if !transaction.Commit()
             throw Error(ClipboardHistoryStoreError)
         committed := true
     } catch as saveError {
-        try ClipboardHistoryStoreExec("ROLLBACK;")
+        try transaction.Rollback()
         ClipboardHistoryStoreError := saveError.Message
     }
     return committed
@@ -419,7 +418,7 @@ ClipboardHistoryStoreSaveThumbnail(id, preview) {
         return false
     Critical("On")
     try {
-        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+        if !ClipboardHistoryStoreInit() || !IsObject(transaction := AppStoreBegin("ClipboardHistoryStoreSaveThumbnail"))
             return false
         committed := false
         try {
@@ -442,11 +441,11 @@ ClipboardHistoryStoreSaveThumbnail(id, preview) {
                 throw Error(ClipboardHistoryStoreError)
             if totalBytes > ClipboardHistoryStoreMaxBytes
                 throw Error("图片缩略图超出剪贴板历史容量，已跳过持久化")
-            if !ClipboardHistoryStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(ClipboardHistoryStoreError)
             committed := true
         } catch as thumbnailError {
-            try ClipboardHistoryStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             ClipboardHistoryStoreError := thumbnailError.Message
         }
         return committed
@@ -496,7 +495,7 @@ ClipboardHistoryStoreBudgetedMutation(sql, protectedIds) {
     Critical("On")
     committed := false
     try {
-        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+        if !ClipboardHistoryStoreInit() || !IsObject(transaction := AppStoreBegin("ClipboardHistoryStoreBudgetedMutation"))
             return false
         try {
             if !ClipboardHistoryStoreExec(sql)
@@ -504,11 +503,11 @@ ClipboardHistoryStoreBudgetedMutation(sql, protectedIds) {
             if ClipboardHistoryDb.Changes() < 1
                 throw Error("剪贴板历史项已不存在")
             ClipboardHistoryStoreTrimToByteBudget(protectedIds)
-            if !ClipboardHistoryStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(ClipboardHistoryStoreError)
             committed := true
         } catch as mutationError {
-            try ClipboardHistoryStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             ClipboardHistoryStoreError := mutationError.Message
         }
     } finally {
@@ -531,7 +530,7 @@ ClipboardHistoryStoreSetPinned(id, desiredState) {
     Critical("On")
     committed := false
     try {
-        if !ClipboardHistoryStoreInit() || !ClipboardHistoryStoreExec("BEGIN IMMEDIATE;")
+        if !ClipboardHistoryStoreInit() || !IsObject(transaction := AppStoreBegin("ClipboardHistoryStoreSetPinned"))
             return false
         try {
             if desiredState {
@@ -550,11 +549,11 @@ ClipboardHistoryStoreSetPinned(id, desiredState) {
             if ClipboardHistoryDb.Changes() < 1
                 throw Error("剪贴板历史项已不存在")
             ClipboardHistoryStoreTrimToByteBudget(desiredState ? [String(id)] : "")
-            if !ClipboardHistoryStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(ClipboardHistoryStoreError)
             committed := true
         } catch as pinError {
-            try ClipboardHistoryStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             ClipboardHistoryStoreError := pinError.Message
         }
     }

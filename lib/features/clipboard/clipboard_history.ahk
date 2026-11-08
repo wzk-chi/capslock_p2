@@ -1,7 +1,7 @@
 ; Clipboard history lifecycle, capture queue and actions.
 
 global ClipboardHistoryLoaded := false
-global ClipboardHistoryEnabled := true
+global ClipboardHistoryEnabled := false
 global ClipboardHistoryBaselineSequence := 0
 global ClipboardHistoryEpoch := 0
 global ClipboardHistoryNextEvent := 1
@@ -27,8 +27,7 @@ ClipboardHistoryInitialize() {
     if ClipboardHistoryLoaded
         return true
     ClipboardHistoryLoaded := true
-    settings := ClipboardHistoryPluginSettings()
-    ClipboardHistoryEnabled := settings["enabled"]
+    ClipboardHistoryEnabled := false
     ClipboardHistoryEpoch += 1
     ClipboardHistoryEvents := Map()
     ClipboardHistorySequenceEvents := Map()
@@ -38,13 +37,11 @@ ClipboardHistoryInitialize() {
     ClipboardHistoryActiveCaptureEventId := ""
     ClipboardHistoryRetainedSnapshotBytes := 0
     ClipboardHistoryBaselineSequence := ClipboardSequenceNumber()
-    ClipboardHistoryStoreMaxItems := settings["maxItems"]
-    ClipboardHistoryMaxCaptureBytes := settings["maxCaptureBytes"]
-    ClipboardHistoryRetentionDays := settings["retentionDays"]
     if !ClipboardHistoryStoreInit() {
         ClipboardHistoryLoaded := false
         return false
     }
+    ClipboardHistoryOnPluginSettingsChanged()
     return true
 }
 
@@ -67,56 +64,15 @@ ClipboardHistoryShutdown(*) {
 }
 
 ClipboardHistoryPluginSettings() {
-    fallback := Map("enabled", true, "maxItems", 500,
-        "maxCaptureBytes", 256 * 1024 * 1024, "retentionDays", 30)
-    definition := QbarPluginCatalogDefinitionById("builtin.clipboard")
-    if !IsObject(definition) || !definition.Has("settingsSchema")
-        return fallback
-    schema := definition["settingsSchema"]
-    if !IsObject(schema) || !schema.Count
-        return fallback
     command := QbarRegistryCommand("builtin.clipboard.open")
-    stored := IsObject(command) && command.Has("settings") && Type(command["settings"]) = "Map"
-        ? command["settings"] : Map()
-    result := Map()
-    for key, field in schema {
-        fallback := field.Has("default") ? field["default"] : ""
-        value := stored.Has(key) ? stored[key] : fallback
-        if field["type"] = "boolean"
-            value := ClipboardHistorySettingBoolean(value, fallback)
-        else if field["type"] = "integer" {
-            try {
-                value := Integer(value)
-            } catch {
-                value := Integer(fallback)
-            }
-            minimum := field.Has("min") ? Integer(field["min"]) : value
-            maximum := field.Has("max") ? Integer(field["max"]) : value
-            value := Max(minimum, Min(maximum, value))
-        }
-        result[key] := value
-    }
-    return result
-}
-
-ClipboardHistorySettingBoolean(value, fallback := false) {
-    if Type(value) = "ComValue" {
-        try {
-            if value == JSON.true
-                return true
-            if value == JSON.false
-                return false
-        }
-        return fallback
-    }
-    if Type(value) = "Integer"
-        return value != 0
-    normalized := StrLower(Trim(String(value)))
-    if normalized = "true" || normalized = "1"
-        return true
-    if normalized = "false" || normalized = "0"
-        return false
-    return fallback
+    if !IsObject(command) || !command.Get("settingsValid", false)
+        || !command.Has("settings") || Type(command["settings"]) != "Map"
+        return 0
+    settings := command["settings"].Clone()
+    if !QbarPluginHostParseBoolean(settings["enabled"], &enabled)
+        return 0
+    settings["enabled"] := enabled
+    return settings
 }
 
 ClipboardHistoryRetentionCutoff() {
@@ -150,6 +106,11 @@ ClipboardHistoryOnPluginSettingsChanged() {
     global ClipboardHistoryEnabled, ClipboardHistoryStoreMaxItems, ClipboardHistoryMaxCaptureBytes
     global ClipboardHistoryRetentionDays
     settings := ClipboardHistoryPluginSettings()
+    if !IsObject(settings) {
+        ClipboardHistorySetEnabled(false)
+        DebugLog("Clipboard history capture stopped reason=settings-unavailable")
+        return false
+    }
     ClipboardHistoryStoreMaxItems := settings["maxItems"]
     ClipboardHistoryMaxCaptureBytes := settings["maxCaptureBytes"]
     ClipboardHistoryRetentionDays := settings["retentionDays"]

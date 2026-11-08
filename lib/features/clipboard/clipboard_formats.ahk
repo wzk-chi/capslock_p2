@@ -1290,7 +1290,6 @@ ClipboardHistoryPayloadDecode(storedPayload, payloadVersion, &archive) {
 }
 
 ClipboardHistoryRestoreArchive(archive, ownerHwnd := 0, manifestJson := "", &restoredArchive := 0) {
-    global A_Clipboard, SystemClipboard, WhichClipboardNow
     restoredArchive := 0
     entries := ClipboardHistoryParseArchive(archive, manifestJson, false)
     if !entries.Length
@@ -1326,69 +1325,92 @@ ClipboardHistoryRestoreArchive(archive, ownerHwnd := 0, manifestJson := "", &res
             "kind", "raw", "hGlobal", hGlobal))
     }
 
-    sequenceBeforeBackup := ClipboardSequenceNumber()
-    previousClipboard := ClipboardAll()
-    if !IsObject(previousClipboard) || ClipboardSequenceNumber() != sequenceBeforeBackup {
-        ClipboardHistoryFreeRestoreHandles(resolvedEntries)
-        restoredArchive := 0
+    if !ClipboardWriteFormats(resolvedEntries, "history-replay", &sequence, &errorKind, ownerHwnd)
         return false
-    }
-    if !DllCall("user32\OpenClipboard", "ptr", ownerHwnd) {
-        ClipboardHistoryFreeRestoreHandles(resolvedEntries)
-        restoredArchive := 0
-        return false
-    }
-
-    changed := false
-    success := false
-    try {
-        if ClipboardSequenceNumber() = sequenceBeforeBackup
-            if DllCall("user32\EmptyClipboard") {
-                changed := true
-                success := true
-                for entry in resolvedEntries {
-                    if !DllCall("user32\SetClipboardData", "uint", entry["id"],
-                        "ptr", entry["hGlobal"]) {
-                        success := false
-                        break
-                    }
-                    entry["hGlobal"] := 0
-                }
-            }
-    } catch {
-        success := false
-    } finally {
-        DllCall("user32\CloseClipboard")
-    }
-
-    if !success {
-        if changed {
-            rollbackToken := ClipboardSuspendBegin("restore-previous")
-            try {
-                A_Clipboard := previousClipboard
-                SystemClipboard := previousClipboard
-                WhichClipboardNow := 0
-                ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "restore-previous")
-            } catch {
-                restoredArchive := 0
-            } finally {
-                ClipboardSuspendEnd(rollbackToken)
-            }
-        }
-        ClipboardHistoryFreeRestoreHandles(resolvedEntries)
-        restoredArchive := 0
-        return false
-    }
     ; The source is already a validated ClipboardAll-compatible archive. Keep
     ; the same Buffer as the system slot instead of rebuilding another copy.
     restoredArchive := archive
     return true
 }
 
+; Consumes every supplied handle, either transferring it to Windows or freeing
+; it. A failed write restores the snapshot only while we still own that change.
+; CF_BITMAP is a GDI object; all other entries here use movable global memory.
+ClipboardWriteFormats(entries, reason, &sequence := 0, &errorKind := "", ownerHwnd := 0) {
+    global A_Clipboard, SystemClipboard, WhichClipboardNow
+    sequence := 0
+    errorKind := ""
+    state := Critical("On")
+    token := ClipboardSuspendBegin(reason)
+    opened := false
+    changed := false
+    success := false
+    writtenSequence := 0
+    try {
+        ownerHwnd := ownerHwnd ? ownerHwnd : A_ScriptHwnd
+        if !entries.Length || !DllCall("user32\IsWindow", "ptr", ownerHwnd, "int")
+            throw Error("owner")
+        errorKind := "snapshot"
+        before := ClipboardSequenceNumber()
+        previous := ClipboardAll()
+        if ClipboardSequenceNumber() != before
+            throw Error("changed")
+        errorKind := "busy"
+        if !DllCall("user32\OpenClipboard", "ptr", ownerHwnd, "int")
+            return false
+        opened := true
+        errorKind := "changed"
+        if ClipboardSequenceNumber() != before
+            return false
+        errorKind := "write"
+        if !DllCall("user32\EmptyClipboard", "int")
+            return false
+        changed := true
+        for entry in entries {
+            if !DllCall("user32\SetClipboardData", "uint", entry["id"],
+                "ptr", entry["hGlobal"], "ptr")
+                return false
+            entry["hGlobal"] := 0
+        }
+        sequence := ClipboardSequenceNumber()
+        ClipboardHistoryMarkOwnedSequence(sequence, reason)
+        WhichClipboardNow := 0
+        success := true
+        errorKind := ""
+        return true
+    } catch as writeError {
+        DebugLog("Clipboard write failed stage=" . errorKind . " errorType=" . Type(writeError))
+        return false
+    } finally {
+        if opened {
+            writtenSequence := ClipboardSequenceNumber()
+            DllCall("user32\CloseClipboard", "int")
+        }
+        if changed && !success && ClipboardSequenceNumber() = writtenSequence {
+            try {
+                A_Clipboard := previous
+                SystemClipboard := previous
+                WhichClipboardNow := 0
+                ClipboardHistoryMarkOwnedSequence(ClipboardSequenceNumber(), "restore-previous")
+            } catch as restoreError {
+                DiagnosticLogAlways("Clipboard rollback failed errorType=" . Type(restoreError))
+            }
+        }
+        if changed && !success
+            DebugLog("Clipboard write rejected stage=" . errorKind)
+        ClipboardHistoryFreeRestoreHandles(entries)
+        ClipboardSuspendEnd(token)
+        Critical(state)
+    }
+}
+
 ClipboardHistoryFreeRestoreHandles(entries) {
     for entry in entries {
         if entry["hGlobal"] {
-            DllCall("kernel32\GlobalFree", "ptr", entry["hGlobal"])
+            if entry["kind"] = "bitmap"
+                DllCall("gdi32\DeleteObject", "ptr", entry["hGlobal"], "int")
+            else
+                DllCall("kernel32\GlobalFree", "ptr", entry["hGlobal"])
             entry["hGlobal"] := 0
         }
     }

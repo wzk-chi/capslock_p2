@@ -1,13 +1,8 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-;@Ahk2Exe-SetFileVersion 0.3.3.0
-;@Ahk2Exe-SetProductVersion 0.3.3.0
+global AppVersion := "0.3.3"
+;@Ahk2Exe-SetVersion %A_PriorLine~^.+"([0-9.]+)"$~$1%
 #Warn
-; The VarUnset check reports helper calls that cross an #Include boundary
-; (DebugLog, ShowMsg, ...) as unassigned locals, even though they resolve fine
-; at runtime -- the debug log has the "QbarToggle visible=" line this flagged.
-; Keep the other warnings, drop the one that only ever fires on working code.
-#Warn VarUnset, Off
 
 A_MaxHotkeysPerInterval := 500
 A_HotkeyInterval := 2000
@@ -16,6 +11,7 @@ A_HotkeyInterval := 2000
 ; Qbar and LLM translation are both hosted in WebView2 panels.
 
 #Include lib\app\config.ahk
+#Include lib\app\actions.ahk
 #Include lib\app\core.ahk
 #Include lib\shared\selection.ahk
 #Include lib\features\windows.ahk

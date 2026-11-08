@@ -3,12 +3,10 @@
 ; entry point includes only the v2 modules.
 
 global AppName := "capslock_p2"
-global AppVersion := "0.3.3"
 global AppInstanceMutex := 0
 global DebugLogFile := A_ScriptDir . "\capslock_p2-debug.log"
 global DebugLogMaxBytes := 1 * 1024 * 1024
 global DebugLogging := false
-global SettingsReloadPending := false
 global KeySet := Map()
 global CapsLockHeld := false
 global CapsLockUsed := false
@@ -59,8 +57,7 @@ Initialize() {
     try SetStoreCapslockMode("Off")
     SetCapsLockState("Off")
 
-    userDocument := 0
-    if !ConfigLoad(&configError, &userDocument) {
+    if !ConfigLoad(&configError) {
         errorText := configError = "database_read"
             ? "应用数据库无法初始化。请确认安装目录可写、磁盘空间充足后重试；详细原因已记录。"
             : "应用数据库中的配置无法读取。请保留数据库文件并查看错误日志。"
@@ -202,16 +199,14 @@ ClipboardSuspendReason() {
 
 ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
     &loadSucceeded := true, *) {
-    global SettingsVisible, SettingsReloadPending, Config, ConfigDefaults
+    global SettingsVisible, Config, ConfigDefaults
     loadSucceeded := false
     previous := ConfigSnapshot()
     previousConfig := Config
     previousDefaults := ConfigDefaults
     loadError := ""
-    loadedUserDocument := 0
-    if !ConfigLoad(&loadError, &loadedUserDocument) {
+    if !ConfigLoad(&loadError) {
         KeyRepeatStop(true)
-        SettingsReloadPending := true
         return []
     }
     appProfilesChanged := false
@@ -219,10 +214,8 @@ ReloadSettings(notifySettingsPage := true, rebuildCustomHotkeys := false,
         KeyRepeatStop(true)
         Config := previousConfig
         ConfigDefaults := previousDefaults
-        SettingsReloadPending := true
         return []
     }
-    SettingsReloadPending := false
     loadSucceeded := true
     changes := ConfigEffectiveDiff(previous, Config)
     ; Apply other settings first, then register once against the combined state.
@@ -339,10 +332,6 @@ SettingInteger(section, key, fallback, minimum, maximum) {
         return fallback
     parsedValue := Integer(value)
     return Max(minimum, Min(maximum, parsedValue))
-}
-
-MonitorSettings() {
-    ; Configuration changes are published through the database save service.
 }
 
 ConfigSet(section, key, value) {
@@ -648,22 +637,7 @@ RunConfiguredAction(actionText) {
 
     DebugLog("Action invoked")
 
-    try functionObject := %functionName%
-    catch as functionError {
-        DebugLog("Unknown key function")
-        ShowMsg(LLMText(
-            "This shortcut action is unavailable. Check the shortcut settings.",
-            "此快捷键操作不可用，请检查快捷键设置。"), 2500)
-        return
-    }
-
-    if !HasMethod(functionObject, "Call") {
-        DebugLog("Non-callable key function")
-        ShowMsg(LLMText(
-            "This shortcut action is unavailable. Check the shortcut settings.",
-            "此快捷键操作不可用，请检查快捷键设置。"), 2500)
-        return
-    }
+    functionObject := ActionCatalog()[functionName]["handler"]
 
     try functionObject.Call(arguments*)
     catch as functionError {
@@ -680,49 +654,8 @@ ConfiguredActionTextValid(actionText) {
 }
 
 ConfiguredActionFunctionAllowed(functionName) {
-    static allowed := Map(
-        "keyFunc_doNothing", true, "keyFunc_send", true, "keyFunc_run", true,
-        "keyFunc_toggleCapsLock", true, "keyFunc_mouseSpeedIncrease", true,
-        "keyFunc_mouseSpeedDecrease", true, "keyFunc_moveLeft", true,
-        "keyFunc_moveRight", true, "keyFunc_moveUp", true, "keyFunc_moveDown", true,
-        "keyFunc_moveWordLeft", true, "keyFunc_moveWordRight", true,
-        "keyFunc_backspace", true, "keyFunc_delete", true, "keyFunc_deleteAll", true,
-        "keyFunc_deleteWord", true, "keyFunc_forwardDeleteWord", true,
-        "keyFunc_end", true, "keyFunc_home", true, "keyFunc_moveToPageBeginning", true,
-        "keyFunc_moveToPageEnd", true, "keyFunc_deleteLine", true,
-        "keyFunc_deleteToLineBeginning", true, "keyFunc_deleteToLineEnd", true,
-        "keyFunc_deleteToPageBeginning", true, "keyFunc_deleteToPageEnd", true,
-        "keyFunc_enterWherever", true, "keyFunc_esc", true, "keyFunc_enter", true,
-        "keyFunc_doubleChar", true, "keyFunc_sendChar", true, "keyFunc_doubleAngle", true,
-        "keyFunc_doubleQuote", true, "keyFunc_pageUp", true, "keyFunc_pageDown", true,
-        "keyFunc_pageMoveUp", true, "keyFunc_pageMoveDown", true,
-        "keyFunc_switchClipboard", true, "keyFunc_pasteSystem", true,
-        "keyFunc_cut_1", true, "keyFunc_copy_1", true, "keyFunc_paste_1", true,
-        "keyFunc_undoRedo", true, "keyFunc_cut_2", true, "keyFunc_copy_2", true,
-        "keyFunc_paste_2", true, "keyFunc_qbar", true, "keyFunc_clipboardHistory", true,
-        "keyFunc_notes", true, "keyFunc_notesCyclePrompt", true, "keyFunc_aiChat", true,
-        "keyFunc_translate", true, "keyFunc_tabPrve", true, "keyFunc_tabNext", true,
-        "keyFunc_jumpPageTop", true, "keyFunc_jumpPageBottom", true,
-        "keyFunc_selectUp", true, "keyFunc_selectDown", true, "keyFunc_selectLeft", true,
-        "keyFunc_selectRight", true, "keyFunc_selectHome", true, "keyFunc_selectEnd", true,
-        "keyFunc_selectToPageBeginning", true, "keyFunc_selectToPageEnd", true,
-        "keyFunc_selectCurrentWord", true, "keyFunc_selectCurrentLine", true,
-        "keyFunc_selectWordLeft", true, "keyFunc_selectWordRight", true,
-        "keyFunc_pageMoveLineUp", true, "keyFunc_pageMoveLineDown", true,
-        "keyFunc_tabHotString", true,
-        "keyFunc_openCpasDocs", true, "keyFunc_mediaPrev", true, "keyFunc_mediaNext", true,
-        "keyFunc_mediaPlayPause", true, "keyFunc_volumeUp", true, "keyFunc_volumeDown", true,
-        "keyFunc_volumeMute", true, "keyFunc_reload", true, "keyFunc_openSettings", true,
-        "keyFunc_send_dot", true, "keyFunc_qbar_upperFolderPath", true,
-        "keyFunc_qbar_lowerFolderPath", true, "keyFunc_winbind_activate", true,
-        "keyFunc_winbind_binding", true, "keyFunc_winPin", true, "keyFunc_goCjkPage", true,
-        "keyFunc_click_left", true, "keyFunc_click_right", true, "keyFunc_mouse_up", true,
-        "keyFunc_mouse_down", true, "keyFunc_mouse_left", true, "keyFunc_mouse_right", true,
-        "keyFunc_wheel_up", true, "keyFunc_wheel_down", true,
-        "keyFunc_clearWinMinimizeStach", true, "keyFunc_popWinMinimizeStack", true,
-        "keyFunc_pushWinMinimizeStack", true, "keyFunc_unshiftWinMinimizeStack", true,
-        "keyFunc_winTransparent", true)
-    return allowed.Has(String(functionName))
+    catalog := ActionCatalog()
+    return catalog.Has(String(functionName)) && IsObject(catalog[String(functionName)]["handler"])
 }
 
 SplitActionArguments(argumentText, &valid := true) {

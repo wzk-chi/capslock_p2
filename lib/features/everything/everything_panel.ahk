@@ -10,7 +10,7 @@ EverythingEnsureWebView() {
         } catch as existingError {
             PanelHostHide(EverythingHost)
             DebugLog("Everything webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            PanelHostReportFailure("everything_panel", "initialize", existingError)
             return false
         }
     }
@@ -33,7 +33,7 @@ EverythingEnsureWebView() {
         return true
     } catch as webViewError {
         PanelHostHide(EverythingHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        PanelHostReportFailure("everything_panel", "initialize", webViewError)
         return false
     }
 }
@@ -128,8 +128,8 @@ EverythingShutdown(*) {
     if QbarEsBundledStarted {
         everythingExe := QbarEsEverythingExe()
         if everythingExe != ""
-            try Run(QbarEsQuoteArg(everythingExe) . " -instance "
-                . QbarEsQuoteArg(QbarEsInstanceName()) . " -exit")
+            try Run(QbarQuoteArg(everythingExe) . " -instance "
+                . QbarQuoteArg(QbarEsInstanceName()) . " -exit")
     }
     PanelHostDestroy(EverythingHost)
     EverythingHost := 0

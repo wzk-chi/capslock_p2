@@ -382,34 +382,101 @@ AppStoreSettingsRevision() {
 
 AppStoreSql(value) => "'" . StrReplace(String(value), "'", "''") . "'"
 
-AppStoreTransaction(owner, callback) {
-    global AppStoreDb, AppStoreReady, AppStoreTransactionOwner
-    if !AppStoreReady || !IsObject(AppStoreDb) || AppStoreTransactionOwner != ""
-        return false
-    state := Critical("On")
-    AppStoreTransactionOwner := String(owner)
-    try {
-        if !AppStoreDb.Exec("BEGIN IMMEDIATE;")
-            throw Error(AppStoreDb.ErrorMsg != "" ? AppStoreDb.ErrorMsg : "无法开始保存")
+AppStoreConnectionIsUsable(db) {
+    global AppStoreDb, AppStoreReady, AppStoreFailed
+    return AppStoreReady && !AppStoreFailed && IsObject(db) && db == AppStoreDb
+}
+
+; A scope owns one write transaction and the short AHK critical section.
+; Repositories keep their SQL and error handling; only this scope may control
+; the live connection's transaction. Unwinding an unfinished scope rolls back.
+class AppStoreTransactionScope {
+    __New(owner) {
+        global AppStoreDb, AppStoreTransactionOwner
+        this.active := false
+        this.owner := String(owner)
+        this.criticalState := Critical("On")
         try {
-            result := callback.Call()
-            if !result
-                throw Error("保存操作未能完成")
-            if !AppStoreDb.Exec("COMMIT;")
-                throw Error("数据库提交失败：" . AppStoreDb.ErrorMsg)
-            return true
-        } catch as transactionError {
-            if !AppStoreDb.Exec("ROLLBACK;")
-                AppStorePoison()
-            throw transactionError
+            if this.owner = "" || !AppStoreConnectionIsUsable(AppStoreDb)
+                throw Error("数据库不可用，请重新启动应用。")
+            if AppStoreTransactionOwner != ""
+                throw Error("已有数据库保存操作，不能嵌套事务。")
+            if !AppStoreDb.Exec("BEGIN IMMEDIATE;")
+                throw Error(AppStoreDb.ErrorMsg != "" ? AppStoreDb.ErrorMsg : "无法开始保存")
+            AppStoreTransactionOwner := this.owner
+            this.active := true
+        } catch as beginError {
+            Critical(this.criticalState)
+            throw beginError
         }
+    }
+
+    Commit() {
+        global AppStoreDb
+        if !this.active || !AppStoreConnectionIsUsable(AppStoreDb)
+            return false
+        if !AppStoreDb.Exec("COMMIT;") {
+            DiagnosticLogAlways("AppStore commit failed owner=" . this.owner
+                . " detail=" . AppStoreDb.ErrorMsg)
+            return false
+        }
+        this.Release()
+        return true
+    }
+
+    Rollback() {
+        global AppStoreDb
+        if !this.active
+            return true
+        try {
+            if !AppStoreDb.Exec("ROLLBACK;") {
+                AppStorePoison()
+                return false
+            }
+            return true
+        } catch {
+            AppStorePoison()
+            return false
+        } finally {
+            this.Release()
+        }
+    }
+
+    Release() {
+        global AppStoreTransactionOwner
+        this.active := false
+        AppStoreTransactionOwner := ""
+        Critical(this.criticalState)
+    }
+
+    __Delete() {
+        this.Rollback()
+    }
+}
+
+AppStoreBegin(owner) {
+    try return AppStoreTransactionScope(owner)
+    catch as beginError {
+        DiagnosticLogAlways("AppStore transaction rejected owner=" . String(owner)
+            . " errorType=" . Type(beginError) . " detail=" . beginError.Message)
+        return 0
+    }
+}
+
+AppStoreTransaction(owner, callback) {
+    transaction := AppStoreBegin(owner)
+    if !IsObject(transaction)
+        return false
+    try {
+        if !callback.Call() || !transaction.Commit()
+            throw Error("数据库保存未能完成")
+        return true
     } catch as storeError {
         DiagnosticLogAlways("AppStore transaction failed owner=" . String(owner)
             . " errorType=" . Type(storeError) . " detail=" . storeError.Message)
         return false
     } finally {
-        AppStoreTransactionOwner := ""
-        Critical(state)
+        transaction.Rollback()
     }
 }
 
@@ -418,6 +485,7 @@ AppStorePoison() {
     AppStoreReady := false
     AppStoreFailed := true
     AppStoreError := "数据库事务回滚失败，需重新启动应用"
+    DiagnosticLogAlways("AppStore connection disabled reason=rollback-failed")
 }
 
 AppStoreShutdown() {

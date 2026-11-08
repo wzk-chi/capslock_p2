@@ -201,7 +201,7 @@ AiChatEnsureWebView() {
         } catch as existingError {
             PanelHostHide(AiChatHost)
             DebugLog("AI chat webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            PanelHostReportFailure("aiChat", "initialize", existingError)
             return false
         }
     }
@@ -224,7 +224,7 @@ AiChatEnsureWebView() {
     } catch as webViewError {
         DebugLog("AI chat webview failed")
         PanelHostHide(AiChatHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        PanelHostReportFailure("aiChat", "initialize", webViewError)
         return false
     }
 }
@@ -541,12 +541,14 @@ AiChatStreamFinished(requestId, answer, success, errorText) {
     } else {
         if AiChatHistory.Length && AiChatHistory[AiChatHistory.Length]["role"] = "user"
             AiChatHistory.Pop()
-        answer := AiChatStreamAnswer
-        if !AiChatStoreSaveAnswer(sessionId, turnId, answer, "failed", true)
-            AiChatRememberPendingSave(sessionId, turnId, answer, "failed")
+        if answer = ""
+            answer := AiChatStreamAnswer
+        status := answer != "" ? "interrupted" : "failed"
+        if !AiChatStoreSaveAnswer(sessionId, turnId, answer, status, true)
+            AiChatRememberPendingSave(sessionId, turnId, answer, status)
         if answer != ""
             AiChatPageCall("finishStreamingMessage", Map(
-                "requestId", requestId, "turnId", turnId, "status", "failed", "answer", answer))
+                "requestId", requestId, "turnId", turnId, "status", status, "answer", answer))
         else
             AiChatPageCall("removeStreamingMessage", Map(
                 "requestId", requestId, "turnId", turnId, "status", "failed"))

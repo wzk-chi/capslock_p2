@@ -10,7 +10,7 @@
   `keyFunc_*` 动作函数；`lib/input/appProfiles.ahk` 按前台 EXE 路径解析应用覆盖；
   `lib/input/customHotkeys.ahk` 注册不占用 CapsLock 层的全局和应用快捷键映射。
   **`keyFunc_*` 是面向用户的配置 API，不能按「有没有代码引用」判断死活**：键位是由 `[Keys]` 按函数名选择并交给
-  `RunConfiguredAction()` 执行的，所以一个 `keyFunc_*` 在全部 AHK 源码和两个 ini 里都可能一次都不出现，却仍然
+  `RunConfiguredAction()` 执行的；动作在 `lib/app/actions.ahk` 声明，宿主白名单、参数规则和页面名称从同一目录派生。一个动作即使没有直接调用，仍然
   是用户可绑定、README 明确指向的接口。同理，回调是以函数引用形式传递的（`OnExit(Shutdown)`），名字后面不带
   括号——用「函数名后面有没有 `(`」来找死代码会把它们全判成死的。
 - **UI 面板全部是 WebView2**：`pages/*.html` 由 AHK 侧通过 `lib/shared/panelHost.ahk` 创建控制器并承载；临时面板的失焦隐藏共用 `PanelHostStartAutoHide()`，使用自定义标题栏的页面再共用 `windowBar.ahk` 的窗口样式切换、拖动、置顶和独立窗口抑制逻辑。
@@ -19,81 +19,66 @@
 - **翻译引擎是 provider 注册表架构**：面板调度只认识注册表，不认识具体引擎（见下）。
 - **LLM 公共层**：`lib/shared/llm.ahk` 统一读取 `[LLM]`、估算并裁剪输入 token、组装
   OpenAI 兼容请求、处理同步响应和 SSE 流，并提供配置提示词模板渲染；翻译与 AI 只提供各自的消息内容和结果处理。
-- **配置分层**：默认值存储在 `data/capslock_p2.db` 的 `cfg_defaults`，个人覆盖存储在 `cfg_values`；运行时只从主数据库加载。当前旧数据已在开发环境手动迁移，程序不提供旧来源导入功能。
+- **配置分层**：默认值存储在 `data/capslock_p2.db` 的 `cfg_defaults`，普通个人覆盖存储在 `cfg_values`，快捷键等动态域使用对应配置表，凭据使用 `cfg_secrets`；运行时只从主数据库加载。当前旧数据已在开发环境手动迁移，程序不提供旧来源导入功能。
 
 ## 目录结构与模块职责
 
-```
-capslock_p2.ahk                    入口：#include 全部 lib 模块
-lib\
-  app/store.ahk                    主数据库连接、全局 schema、事务、默认项版本
-  app/settings_store.ahk           数据库配置、秘密保护、受信任 seed 和一次性导入
-  config.ahk                       schema、数据库配置读取、类型访问与校验
-  core.ahk                         初始化、剪贴板序号/槽位、热串匹配与应用级编排
-  shared/selection.ahk             选区读取、文本规范化与 UI Automation provider
-  clipboard/clipboard_store.ahk   剪贴板历史仓储，借用 AppStore 主库连接与事务
-  clipboard/clipboard_formats.ahk ClipboardAll 白名单格式解析、校验与恢复
-  clipboard/clipboard_history.ahk 历史采集队列、去重、收藏、容量和回放
-  clipboard/clipboard_panel.ahk   剪贴板历史 WebView2 面板与消息协议
-  windows.ahk                      窗口管理、winbind、热键注册
-  keys.ahk / keymap.ahk            keyFunc_* 动作 / 键位方案与键层调度
-  appProfiles.ahk                  EXE 路径应用配置、继承解析与持久化
-  customHotkeys.ahk                [CustomHotkey] 全局和应用快捷键重映射、共享按次触发策略
-  keyRepeat.ahk                    CapsLock+F8 启停、长按单个按键/鼠标按键连发
-  panelHost.ahk                    WebView2 GUI、controller、导航、脚本执行、共用失焦隐藏与隐藏页延迟释放生命周期
-  windowBar.ahk                    WebView2 自定义标题栏、普通窗口切换、拖动、置顶与失焦隐藏抑制
-  icons.ahk                        shell 图标提取（HICON → GDI+ PNG → data URI）
-  qbar.ahk                         qbar 状态与稳定入口
-  qbar_panel.ahk                   qbar 面板生命周期、消息和尺寸
-  qbar_index.ahk                   条目索引、过滤和图标行准备
-  qbar_commands.ahk                命令、运行、网址和 AI 调度
-  qbar_everything.ahk              Everything 共用后端、异步可取消作业、CSV 与 UTF-8 解析
-  everything.ahk                   独立 Everything 页状态、分类查询、结果序号与序列化
-  everything_panel.ahk             Everything WebView2 面板生命周期和消息协议
-  everything_actions.ahk           打开、定位、文件剪贴板和路径复制
-  qbar_navigation.ahk              文件夹导航和路径补全
-  qbar_notes.ahk                   笔记页生命周期、编辑会话和页面协议
-  qbar_notes_store.ahk             安装目录下 SQLite 正文、元数据和笔记功能设置
-  qbar_notes_cycle.ahk             按笔记设置中所选标签循环复制完整正文、内存游标和鼠标旁标题提示
-  qbar_notes_actions.ahk           原始图片文件、WebView2 文件句柄和笔记剪贴板动作
-  translate.ahk                    翻译引擎注册表与共用翻译配置（provider 契约与调度解析）
-  languageDetect.ahk               Windows ELS 候选识别、A/B 方向判断与回退状态
-  llm.ahk                           共用 LLM 配置、token 估算、请求体、同步/SSE 请求与响应解析
-  llmTranslate.ahk                 翻译面板本体 + 翻译提示词 + 各引擎的调度编排
-  youdaoTranslate.ahk              有道智云翻译 API（[TYoudao]，WinHttp + SHA-256 签名）
-  volcengineTranslate.ahk          火山引擎翻译 API（[TVolcengine]，V4 签名、TextList 分批）
-  crypto.ahk                       SHA-256 / HMAC-SHA-256 签名基元（BCrypt）
-  dictionary.ahk                   本地词典卡片（ECDICT 词库只读查询与序号队列）
-  aiChat.ahk                       AI 聊天面板、会话命令和流式请求生命周期
-  aiChat_store.ahk                 AI 会话表仓储，借用 AppStore 连接
-  settings.ahk                     设置面板生命周期、消息路由及辅助操作
-  settings/settings_editor.ahk     单一基线、完整草稿校验、一次提交和最终快照
-  settings/settings_capture.ahk    快捷键及单输入录制、鼠标捕获、取消和按下/松开清理
-  settings/settings_picker.ahk     设置窗口/应用选择器状态、回执和取消恢复
-  WebView2.ahk / ComVar.ahk / Promise.ahk   thqby ahk2_lib WebView2 绑定（保持官方原名）
-  CSQLite.ahk / JSON.ahk           thqby ahk2_lib SQLite / JSON 官方库（保持原名）
-pages\                             WebView2 面板页面
-  qbar.html / qbar-notes.html / everything.html / translate.html / dictionary.html / chat.html / settings.html   WebView2 面板页面
-  chat.js / clipboard-history.js / settings-page.js            大型页面的 classic script 业务逻辑
-  clipboard-view.js                                           剪贴板全文/原图查看小窗、缩放拖动和文件选择
-  theme.css / icons.js / windowbar.js / panel.js / dialog.js / toast.js 共享主题、图标、窗口栏、指针恢复、对话框和 Toast
-  notes-preview.js                   把 Vditor 渲染出的笔记正文拍平成可复制行并算行数预算
-  vendor\                            Vditor（笔记页编辑器与预览渲染）、marked + DOMPurify（AI 回答）、图标、拼音
-  usage.html                        独立「使用介绍」页，浏览器打开（CapsLock+F1），不走 WebView2
-  vendor\                            marked.min.js + DOMPurify（AI 回答 markdown 渲染）
-  resources\                         es.exe、内置 Everything、SQLite3.dll、dictionary.db、图标
-userAHK\                           用户自定义入口（main.ahk，自动加载）
-WebView2\                          WebView2Loader.dll（32/64 位）
-tools\                             Inno Setup 打包配置与脱敏 ini（不参与运行）
-capslock-plus\                     原版 AHK v1 源码（只读参考，禁止修改）
+```text
+capslock_p2.ahk                    入口、AppVersion 和编译版本来源
+lib/
+  app/
+    config.ahk                    配置 schema、主库加载、类型访问和差异计算
+    actions.ahk                   受信任动作目录：函数引用、参数规则、界面名称与分组
+    core.ahk                      初始化、配置应用、热串、剪贴板槽位和应用编排
+    store.ahk                     唯一主库连接、迁移、事务作用域和连接停用
+    settings_store.ahk            默认配置、用户覆盖和 DPAPI 凭据存取
+  input/
+    keys.ahk / keymap.ahk          keyFunc_* 实现、键位方案和 CapsLock 层调度
+    appProfiles.ahk                按 EXE 路径选择应用覆盖、继承和持久化
+    customHotkeys.ahk              全局/应用快捷键注册和共享按次触发策略
+    keyRepeat.ahk                  长按连发和 CapsLock+F8 控制
+  shared/
+    panelHost.ahk                  WebView2 生命周期、导航/消息边界和通用失败提示
+    windowBar.ahk                  窗口栏、拖动、置顶和独立窗口状态
+    selection.ahk                  选区读取、规范化和 UI Automation
+    llm.ahk                        请求构建、异步传输、SSE 解析和完成语义
+    crypto.ahk                     BCrypt 摘要与签名基元
+  features/
+    clipboard/                    历史仓储、采集队列、格式恢复和面板
+    qbar/                         插件定义/宿主/注册表、命令执行、索引、历史与笔记
+    everything/                   独立搜索页、异步作业和文件动作
+    translate/                    引擎注册表、ELS 方向识别、翻译面板与各客户端
+    settings.ahk / settings/       设置面板、草稿保存、录制和窗口/应用选择器
+    aiChat.ahk / aiChat_store.ahk  会话与回答编排、领域仓储
+    dictionary.ahk                 只读词典查询和卡片
+    windows.ahk                    窗口管理和绑定
+  vendor/                         WebView2、ComVar、Promise、CSQLite、JSON 官方库
+pages/
+  *.html                          运行面板和浏览器打开的 usage.html
+  settings-page.js / chat.js / clipboard-history.js   页面业务逻辑
+  clipboard-view.js / notes-preview.js / qbar-search.js  专用展示与交互
+  theme.css / icons.js / windowbar.js / panel.js / dialog.js / toast.js  共享界面能力
+  ui-preview.html / vditor-eval.html  开发预览，不进入安装包
+vendor/                           Vditor、marked、DOMPurify、图标和拼音资源
+resources/                        词典、SQLite3.dll、Everything、图标
+userAHK/                          用户入口 main.ahk
+WebView2/64bit/                    WebView2Loader.dll
+tools/                            Inno Setup 配置与语言资源
+data/                             运行时用户数据，不参与打包
+capslock-plus/                    AHK v1 原版，只读参考
 ```
 
-`math.ahk`、`jsEval.ahk`、`loadScript\` 和 `pages/settings.js` 已退出运行路径，并在本轮用户授权的退役清理中删除；
-它们不属于当前运行时架构。旧诊断脚本同样不作为配置行为验证依据。
+文档中的 `[LLM]`、`[Keys]` 等名称表示数据库配置 scope，不表示运行时 INI。默认值只在建库/升级时写入；现有数据库缺失或配置无效时不能靠代码默认值继续运行。剪贴板服务配置无效时停止采集，不影响浏览已有历史。
+
+各领域仓储保留 SQL 和业务校验，共用 `AppStoreTransactionScope`。`AppStoreBegin(owner)` 返回显式事务作用域，提交后释放，失败或作用域退出时回滚；`AppStoreTransaction(owner, callback)` 用于组合操作。回滚失败会停用主库，缓存的功能连接引用也必须检查 `AppStoreConnectionIsUsable()`。建库阶段的暂存连接由 AppStore 单独持有，Qbar 初始化只在明确的目录同步范围内参与，不再开嵌套事务。
+
+设置页用一次完整基线、草稿与 revision 校验原子提交。凭据快照只含存在/可用状态，查看和复制走独立请求；单条密文不可解密时保留原记录、禁用对应服务，允许用户替换或清除。`keep` 不写回密文，显式 `set/clear` 独立于有效值差异，避免把“当前无法读取”误当成“用户删除”。
+
+原生文件/图片复制与历史回放共用 `ClipboardWriteFormats()`：使用有效宿主 HWND、备份当前内容、转移句柄所有权，并在失败且剪贴板仍属于本次修改时尝试恢复。CF_BITMAP 与全局内存句柄采用各自的释放方法。
 
 ### AI 问答多会话
 
-多会话设计与数据字段见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。`aiChat_store.ahk` 独占 AI 会话表访问并借用 AppStore 连接；`aiChat.ahk` 编排持久化轮次、主回答和首问标题请求；`chat.html` 负责会话侧栏和消息视图。所有会话数据位于 `{app}\data\capslock_p2.db`。面板每次从隐藏状态重新打开时进入空白会话；历史按置顶状态、最后聊天时间倒序排列，支持切换、重命名、置顶、单条删除和多选删除。侧栏默认折叠，收起时保留新建对话和设置两个操作按钮。
+多会话设计与数据字段见 [`2026-10-05-ai-chat-multi-session-design.md`](2026-10-05-ai-chat-multi-session-design.md)。`aiChat_store.ahk` 独占 AI 会话表访问并借用 AppStore 连接；`aiChat.ahk` 编排持久化轮次、主回答和首问标题请求；`chat.html` 负责会话侧栏和消息视图。所有会话数据位于 `{app}\data\capslock_p2.db`。正常完成的轮次才参与后续模型上下文；截断或解析不完整时保留部分回答并标记未完成。SSE 成功响应只保存解析正文和计数，不额外保存全量原始事件。面板每次从隐藏状态重新打开时进入空白会话；历史按置顶状态、最后聊天时间倒序排列，支持切换、重命名、置顶、单条删除和多选删除。侧栏默认折叠，收起时保留新建对话和设置两个操作按钮。
 
 ## 翻译引擎注册表
 
@@ -104,7 +89,7 @@ capslock-plus\                     原版 AHK v1 源码（只读参考，禁止�
 - `TranslateResolve(engine)`：`[TTranslate] engine` 指定 ID 则按指定取（未配置也返回，
   用于显示该引擎的 `notConfigured` 提示）；`auto` 优先第一个已配置的 `llm`，否则按注册顺序
   找第一个 `configured()` 为真的引擎。
-- 调度、设置保存和 API 测试全部按 engine 查表；`TranslateProviders()`
+- 翻译调度和 API 检查按 engine 查表，设置字段由集中配置 schema 和草稿保存流程管理；`TranslateProviders()`
   返回全部已注册引擎供页面逻辑遍历。
 - `[TTranslate]` 的 `mode=fixed` 使用 `targetLanguage`；`mode=bidirectional` 使用 `languageA` 和
   `languageB`。`TranslateResolveDirection()` 在 provider 调用前生成一次请求快照，固定模式直接解析目标，
@@ -117,10 +102,9 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 |---|---|
 | `streaming` | 1 = 流式引擎（面板走逐片段 UI）；0 = 一次性返回 |
 | `configured` | `() -> bool`，引擎是否已配置可用 |
-| `translate` | `(text, onDelta, onFinished, overrides)`，必须调用 `onFinished(answer, success, errorText)` |
-| `test` | 可选的固定 `Hello` API 测试 |
-| `save` | 写该引擎自己的 ini 字段（「已保存但字段仍为空」的警告文案在 `saveEmpty`） |
-| `push` | 返回设置表单字段表，合并进面板的设置推送 |
+| `translate` | `(text, onDelta, onFinished, overrides) -> operation`，除取消外恰好调用一次 `onFinished(answer, success, errorText)`；返回幂等 `Cancel()` |
+| `test` | 可选的固定 `Hello` 连接检查，异步完成并返回可取消操作 |
+| `notConfigured` | 未配置服务时使用的中英文用户提示 |
 
 新引擎的热路径由一条规则概括：**只加一个客户端文件 + 一行注册 + 更新中央设置页的字段元数据**，
 面板与协议层的 `LLMTranslate*` 前缀保持不动。
@@ -129,8 +113,7 @@ provider 契约（`Map` 的字段）见 `lib/features/translate/translate.ahk` �
 
 - **llm**：OpenAI 兼容 `chat/completions` 流式接口，是面板的默认与优先引擎。翻译和 AI
   问答共用 `[LLM]`，问答的专用系统提示词保存在 `[QAI]`。系统提示词要求保留原文的换行与段落结构。
-- **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言使用调度快照并映射到有道代码。同步 WinHttp 请求放到
-  `SetTimer(fn, -1)` 回调外执行；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
+- **youdao**：有道智云 v3，`[TYoudao] appPaidID/appPaidKey`，目标语言使用调度快照并映射到有道代码。复用公共异步传输和可取消操作；签名 = `SHA256(appKey + input + salt + curtime + secret)`，
   `input` 按 ≤20 字符规则截取，`salt` 用 `UuidCreate`。多行文本按行提交、结果按行拼回。
 - **volcengine**：火山引擎机器翻译，`[TVolcengine] accessKey/secretKey/region`，目标语言使用调度快照（region
   默认 `cn-north-1`）。V4 签名与地区相关的部分用 `crypto.ahk` 的 `CryptoSha256Hex` /

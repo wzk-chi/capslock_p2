@@ -4,10 +4,9 @@ global Config := Map()
 global ConfigDefaults := Map()
 global ConfigLoadLastFailure := ""
 
-ConfigLoad(&errorCode := "", &userDocument := 0) {
+ConfigLoad(&errorCode := "") {
     global Config, ConfigDefaults, ConfigLoadLastFailure
     errorCode := ""
-    userDocument := 0
     try {
         if !SettingsStoreLoad(&defaultsCandidate, &overrides)
             return ConfigLoadFail("database_read", &errorCode)
@@ -37,7 +36,6 @@ ConfigLoad(&errorCode := "", &userDocument := 0) {
     }
     ConfigDefaults := defaultsCandidate
     Config := configCandidate
-    userDocument := overrides
     ConfigLoadLastFailure := ""
     return true
 }

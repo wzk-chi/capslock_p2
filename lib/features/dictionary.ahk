@@ -149,7 +149,7 @@ DictionaryEnsureWebView() {
         } catch as existingError {
             PanelHostHide(DictionaryHost)
             DebugLog("dictionary webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            PanelHostReportFailure("dictionary", "initialize", existingError)
             return false
         }
     }
@@ -177,7 +177,7 @@ DictionaryEnsureWebView() {
     } catch as webViewError {
         DebugLog("Dictionary webview failed")
         PanelHostHide(DictionaryHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        PanelHostReportFailure("dictionary", "initialize", webViewError)
         return false
     }
 }

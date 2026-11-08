@@ -166,59 +166,11 @@ NotesDeleteRelativeAsset(relativePath) {
     return !FileExist(path)
 }
 
-; Deletes media files that no note_assets row and no note references.
-;
-; This is the only place that removes user media, and it used to compare
-; note_assets.relative_path verbatim against "media\<file>" while older builds
-; stored an absolute path there, so every image was deleted on the next start.
-; Two things keep that from returning: the stored value is normalized before it
-; is compared, and a file is also kept when its asset id still appears in some
-; note's Markdown, which stays true even if the path column is wrong again.
-NotesStoreCleanOrphans() {
-    global NotesStoreMedia, NotesPendingAssets, NotesDB, NotesDBReady
-    if !IsObject(NotesDB) || !NotesDBReady || !DirExist(NotesStoreMedia)
-        return false
-    referenced := Map()
-    if !NotesStoreQuery("SELECT relative_path FROM note_assets;", &table)
-        return false
-    for row in table.Rows {
-        relative := NotesStoreRelativeAssetPath(row[1])
-        if relative != ""
-            referenced[relative] := true
-    }
-    referencedIds := Map()
-    if NotesStoreQuery("SELECT content_md FROM notes WHERE content_md LIKE '%asset:%';", &noteTable)
-        for row in noteTable.Rows
-            for assetId in NotesAssetIdsFromMarkdown(row[1])
-                referencedIds[assetId] := true
-    pendingPaths := Map()
-    for assetId, asset in NotesPendingAssets
-        pendingPaths[asset["relativePath"]] := true
-    Loop Files, NotesStoreMedia . "\*", "F" {
-        fileName := A_LoopFileName
-        relative := "media\" . fileName
-        if referenced.Has(relative) || pendingPaths.Has(relative)
-            continue
-        if referencedIds.Has(NotesAssetIdFromFileName(fileName))
-            continue
-        try FileDelete(A_LoopFileFullPath)
-    }
-    return true
-}
-
-; Asset ids are generated without dots, so the id is everything before the first
-; one. Legacy rows may also have been stored without an extension at all.
-NotesAssetIdFromFileName(fileName) {
-    dot := InStr(fileName, ".")
-    return dot ? SubStr(fileName, 1, dot - 1) : String(fileName)
-}
-
 ; Puts an image file on the clipboard as a bitmap. A_Clipboard only ever carries
 ; text, so this goes through GDI+ (the token shared with the qbar icon cache)
 ; and SetClipboardData. The HBITMAP handed to the clipboard becomes the system's
 ; to own and must not be deleted here.
 NotesSetClipboardImage(path, reason := "temporary-paste") {
-    global WhichClipboardNow
     if path = "" || !FileExist(path) || !IconGdiplusStart()
         return false
     bitmap := 0
@@ -251,44 +203,10 @@ NotesSetClipboardImage(path, reason := "temporary-paste") {
             pngGlobal := 0
         }
     }
-    if !DllCall("user32\OpenClipboard", "ptr", 0, "int") {
-        DllCall("gdi32\DeleteObject", "ptr", handle, "int")
-        if pngGlobal
-            DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
-        return false
-    }
-    suspendToken := ClipboardSuspendBegin(reason)
-    try {
-        if !DllCall("user32\EmptyClipboard", "int") {
-            DllCall("gdi32\DeleteObject", "ptr", handle, "int")
-            return false
-        }
-        ; CF_BITMAP (2) takes an HBITMAP. CF_DIB (8) is the neighbouring value
-        ; and takes a global memory block holding a BITMAPINFO followed by the
-        ; bits; handing it a bitmap handle makes every reader -- including this
-        ; process' own OnClipboardChange, which snapshots all formats -- treat
-        ; the handle as a pointer and corrupts the heap.
-        if !DllCall("user32\SetClipboardData", "uint", 2, "ptr", handle, "ptr") {
-            DllCall("gdi32\DeleteObject", "ptr", handle, "int")   ; the clipboard refused it, so it is still ours
-            if pngGlobal
-                DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
-            pngGlobal := 0
-            return false
-        }
-        if pngGlobal {
-            if DllCall("user32\SetClipboardData", "uint", pngFormat, "ptr", pngGlobal, "ptr")
-                pngGlobal := 0
-        }
-        sequence := ClipboardSequenceNumber()
-        ClipboardHistoryMarkOwnedSequence(sequence, reason)
-        WhichClipboardNow := 0
-        success := true
-    } finally {
-        DllCall("user32\CloseClipboard", "int")
-        ClipboardSuspendEnd(suspendToken)
-        if pngGlobal
-            DllCall("kernel32\GlobalFree", "ptr", pngGlobal)
-    }
+    entries := [Map("id", 2, "kind", "bitmap", "hGlobal", handle)]
+    if pngGlobal
+        entries.Push(Map("id", pngFormat, "kind", "raw", "hGlobal", pngGlobal))
+    success := ClipboardWriteFormats(entries, reason, &sequence)
     if success && reason = "user-copy" && IsObject(pngArchive)
         ClipboardHistoryPublishExplicit(sequence, pngArchive, reason)
     return success

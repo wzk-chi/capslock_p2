@@ -74,7 +74,7 @@ NotesEnsureWebView() {
             return true
         } catch as existingError {
             PanelHostHide(NotesHost)
-            ShowMsg("笔记页面初始化失败：" . existingError.Message, 5000)
+            PanelHostReportFailure("qbar_notes", "initialize", existingError)
             return false
         }
     }
@@ -96,7 +96,7 @@ NotesEnsureWebView() {
         return true
     } catch as webViewError {
         PanelHostHide(NotesHost)
-        ShowMsg("笔记页面初始化失败：" . webViewError.Message, 5000)
+        PanelHostReportFailure("qbar_notes", "initialize", webViewError)
         return false
     }
 }
@@ -115,7 +115,7 @@ NotesConfigureMediaMapping() {
 NotesNavigationCompleted(host, sender, args) {
     global NotesVisible
     if !PanelHostPageReady(host) {
-        try ShowMsg("笔记页面加载失败（" . args.WebErrorStatus . "）。", 4000)
+        try PanelHostReportFailure("qbar_notes", "navigation", args.WebErrorStatus)
         return
     }
     NotesConfigureMediaMapping()
@@ -220,7 +220,7 @@ NotesSendList(searchText := "", tagName := "", dateFilter := "", selectedDate :=
         NotesDateBefore, NotesCurrentPage, NotesPageSize)
     listError := ""
     if !IsObject(result) {
-        listError := NotesStoreError
+        listError := "无法读取笔记列表，请稍后重试。"
         rows := []
         total := 0
         NotesCurrentPage := 1
@@ -255,6 +255,15 @@ NotesBeginEdit(noteId := "") {
     global NotesEditorCounter, NotesEditorId, NotesEditorNoteId, NotesEditorSaving, NotesSaveResults
     if NotesEditorSaving
         return false
+    note := noteId = "" ? Map(
+        "id", 0, "title", "", "content", "", "pinned", false,
+        "tags", [], "assets", []) : NotesStoreReadNote(noteId, &readStatus)
+    if !IsObject(note) {
+        NotesPost(Map("type", "actionResult", "action", "edit", "ok", JSON.false,
+            "error", readStatus = "missing" ? "笔记已不存在，请刷新列表。"
+                : "无法完整读取笔记，请重试。"))
+        return false
+    }
     if NotesEditorId != ""
         NotesCancelEditorAssets(NotesEditorId)
     NotesEditorCounter += 1
@@ -262,12 +271,6 @@ NotesBeginEdit(noteId := "") {
     NotesEditorNoteId := String(noteId)
     NotesEditorSaving := false
     NotesSaveResults := Map()
-    note := noteId = "" ? Map(
-        "id", 0, "title", "", "content", "", "pinned", false,
-        "tags", [], "assets", []) : NotesStoreReadNote(noteId)
-    if !IsObject(note)
-        note := Map("id", 0, "title", "", "content", "", "pinned", false,
-            "tags", [], "assets", [])
     payload := Map(
         "editorId", NotesEditorId,
         "noteId", note["id"],
@@ -299,9 +302,12 @@ NotesHandleSave(msg) {
     title := LLMMsgField(msg, "title")
     content := LLMMsgField(msg, "content")
     tags := NotesMessageArray(msg, "tags")
-    noteId := LLMMsgField(msg, "noteId")
-    if noteId = ""
-        noteId := NotesEditorNoteId
+    noteId := NotesEditorNoteId
+    if LLMMsgField(msg, "noteId") != noteId {
+        NotesPost(Map("type", "saveResult", "ok", JSON.false, "saveSeq", Integer(saveSeq),
+            "error", "编辑内容已变化，请重新打开笔记。"))
+        return
+    }
     NotesEditorSaving := true
     try {
         savedId := 0
@@ -310,7 +316,7 @@ NotesHandleSave(msg) {
             ? Map("type", "saveResult", "ok", JSON.true,
                 "saveSeq", Integer(saveSeq), "noteId", savedId)
             : Map("type", "saveResult", "ok", JSON.false,
-                "saveSeq", Integer(saveSeq), "error", NotesStoreError)
+                "saveSeq", Integer(saveSeq), "error", "无法保存笔记，修改仍保留。请检查图片和数据目录后重试。")
         NotesSaveResults[key] := result
         NotesPost(result)
     } finally {
@@ -346,10 +352,11 @@ NotesHandleAssetStart(msg) {
             "assetId", asset["id"], "url", NotesAssetUrl(asset["id"], asset["mime"]))
         NotesHost["webView"].PostWebMessageAsJsonWithAdditionalObjects(JSON.stringify(payload, 0), objects)
     } catch as handleError {
+        DebugLog("Notes asset handle failed errorType=" . Type(handleError) . " detail=" . handleError.Message)
         NotesPendingAssets.Delete(asset["id"])
         try FileDelete(asset["path"])
         NotesPost(Map("type", "assetWriteResult", "editorId", editorId, "requestId", requestId,
-            "assetId", asset["id"], "ok", JSON.false, "error", handleError.Message))
+            "assetId", asset["id"], "ok", JSON.false, "error", "无法写入图片，请检查数据目录后重试。"))
     }
 }
 
@@ -434,23 +441,8 @@ NotesHandleMessage(msg) {
         case "tagFilter":
             NotesCurrentTag := LLMMsgField(msg, "tag")
             NotesSendList(NotesPendingSearch, NotesCurrentTag)
-        case "addTag":
-            NotesStoreAddTag(LLMMsgField(msg, "name"))
-            NotesSendTags()
-            NotesSendList(NotesPendingSearch, NotesCurrentTag)
-        case "renameTag":
-            NotesStoreRenameTag(LLMMsgField(msg, "tagId"), LLMMsgField(msg, "name"))
-            NotesSendTags()
-            NotesSendList(NotesPendingSearch, NotesCurrentTag)
-        case "deleteTag":
-            tagId := LLMMsgField(msg, "tagId")
-            cycleTag := NotesStoreGetCycleCopyTag()
-            if NotesStoreDeleteTag(tagId) {
-                if cycleTag["status"] = "ok" && String(cycleTag["id"]) = tagId
-                    NotesCycleResetProgress()
-            }
-            NotesSendTags()
-            NotesSendList(NotesPendingSearch, NotesCurrentTag)
+        case "addTag", "renameTag", "deleteTag":
+            NotesHandleTagMutation(msg)
         case "setCycleCopyTag":
             NotesHandleSetCycleCopyTag(msg)
         case "diagnostic":
@@ -461,6 +453,33 @@ NotesHandleMessage(msg) {
             DebugLog("notes " . LLMMsgField(msg, "stage") . " " . LLMMsgField(msg, "detail"))
         case "hide":
             NotesHide()
+    }
+}
+
+NotesHandleTagMutation(msg) {
+    global NotesCurrentTag, NotesPendingSearch
+    action := LLMMsgField(msg, "type")
+    tagId := action = "addTag" ? "" : LLMMsgField(msg, "tagId")
+    name := Trim(LLMMsgField(msg, "name"))
+    errorText := "无法保存标签，请重试。"
+    if action = "deleteTag" {
+        cycleTag := NotesStoreGetCycleCopyTag()
+        ok := NotesStoreDeleteTag(tagId)
+        if ok {
+            if cycleTag["status"] = "ok" && String(cycleTag["id"]) = tagId
+                NotesCycleResetProgress()
+            NotesCurrentTag := ""
+        }
+    } else {
+        ok := NotesStoreSaveTag(tagId, name, &errorText, &previousName)
+        if ok && action = "renameTag" && NotesCurrentTag = previousName
+            NotesCurrentTag := name
+    }
+    NotesPost(Map("type", "tagResult", "requestId", LLMMsgField(msg, "requestId"),
+        "ok", ok ? JSON.true : JSON.false, "error", ok ? "" : errorText))
+    if ok {
+        NotesSendTags()
+        NotesSendList(NotesPendingSearch, NotesCurrentTag)
     }
 }
 
@@ -575,7 +594,7 @@ NotesHandleDelete(ids) {
     global NotesStoreError, NotesPendingSearch, NotesCurrentTag
     ok := NotesStoreDeleteNotes(ids)
     NotesPost(Map("type", "actionResult", "action", "delete", "ok", ok ? JSON.true : JSON.false,
-        "error", ok ? "" : NotesStoreError))
+        "error", ok ? "" : "无法删除笔记，请重试。"))
     if ok {
         NotesSendTags()
         NotesSendList(NotesPendingSearch, NotesCurrentTag)
@@ -586,7 +605,7 @@ NotesHandlePinned(ids, value) {
     global NotesStoreError, NotesPendingSearch, NotesCurrentTag
     ok := NotesStoreSetPinned(ids, value)
     NotesPost(Map("type", "actionResult", "action", "pin", "ok", ok ? JSON.true : JSON.false,
-        "error", ok ? "" : NotesStoreError))
+        "error", ok ? "" : "无法更新置顶状态，请重试。"))
     if ok
         NotesSendList(NotesPendingSearch, NotesCurrentTag)
 }

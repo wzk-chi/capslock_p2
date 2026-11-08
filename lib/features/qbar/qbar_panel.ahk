@@ -10,7 +10,7 @@ QbarEnsureWebView() {
         } catch as existingError {
             PanelHostHide(QbarHost)
             DebugLog("qbar webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            PanelHostReportFailure("qbar_panel", "initialize", existingError)
             return false
         }
     }
@@ -32,7 +32,7 @@ QbarEnsureWebView() {
         return true
     } catch as webViewError {
         PanelHostHide(QbarHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        PanelHostReportFailure("qbar_panel", "initialize", webViewError)
         return false
     }
 }
@@ -45,7 +45,7 @@ QbarNavigationCompleted(host, sender, args) {
         QbarPageQueryId := 0
         QbarCurrentQueryText := ""
         QbarInvalidateResultSnapshot()
-        try ShowMsg("Qbar page failed to load (" . args.WebErrorStatus . ").", 4000)
+        try PanelHostReportFailure("qbar_panel", "navigation", args.WebErrorStatus)
         return
     }
     QbarQuerySeq += 1

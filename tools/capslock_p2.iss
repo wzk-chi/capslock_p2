@@ -5,12 +5,17 @@
 ; data\capslock_p2.db. Legacy INI files are never packaged.
 
 #define MyAppName "capslock_p2"
-#define MyAppVersion "0.3.3"
-#define ProjectRoot "D:\develop\project\cpaslock_p2"
+#ifndef ProjectRoot
+#define ProjectRoot AddBackslash(SourcePath) + ".."
+#endif
 #define PayloadDir ProjectRoot + "\build\payload"
+#define MyAppVersion GetStringFileInfo(PayloadDir + "\capslock_p2.exe", "ProductVersion")
+#if MyAppVersion == ""
+#error The payload must have a ProductVersion. Compile capslock_p2.ahk first.
+#endif
 #define OutputDir ProjectRoot + "\dist"
 #ifndef OutputBaseFilename
-#define OutputBaseFilename "capslock_p2-setup-0.3.3"
+#define OutputBaseFilename "capslock_p2-setup-" + MyAppVersion
 #endif
 
 [Setup]
@@ -46,11 +51,16 @@ Name: "chinesesimp"; MessagesFile: "{#ProjectRoot}\tools\Languages\ChineseSimpli
 ; Compiled AHK v2 runtime.
 Source: "{#PayloadDir}\capslock_p2.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; Live WebView2 panels and the browser-opened usage page. The retired
-; settings.js overlay was deleted and is not part of the release payload.
-; vditor-eval.html is a local throwaway harness for trying out the Markdown
-; editor and must never ship, so it is excluded from the html glob.
-Source: "{#ProjectRoot}\pages\*.html"; DestDir: "{app}\pages"; Flags: ignoreversion; Excludes: "vditor-eval.html"
+; Only runtime pages ship. Development previews remain in the source tree.
+Source: "{#ProjectRoot}\pages\qbar.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\qbar-notes.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\everything.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\translate.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\dictionary.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\chat.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\settings.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\clipboard-history.html"; DestDir: "{app}\pages"; Flags: ignoreversion
+Source: "{#ProjectRoot}\pages\usage.html"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\theme.css"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\toast.js"; DestDir: "{app}\pages"; Flags: ignoreversion
 Source: "{#ProjectRoot}\pages\dialog.js"; DestDir: "{app}\pages"; Flags: ignoreversion

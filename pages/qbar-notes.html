@@ -207,6 +207,19 @@ button.preview-block:hover, button.preview-block:focus-visible { background: var
 <script>
 WindowBar.init();
 const post = payload => { if (window.chrome && chrome.webview) chrome.webview.postMessage(JSON.stringify(payload)); };
+let tagRequestSeq = 0;
+const tagRequests = new Map();
+function saveTag(payload) {
+  return new Promise((resolve, reject) => {
+    const requestId = `tag-${++tagRequestSeq}`;
+    const timer = setTimeout(() => {
+      tagRequests.delete(requestId);
+      reject(new Error('暂未收到保存结果，请检查标签列表后重试。'));
+    }, 10000);
+    tagRequests.set(requestId, { resolve, reject, timer });
+    post({ ...payload, requestId });
+  });
+}
 window.setPinned = value => WindowBar.setPinned(value);
 window.setNativeWindowMode = value => WindowBar.setNativeWindowMode(value);
 const $ = id => document.getElementById(id);
@@ -773,13 +786,16 @@ function toggleMulti() { state.multi = !state.multi; if (!state.multi) state.sel
 async function updateTag(action) {
   const current = state.currentTag && state.currentTag !== '__none__' ? state.tags.find(tag => tag.name === state.currentTag) : null;
   if (action === 'add') {
-    const name = await AppDialog.prompt({ title: '添加标签', label: '标签名称' });
-    if (name !== null && name.trim()) post({ type: 'addTag', name: name.trim() });
+    await AppDialog.prompt({ title: '添加标签', label: '标签名称',
+      validate: value => value.trim() ? '' : '请输入标签名称。',
+      onConfirm: name => saveTag({ type: 'addTag', name: name.trim() }) });
   } else if (action === 'rename' && current) {
-    const name = await AppDialog.prompt({ title: '修改标签', label: '标签名称', value: current.name });
-    if (name !== null && name.trim()) post({ type: 'renameTag', tagId: current.id, name: name.trim() });
+    await AppDialog.prompt({ title: '修改标签', label: '标签名称', value: current.name,
+      validate: value => value.trim() ? '' : '请输入标签名称。',
+      onConfirm: name => saveTag({ type: 'renameTag', tagId: current.id, name: name.trim() }) });
   } else if (action === 'delete' && current && await AppDialog.confirm({ title: '删除标签', message: `删除标签“${current.name}”？`, confirmText: '删除', tone: 'danger' })) {
-    post({ type: 'deleteTag', tagId: current.id });
+    try { await saveTag({ type: 'deleteTag', tagId: current.id }); }
+    catch (error) { toast(error.message, 'error'); }
   }
 }
 async function deleteSelectedNotes() {
@@ -894,6 +910,15 @@ const handleHostMessage = event => {
     return;
   }
   if (data.type === 'openEditor') { openEditor(data); return; }
+  if (data.type === 'tagResult') {
+    const pending = tagRequests.get(String(data.requestId));
+    if (!pending) return;
+    tagRequests.delete(String(data.requestId));
+    clearTimeout(pending.timer);
+    if (data.ok) pending.resolve();
+    else pending.reject(new Error(data.error || '无法保存标签，请重试。'));
+    return;
+  }
   if (data.type === 'assetWriteResult') {
     const pending = state.pendingUploads.get(String(data.requestId));
     if (!pending) return;

@@ -675,6 +675,7 @@ LLMStartChatStream(body, endpoint, authHeaderName, authHeaderValue, timeoutMs, o
         "transportError", "",
         "lineBytes", [],
         "eventData", "",
+        "isSse", false,
         "rawBody", "",
         "errorBody", "",
         "text", "",
@@ -1071,11 +1072,17 @@ LLMStreamLine(state, line) {
     if SubStr(line, 1, 1) = ":"
         return
     if SubStr(line, 1, 5) = "data:" {
+        if !state["isSse"] {
+            state["isSse"] := true
+            state["rawBody"] := ""
+        }
         piece := SubStr(line, 6)
         if SubStr(piece, 1, 1) = " "
             piece := SubStr(piece, 2)
         state["eventData"] .= (state["eventData"] = "" ? "" : "`n") . piece
-    } else {
+    } else if !state["isSse"] && !RegExMatch(line, "^(event|id|retry):") {
+        ; Keep a complete body only for a server returning ordinary JSON.
+        ; Successful SSE is already represented by parsed text and counters.
         state["rawBody"] .= line . "`n"
     }
 }
@@ -1083,13 +1090,12 @@ LLMStreamLine(state, line) {
 LLMStreamEvent(state, data) {
     data := Trim(data)
     state["sseEvents"] += 1
-    state["rawBody"] .= data . "`n"
     if data = "[DONE]" {
         state["done"] := true
         return
     }
     if state["status"] < 200 || state["status"] >= 300 {
-        state["errorBody"] .= data
+        state["errorBody"] .= SubStr(data, 1, Max(0, 16384 - StrLen(state["errorBody"])))
         return
     }
     parsed := LLMResponseParse(data)
@@ -1097,6 +1103,11 @@ LLMStreamEvent(state, data) {
         state["parseErrors"] += 1
         DebugLog("LLM stream SSE JSON parse failed id=" . state["id"]
             . " event=" . state["sseEvents"] . " chars=" . StrLen(data))
+        return
+    }
+    if parsed.Has("error") && (IsObject(parsed["error"]) || String(parsed["error"]) != "") {
+        state["parseErrors"] += 1
+        DebugLog("LLM stream service error event id=" . state["id"])
         return
     }
     finishReason := LLMStreamFinishReason(parsed)
@@ -1165,17 +1176,40 @@ LLMStreamFinalizeResponse(state) {
         LLMStreamComplete(state, false, errorText)
         return
     }
-    if state["text"] = "" {
+    if state["text"] = "" && !state["isSse"] {
         ; Non-streaming body despite stream:true — read the content field
         ; from the raw response.
-        fallback := LLMStreamDeltaText(state["rawBody"])
+        parsed := LLMResponseParse(state["rawBody"])
+        fallback := IsObject(parsed) ? LLMStreamDeltaTextParsed(parsed) : ""
         if fallback != "" {
+            state["finishReason"] := LLMStreamFinishReason(parsed)
             state["fallbackUsed"] := true
             state["text"] := fallback
             try state["onDelta"].Call(fallback)
         }
     }
-    if state["text"] = "" {
+    reason := state["finishReason"]
+    if state["parseErrors"] || state["lineErrors"] || state["skippedBytes"] {
+        LLMStreamComplete(state, false, LLMText(
+            "The response could not be read completely. Please try again.",
+            "未能完整读取回答，已保留收到的内容，请重试。"))
+    } else if reason != "" && reason != "stop" {
+        switch reason {
+            case "length":
+                message := LLMText("The answer reached its length limit. Ask to continue or increase the output limit.",
+                    "回答达到长度上限。可以要求继续，或在设置中调高输出上限。")
+            case "content_filter":
+                message := LLMText("The service restricted this answer. Rephrase your request and try again.",
+                    "服务限制了这次回答，请调整提问后重试。")
+            case "tool_calls", "function_call":
+                message := LLMText("The model requested an unsupported tool. Choose a text response model and try again.",
+                    "模型请求调用工具，当前无法完成。请选择文本回答模型后重试。")
+            default:
+                message := LLMText("The answer did not finish normally. Please try again.",
+                    "回答未正常完成，已保留收到的内容，请重试。")
+        }
+        LLMStreamComplete(state, false, message)
+    } else if state["text"] = "" {
         DebugLog("LLM stream no content id=" . state["id"]
             . " bodyShape=" . LLMStreamPayloadShape(state["rawBody"]))
         LLMStreamComplete(state, false, "The streaming response did not contain content.")

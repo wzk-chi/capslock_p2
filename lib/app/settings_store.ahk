@@ -66,10 +66,11 @@ SettingsStoreParseScalar(jsonValue) {
     return String(value[1])
 }
 
-SettingsStoreLoad(&defaults, &overrides) {
+SettingsStoreLoad(&defaults, &overrides, &secretStates := 0) {
     global AppStoreDb
     defaults := Map()
     overrides := Map()
+    secretStates := Map()
     if !AppStoreInit()
         return false
     if !AppStoreDb.GetTable("SELECT scope,key,value_json FROM cfg_defaults ORDER BY scope,key;", &rows)
@@ -99,13 +100,17 @@ SettingsStoreLoad(&defaults, &overrides) {
     if !AppStoreDb.GetTable("SELECT scope,key,hex(protected_blob) FROM cfg_secrets;", &rows)
         throw Error(AppStoreDb.ErrorMsg != "" ? AppStoreDb.ErrorMsg : "无法读取凭据")
     for row in rows.Rows {
+        available := true
         try secret := SettingsStoreUnprotectHex(String(row[3]))
         catch as decryptError {
             DiagnosticLogAlways("Settings credential unavailable scope=" . String(row[1])
                 . " key=" . String(row[2]) . " errorType=" . Type(decryptError))
-            throw Error("无法读取已保存的凭据 " . String(row[1]) . "/" . String(row[2]))
+            available := false
+            secret := ""
         }
         SettingsStorePut(overrides, String(row[1]), String(row[2]), secret)
+        SettingsStorePut(secretStates, String(row[1]), String(row[2]),
+            available ? "available" : "unavailable")
     }
     return true
 }
@@ -147,35 +152,7 @@ SettingsStoreParseAction(actionText, &actionKey := "", &args := 0) {
 }
 
 SettingsStoreValidateActionArguments(actionKey, args) {
-    static optionalCount := Map("keyFunc_moveLeft", true, "keyFunc_moveRight", true,
-        "keyFunc_moveUp", true, "keyFunc_moveDown", true, "keyFunc_moveWordLeft", true,
-        "keyFunc_moveWordRight", true, "keyFunc_selectUp", true, "keyFunc_selectDown", true,
-        "keyFunc_selectLeft", true, "keyFunc_selectRight", true, "keyFunc_selectWordLeft", true,
-        "keyFunc_selectWordRight", true, "keyFunc_pageMoveLineUp", true, "keyFunc_pageMoveLineDown", true)
-    static textArguments := Map("keyFunc_send", true, "keyFunc_run", true, "keyFunc_sendChar", true)
-    if optionalCount.Has(actionKey) {
-        if !args.Length
-            return true
-        if args.Length != 1 || !RegExMatch(Trim(args[1]), "^\d+$")
-            return false
-        try argumentNumber := Integer(args[1])
-        catch
-            return false
-        return argumentNumber >= 1 && argumentNumber <= 10000
-    }
-    if actionKey = "keyFunc_winbind_activate" || actionKey = "keyFunc_winbind_binding" {
-        if args.Length != 1 || !RegExMatch(Trim(args[1]), "^\d+$")
-            return false
-        try argumentNumber := Integer(args[1])
-        catch
-            return false
-        return argumentNumber >= 1 && argumentNumber <= 10
-    }
-    if textArguments.Has(actionKey)
-        return args.Length = 1
-    if actionKey = "keyFunc_doubleChar"
-        return args.Length >= 1 && args.Length <= 2
-    return args.Length = 0
+    return ActionArgumentsValid(actionKey, args)
 }
 
 SettingsStoreComposeAction(actionKey, argsJson) {

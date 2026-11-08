@@ -7,8 +7,8 @@
 
 global QbarStoreDb := 0
 global QbarStoreReady := false
+global QbarStoreInitializing := false
 global QbarStoreError := ""
-global QbarStoreSchemaVersion := 1
 global QbarStoreRoot := A_ScriptDir . "\data"
 
 QbarStorePath() => AppStorePath()
@@ -16,23 +16,26 @@ QbarStorePath() => AppStorePath()
 ; AppStore owns the surrounding initialization/upgrade transaction. Reuse the
 ; catalog writer without publishing its candidate or opening another connection.
 QbarStoreSyncCatalog(db) {
-    global QbarStoreDb, QbarStoreReady
+    global QbarStoreDb, QbarStoreReady, QbarStoreInitializing
     previousDb := QbarStoreDb
     previousReady := QbarStoreReady
+    previousInitializing := QbarStoreInitializing
     try {
         QbarStoreDb := db
         QbarStoreReady := true
+        QbarStoreInitializing := true
         return QbarPluginHostRegisterCatalog(&candidate, true, true)
     } finally {
         QbarStoreDb := previousDb
         QbarStoreReady := previousReady
+        QbarStoreInitializing := previousInitializing
     }
 }
 
 QbarStoreInit() {
     global QbarStoreDb, QbarStoreReady, QbarStoreError, AppStoreDb, AppStoreError
     if QbarStoreReady && IsObject(QbarStoreDb)
-        return true
+        return AppStoreConnectionIsUsable(QbarStoreDb)
     try {
         if !AppStoreInit()
             throw Error(AppStoreError != "" ? AppStoreError : "无法初始化应用数据库")
@@ -44,7 +47,8 @@ QbarStoreInit() {
         QbarStoreDb := 0
         QbarStoreReady := false
         DebugLog("Qbar AppStore attach failed detail=" . initError.Message)
-        try ShowMsg(QbarStoreError, 8000)
+        try ShowMsg(LLMText("Tool data is unavailable. Check the data folder and restart the app.",
+            "工具数据暂时不可用，请检查数据目录后重新启动应用。"), 8000)
         return false
     }
 }
@@ -150,22 +154,17 @@ QbarStoreClose() {
     QbarStoreReady := false
 }
 
-QbarStoreBegin() {
-    return QbarStoreExec("BEGIN IMMEDIATE;")
-}
-
-QbarStoreCommit() {
-    return QbarStoreExec("COMMIT;")
-}
-
-QbarStoreRollback() {
-    return QbarStoreExec("ROLLBACK;")
+QbarStoreConnectionIsUsable() {
+    global QbarStoreDb, QbarStoreReady, QbarStoreInitializing
+    ; Only the catalog writer may use the unpublished creation connection.
+    return QbarStoreReady && IsObject(QbarStoreDb)
+        && (QbarStoreInitializing || AppStoreConnectionIsUsable(QbarStoreDb))
 }
 
 QbarStoreExec(sql) {
     global QbarStoreDb, QbarStoreReady, QbarStoreError
     QbarStoreError := ""
-    if !QbarStoreReady || !IsObject(QbarStoreDb) {
+    if !QbarStoreConnectionIsUsable() {
         QbarStoreError := "Qbar 数据库尚未初始化"
         return false
     }
@@ -180,7 +179,7 @@ QbarStoreRows(sql, &table := 0) {
     global QbarStoreDb, QbarStoreReady, QbarStoreError
     table := 0
     QbarStoreError := ""
-    if !QbarStoreReady || !IsObject(QbarStoreDb) {
+    if !QbarStoreConnectionIsUsable() {
         QbarStoreError := "Qbar 数据库尚未初始化"
         return false
     }

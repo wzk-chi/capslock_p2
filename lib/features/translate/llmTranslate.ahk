@@ -92,7 +92,7 @@ LLMTranslateEnsureWebView() {
         } catch as existingError {
             PanelHostHide(LLMTranslateHost)
             DebugLog("translate webview failed")
-            ShowMsg("WebView2 initialization failed: " . existingError.Message, 5000)
+            PanelHostReportFailure("llmTranslate", "initialize", existingError)
             return false
         }
     }
@@ -118,7 +118,7 @@ LLMTranslateEnsureWebView() {
     } catch as webViewError {
         DebugLog("translate webview failed")
         PanelHostHide(LLMTranslateHost)
-        ShowMsg("WebView2 initialization failed: " . webViewError.Message, 5000)
+        PanelHostReportFailure("llmTranslate", "initialize", webViewError)
         return false
     }
 }
@@ -201,8 +201,9 @@ LLMTranslateSetResult(text) {
     LLMTranslateExec("window.setResult(" . LLMJsonQuote(text) . ");window.setLoading(false);")
 }
 
-LLMTranslateSetError(text) {
-    LLMTranslateExec("window.setError(" . LLMJsonQuote(text) . ");window.setLoading(false);")
+LLMTranslateSetError(text, partial := "") {
+    LLMTranslateExec("window.setError(" . LLMJsonQuote(text) . ","
+        . LLMJsonQuote(partial) . ");window.setLoading(false);")
 }
 
 LLMTranslateSetDirection(sourceLanguage, targetLanguage, manual := false, fallback := false) {
@@ -389,7 +390,7 @@ LLMTranslateStreamFinished(requestId, operation, answer, success, errorText) {
                 answer := LLMTranslateStreamAnswer
             LLMTranslateSetResult(answer)
         } else {
-            LLMTranslateSetError(LLMContextLimitHint(errorText))
+            LLMTranslateSetError(LLMContextLimitHint(errorText), answer != "" ? answer : LLMTranslateStreamAnswer)
         }
         LLMTranslateRequestRunning := false
     } finally {

@@ -18,6 +18,10 @@ capslock_p2.exe + 动态资源
 - Inno Setup 配置：`tools/capslock_p2.iss`
 - 运行设置和用户数据：首次启动时在安装目录创建 `data\capslock_p2.db`
 
+版本只在入口的 `AppVersion` 声明，紧随的 Ahk2Exe `SetVersion` 指令从该行提取版本，同时设置 EXE 的文件和产品版本；两行必须相邻。安装配置从已编译 EXE 的 ProductVersion 生成显示版本和默认输出名，不再单独维护版本常量。更改版本后必须先重新编译主程序。
+
+`tools/capslock_p2.iss` 默认从自身位置推导项目根目录，也可用 ISCC 的 `/DProjectRoot=...` 参数覆盖。HTML 与 JS 都显式列出运行资源，开发预览 `ui-preview.html` 和 `vditor-eval.html` 不参与打包。
+
 `tools/capslock_p2.iss` 不参与程序运行。可信默认设置在首次初始化时写入主数据库；安装包不携带配置 INI 或用户数据。
 
 ## 构建顺序

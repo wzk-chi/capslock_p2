@@ -182,7 +182,7 @@ ClipboardHistoryEnsureWebView() {
         } catch as existingError {
             DebugLog("ClipboardHistoryEnsureWebView existing failed: " . existingError.Message)
             PanelHostHide(ClipboardHistoryHost)
-            ShowMsg("剪贴板历史页面初始化失败：" . existingError.Message, 5000)
+            PanelHostReportFailure("clipboard_panel", "initialize", existingError)
             return false
         }
     }
@@ -207,7 +207,7 @@ ClipboardHistoryEnsureWebView() {
     } catch as webViewError {
         DebugLog("ClipboardHistoryEnsureWebView create failed: " . webViewError.Message)
         PanelHostHide(ClipboardHistoryHost)
-        ShowMsg("剪贴板历史页面初始化失败：" . webViewError.Message, 5000)
+        PanelHostReportFailure("clipboard_panel", "initialize", webViewError)
         return false
     }
 }
@@ -231,7 +231,7 @@ ClipboardHistoryNavigationCompleted(host, sender, args) {
     ClipboardHistorySentSessionId := ""
     ClipboardHistoryPageReady := PanelHostPageReady(host)
     if !ClipboardHistoryPageReady {
-        try ShowMsg("剪贴板历史页面加载失败（" . args.WebErrorStatus . "）。", 4000)
+        try PanelHostReportFailure("clipboard_panel", "navigation", args.WebErrorStatus)
         return
     }
     WindowBarSyncPageState(host)

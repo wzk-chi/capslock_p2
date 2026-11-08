@@ -206,7 +206,7 @@
           finish({ action: descriptor.id, value });
         }).catch(error => {
           handlingAction = false;
-          api.setError(error && error.message ? error.message : '操作失败。');
+          if (!settled) api.setError(error && error.message ? error.message : '操作失败。');
         });
     }
 
@@ -304,7 +304,7 @@
         field.append(label, input);
         root.appendChild(field);
       },
-      onAction(id, api) {
+      async onAction(id, api) {
         if (id !== 'confirm') return;
         const value = input ? input.value : '';
         if (typeof options.validate === 'function') {
@@ -313,6 +313,11 @@
             api.setError(error);
             return api.keepOpen();
           }
+        }
+        if (typeof options.onConfirm === 'function') {
+          api.setBusy(true, options.busyText || '保存中…', 'confirm');
+          try { await options.onConfirm(value); }
+          finally { if (api.isOpen()) api.setBusy(false, '', 'confirm'); }
         }
         return value;
       }

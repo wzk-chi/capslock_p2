@@ -522,9 +522,9 @@ window.setResult = function (text) {
   result.focus();
 };
 
-window.setError = function (text) {
+window.setError = function (text, partial = '') {
   cancelPendingStream();
-  result.value = '';
+  result.value = String(partial);
   updateCopyButtons();
   status.textContent = text || t('failed');
   status.dataset.state = 'error';

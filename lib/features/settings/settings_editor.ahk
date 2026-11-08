@@ -5,7 +5,7 @@ global SettingsEditSessionId := ""
 global SettingsEditGeneration := 0
 global SettingsLastRequestId := 0
 
-SettingsSectionSnapshot(section, document) {
+SettingsSectionSnapshot(section, document, secretStates) {
     result := Map()
     values := document[section]
     for key, value in values {
@@ -13,7 +13,9 @@ SettingsSectionSnapshot(section, document) {
             continue
         field := ConfigField(section, key)
         if IsObject(field) && field.Has("type") && field["type"] = "secret" {
-            result[key] := Map("op", "keep", "present", String(value) != "" ? JSON.true : JSON.false)
+            state := secretStates.Has(section) ? secretStates[section].Get(key, "missing") : "missing"
+            result[key] := Map("op", "keep", "present", state != "missing" ? JSON.true : JSON.false,
+                "available", state != "unavailable" ? JSON.true : JSON.false)
             continue
         }
         result[key] := String(value)
@@ -97,7 +99,7 @@ SettingsCaptureEditData() {
 }
 
 SettingsReadCurrentData() {
-    if !SettingsStoreLoad(&defaults, &overrides) || !SettingsStoreValidateDefaultSet(defaults, &missing)
+    if !SettingsStoreLoad(&defaults, &overrides, &secretStates) || !SettingsStoreValidateDefaultSet(defaults, &missing)
         throw Error("无法读取完整的默认设置")
     effective := ConfigCloneDocument(defaults)
     ConfigOverlay(effective, overrides)
@@ -118,7 +120,7 @@ SettingsReadCurrentData() {
         throw Error("无法读取工具设置")
     plugins := QbarRegistryPluginSnapshot(registry)
 
-    return Map("effective", effective, "profiles", AppProfilesSnapshot(profiles),
+    return Map("effective", effective, "secretStates", secretStates, "profiles", AppProfilesSnapshot(profiles),
         "bindings", SettingsBindingSnapshot(bindings), "plugins", plugins,
         "settingsRevision", AppStoreSettingsRevision())
 }
@@ -127,7 +129,7 @@ SettingsBuildSnapshot(data) {
     global SettingsPendingPage, SettingsPendingToast, SettingsEditSessionId, AppVersion
     sections := Map(), tools := [], toolMetadata := Map()
     for section in ConfigSchemaSections()
-        sections[section] := SettingsSectionSnapshot(section, data["effective"])
+        sections[section] := SettingsSectionSnapshot(section, data["effective"], data["secretStates"])
     for plugin in data["plugins"] {
         commandEnabled := false
         for command in plugin["commands"]
@@ -162,7 +164,7 @@ SettingsBuildSnapshot(data) {
         "languageCatalog", TranslateLanguageCatalogSnapshot(), "page", SettingsPendingPage,
         "toast", SettingsPendingToast, "schema", schema,
         "keyRepeatStatus", KeyRepeatStatusSnapshot(),
-        "customHotkeyActions", CustomHotkeyBuiltinActionSnapshot(), "bindingModes", WindowBindingModes(),
+        "actionCatalog", ActionCatalogSnapshot(), "bindingModes", WindowBindingModes(),
         "config", Map("sections", sections, "profiles", data["profiles"], "plugins", tools, "bindings", bindings))
 }
 
@@ -180,10 +182,11 @@ SettingsBuildSaveReceipt() {
     return Map("snapshot", SettingsBuildSnapshot(SettingsEditData))
 }
 
-SettingsNormalizeDraft(raw, &document, &errorText) {
+SettingsNormalizeDraft(raw, &document, &errorText, &secretChanges := 0) {
     global SettingsEditData
     errorText := ""
     document := Map()
+    secretChanges := Map()
     if Type(raw) != "Map" {
         errorText := "设置内容无效，请重新打开设置。"
         return false
@@ -195,6 +198,7 @@ SettingsNormalizeDraft(raw, &document, &errorText) {
         }
         document[section] := Map()
         for key, value in raw[section] {
+            secretOp := "keep"
             field := ConfigField(section, key)
             if IsObject(field) && field["type"] = "secret" {
                 if Type(value) != "Map" || !value.Has("op") {
@@ -205,8 +209,10 @@ SettingsNormalizeDraft(raw, &document, &errorText) {
                     case "keep":
                         value := SettingsEditData["effective"][section][key]
                     case "clear":
+                        secretOp := "clear"
                         value := ""
                     case "set":
+                        secretOp := "set"
                         if !value.Has("value") || Type(value["value"]) != "String" {
                             errorText := "密码修改信息无效。"
                             return false
@@ -234,6 +240,8 @@ SettingsNormalizeDraft(raw, &document, &errorText) {
                 }
             }
             document[section][key] := normalized
+            if secretOp != "keep"
+                SettingsStorePut(secretChanges, section, key, normalized)
         }
         definition := ConfigSchema()[section]
         if definition["kind"] = "keys"
@@ -327,7 +335,7 @@ SettingsApplyDraft(message) {
         for domain in ["sections", "profiles", "bindings", "plugins"]
             if !draft.Has(domain)
                 throw Error("设置草稿缺少必要分组")
-        if !SettingsNormalizeDraft(draft["sections"], &document, &errorText)
+        if !SettingsNormalizeDraft(draft["sections"], &document, &errorText, &secretChanges)
             || !AppProfilesNormalizeDraft(draft["profiles"], &profiles, &errorText)
             || !SettingsValidateCapsF8ProfileDraft(profiles, &errorText)
             || !SettingsValidateBindingDraft(draft["bindings"], &bindings, &errorText)
@@ -336,6 +344,9 @@ SettingsApplyDraft(message) {
             return
         }
         changes := ConfigEffectiveDiff(SettingsEditData["effective"], document)
+        ; Explicit clear/set must survive an effective-value diff, including
+        ; clearing an unreadable secret whose runtime value is already empty.
+        ConfigOverlay(changes, secretChanges)
         if JSON.stringify(profiles, 0) = JSON.stringify(SettingsEditData["profiles"], 0)
             profiles := 0
         commitError := ""

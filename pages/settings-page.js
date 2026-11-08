@@ -573,9 +573,11 @@ function writeControl(node) {
   const secret = isSecretSetting(node.dataset.section, node.dataset.key);
   if (secret) {
     const saved = value.op === 'keep' && value.present;
+    const unavailable = saved && value.available === false;
     node.type = 'password';
-    node.placeholder = saved ? '••••••••••••' : '';
+    node.placeholder = unavailable ? '无法读取，请重新填写或清除' : saved ? '••••••••••••' : '';
     node.dataset.secretSaved = saved ? 'true' : 'false';
+    node.dataset.secretUnavailable = unavailable ? 'true' : 'false';
     node.dataset.secretEdited = value.op === 'keep' ? 'false' : 'true';
     node.dataset.secretLoaded = 'false';
     node.value = value.op === 'set' ? value.value : '';
@@ -654,6 +656,10 @@ function updateSecretActions(input) {
   [view, copy, clear].forEach(button => {
     if (button) button.disabled = !isLoaded() || isSaving() || !hasValue || pending;
   });
+  if (input.dataset.secretUnavailable === 'true' && input.dataset.secretEdited !== 'true') {
+    if (view) view.disabled = true;
+    if (copy) copy.disabled = true;
+  }
   if (view) {
     const revealed = input.type === 'text';
     view.setAttribute('aria-label', revealed ? '隐藏密钥' : '查看密钥');
@@ -714,7 +720,8 @@ function lockDisplayedSecrets() {
     input.value = '';
     input.type = 'password';
     input.dataset.secretLoaded = 'false';
-    input.placeholder = input.dataset.secretSaved === 'true' ? '••••••••••••' : '';
+    input.placeholder = input.dataset.secretUnavailable === 'true'
+      ? '无法读取，请重新填写或清除' : input.dataset.secretSaved === 'true' ? '••••••••••••' : '';
     updateSecretActions(input);
   });
 };
@@ -746,39 +753,20 @@ const SHORTCUT_GROUPS = [
 function shortcutActionName(action) {
   return String(action || '').trim().replace(/\s*\(.*/, '').toLowerCase();
 }
-const ACTION_LABELS = {
-  '@block': '禁用动作', '@native': '保留应用原键',
-  keyFunc_doNothing: '无操作', keyFunc_toggleCapsLock: '切换大小写', keyFunc_send: '自定义', keyFunc_run: '运行程序',
-  keyFunc_mouseSpeedIncrease: '提高鼠标速度', keyFunc_mouseSpeedDecrease: '降低鼠标速度',
-  keyFunc_moveLeft: '向左移动', keyFunc_moveRight: '向右移动', keyFunc_moveUp: '向上移动', keyFunc_moveDown: '向下移动',
-  keyFunc_moveWordLeft: '按词向左移动', keyFunc_moveWordRight: '按词向右移动',
-  keyFunc_backspace: '退格', keyFunc_delete: '删除字符', keyFunc_deleteAll: '删除全部', keyFunc_deleteWord: '删除单词',
-  keyFunc_forwardDeleteWord: '向后删除单词', keyFunc_end: '移动到行尾', keyFunc_home: '移动到行首',
-  keyFunc_moveToPageBeginning: '移动到页面开头', keyFunc_moveToPageEnd: '移动到页面末尾', keyFunc_deleteLine: '删除整行',
-  keyFunc_deleteToLineBeginning: '删除到行首', keyFunc_deleteToLineEnd: '删除到行尾',
-  keyFunc_deleteToPageBeginning: '删除到页面开头', keyFunc_deleteToPageEnd: '删除到页面末尾',
-  keyFunc_enterWherever: '在任意位置回车', keyFunc_esc: '退出 / 取消', keyFunc_enter: '回车',
-  keyFunc_doubleChar: '输入成对字符', keyFunc_sendChar: '发送字符', keyFunc_doubleAngle: '输入尖括号', keyFunc_doubleQuote: '输入双引号',
-  keyFunc_pageUp: '向上翻页', keyFunc_pageDown: '向下翻页', keyFunc_pageMoveUp: '切换到上一个页面', keyFunc_pageMoveDown: '切换到下一个页面',
-  keyFunc_switchClipboard: '切换粘贴来源', keyFunc_pasteSystem: '粘贴系统剪贴板', keyFunc_cut_1: '剪切到剪贴板 1',
-  keyFunc_copy_1: '复制到剪贴板 1', keyFunc_paste_1: '粘贴剪贴板 1', keyFunc_cut_2: '剪切到剪贴板 2',
-  keyFunc_copy_2: '复制到剪贴板 2', keyFunc_paste_2: '粘贴剪贴板 2', keyFunc_undoRedo: '撤销 / 重做',
-  keyFunc_tabPrve: '切换到上一个标签页', keyFunc_tabNext: '切换到下一个标签页', keyFunc_jumpPageTop: '跳到页面顶部',
-  keyFunc_jumpPageBottom: '跳到页面底部', keyFunc_qbar: '打开 qbar', keyFunc_clipboardHistory: '打开剪贴板历史', keyFunc_translate: '打开翻译',
-  keyFunc_notes: '打开笔记', keyFunc_notesCyclePrompt: '复制下一篇循环笔记', keyFunc_aiChat: '打开 AI 问答', keyFunc_tabHotString: '执行 Tab 替换', keyFunc_openCpasDocs: '打开使用介绍',
-  keyFunc_openSettings: '打开设置中心', keyFunc_reload: '重新加载配置', keyFunc_mediaPrev: '上一首媒体',
-  keyFunc_mediaNext: '下一首媒体', keyFunc_mediaPlayPause: '播放 / 暂停媒体', keyFunc_volumeUp: '增大音量',
-  keyFunc_volumeDown: '减小音量', keyFunc_volumeMute: '静音', keyFunc_winbind_activate: '激活绑定窗口',
-  keyFunc_winbind_binding: '绑定窗口 / 窗口组 / 应用', keyFunc_winPin: '切换窗口置顶', keyFunc_winTransparent: '切换窗口透明度',
-  keyFunc_selectUp: '向上选中', keyFunc_selectDown: '向下选中', keyFunc_selectLeft: '向左选中', keyFunc_selectRight: '向右选中',
-  keyFunc_selectHome: '选中到行首', keyFunc_selectEnd: '选中到行尾', keyFunc_selectToPageBeginning: '选中到页面开头',
-  keyFunc_selectToPageEnd: '选中到页面末尾', keyFunc_selectCurrentWord: '选中当前词', keyFunc_selectCurrentLine: '选中当前行',
-  keyFunc_selectWordLeft: '按词向左选中', keyFunc_selectWordRight: '按词向右选中', keyFunc_pageMoveLineUp: '按行向上翻页',
-  keyFunc_pageMoveLineDown: '按行向下翻页', keyFunc_goCjkPage: '切换中日韩页面', keyFunc_click_left: '鼠标左键',
-  keyFunc_click_right: '鼠标右键', keyFunc_mouse_up: '鼠标向上移动', keyFunc_mouse_down: '鼠标向下移动',
-  keyFunc_mouse_left: '鼠标向左移动', keyFunc_mouse_right: '鼠标向右移动', keyFunc_wheel_up: '鼠标滚轮向上',
-  keyFunc_wheel_down: '鼠标滚轮向下'
-};
+let ACTION_LABELS = Object.create(null);
+let ACTION_METADATA = new Map();
+function setActionCatalog(rows) {
+  if (!Array.isArray(rows) || !rows.length) throw new Error('Invalid action catalog');
+  ACTION_LABELS = Object.create(null);
+  ACTION_METADATA = new Map();
+  for (const action of rows) {
+    if (typeof action.id !== 'string' || typeof action.label !== 'string'
+      || !SHORTCUT_GROUPS.some(group => group.id === action.group))
+      throw new Error('Invalid action metadata');
+    ACTION_LABELS[action.id] = action.label;
+    ACTION_METADATA.set(action.id.toLowerCase(), action);
+  }
+}
 function shortcutActionLabel(action) {
   const raw = String(action || '').trim();
   if (raw === '@block') return '禁用动作';
@@ -794,18 +782,8 @@ function shortcutActionLabel(action) {
   return ACTION_LABELS[name] + '（' + args + '）';
 }
 function normalizeCustomHotkeyActions(value) {
-  if (!Array.isArray(value)) return [];
-  const unsupported = new Set([
-    'keyFunc_send', 'keyFunc_run', 'keyFunc_doubleChar', 'keyFunc_sendChar',
-    'keyFunc_winbind_activate', 'keyFunc_winbind_binding'
-  ]);
-  return [...new Set(value.filter(id => {
-    if (typeof id !== 'string' || !id.startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX)) return false;
-    const action = id.slice(CUSTOM_HOTKEY_BUILTIN_PREFIX.length);
-    return /^[A-Za-z0-9_]+$/.test(action)
-      && Object.prototype.hasOwnProperty.call(ACTION_LABELS, action)
-      && !unsupported.has(action);
-  }))];
+  return value.filter(action => typeof action.customHotkey === 'string' && action.customHotkey)
+    .map(action => action.customHotkey);
 }
 function customHotkeyBuiltinActionLabel(id) {
   const action = String(id || '').startsWith(CUSTOM_HOTKEY_BUILTIN_PREFIX)
@@ -863,16 +841,7 @@ function ahkSendLabel(value) {
   return modifiers.concat(key || '按键').join('+');
 }
 function shortcutActionCategory(action) {
-  const name = shortcutActionName(action);
-  if (name === 'keyfunc_togglecapslock') return 'press';
-  if (/(^|_)select/.test(name)) return 'select';
-  if (/(^|_)(move|home|end|pageup|pagedown|jump)/.test(name)) return 'move';
-  if (/(^|_)(copy|cut|paste|switchclipboard|clipboardhistory)/.test(name)) return 'clipboard';
-  if (/(^|_)(delete|backspace|forwarddelete|enter|double|sendchar)/.test(name)) return 'edit';
-  if (/(^|_)(winbind|wintransparent|winpin)/.test(name)) return 'window';
-  if (/(^|_)(qbar|notes|aichat|translate|dictionary|opencpasdocs|reload|tabhotstring)/.test(name)) return 'tools';
-  if (/(^|_)(mousespeed|click|mouse|wheel)/.test(name)) return 'mouse';
-  return 'other';
+  return ACTION_METADATA.get(shortcutActionName(action))?.group || 'other';
 }
 function shortcutActionGroups(values, allowNative = true) {
   const current = Object.values(values).filter(Boolean);
@@ -2224,7 +2193,8 @@ function applySettingsSnapshot(snapshot, committed = false) {
   state.revision = snapshot.revision;
   state.base = clone(snapshot.config);
   state.draft = clone(snapshot.config);
-  state.customHotkeyActions = normalizeCustomHotkeyActions(snapshot.customHotkeyActions);
+  setActionCatalog(snapshot.actionCatalog);
+  state.customHotkeyActions = normalizeCustomHotkeyActions(snapshot.actionCatalog);
   state.bindingModes = snapshot.bindingModes;
   state.hotkeyProfileId = state.draft.profiles.some(profile => profile.id === selectedProfileId)
     ? selectedProfileId : '';

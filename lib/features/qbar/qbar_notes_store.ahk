@@ -4,7 +4,6 @@
 
 global NotesDB := 0
 global NotesDBReady := false
-global NotesDBVersion := 2
 global NotesStoreError := ""
 global NotesStoreRoot := A_ScriptDir . "\data\qbar-notes"
 global NotesStoreMedia := A_ScriptDir . "\data\qbar-notes\media"
@@ -45,7 +44,7 @@ NotesStoreDbPath() {
 NotesStoreInit() {
     global NotesDB, NotesDBReady, NotesStoreError, AppStoreDb
     if NotesDBReady && IsObject(NotesDB)
-        return true
+        return AppStoreConnectionIsUsable(NotesDB)
     NotesStoreError := ""
     try {
         if !AppStoreInit()
@@ -74,10 +73,7 @@ NotesStoreClose() {
 ; Assets reach the store from two places that do not agree on their keys: a
 ; pending upload carries an absolute `path` next to its relative `relativePath`,
 ; while a stored asset carries only `path`, which is the row's relative_path.
-; `note_assets.relative_path` must always be written in the relative form —
-; NotesStoreCleanOrphans compares it against "media\<file>" and deletes anything
-; that does not match, so an absolute value there wipes the media folder on the
-; next start.
+; `note_assets.relative_path` is always written relative to NotesStoreRoot.
 NotesAssetStoredPath(asset) {
     if !IsObject(asset)
         return ""
@@ -107,9 +103,6 @@ NotesStoreRelativeAssetPath(stored) {
     return "media\" . value
 }
 
-; Repairs note_assets rows written by older builds: an absolute media path, and
-; a path stored without its file extension. Both forms are rewritten to
-; "media\<file>.<ext>" and the file is moved when the extension was missing.
 NotesStoreSql(value) {
     return "'" . StrReplace(String(value), "'", "''") . "'"
 }
@@ -132,7 +125,7 @@ NotesStoreNow() {
 NotesStoreQuery(sql, &table) {
     global NotesDB, NotesDBReady, NotesStoreError
     table := 0
-    if !NotesDBReady || !IsObject(NotesDB) {
+    if !NotesDBReady || !AppStoreConnectionIsUsable(NotesDB) {
         if NotesStoreError = ""
             NotesStoreError := "笔记数据库尚未初始化"
         return false
@@ -148,7 +141,7 @@ NotesStoreQuery(sql, &table) {
 
 NotesStoreExec(sql) {
     global NotesDB, NotesDBReady, NotesStoreError
-    if !NotesDBReady || !IsObject(NotesDB) {
+    if !NotesDBReady || !AppStoreConnectionIsUsable(NotesDB) {
         if NotesStoreError = ""
             NotesStoreError := "笔记数据库尚未初始化"
         return false
@@ -386,18 +379,27 @@ NotesStoreReadNextTaggedNote(tagId, afterId) {
     return Map("status", "empty")
 }
 
-NotesStoreReadNote(noteId) {
+NotesStoreReadNote(noteId, &status := "") {
+    status := "error"
     if !NotesStoreInit() || !RegExMatch(String(noteId), "^\d+$")
         return 0
     sql := "SELECT id,title,content_md,pinned,created_at,updated_at FROM notes WHERE id=" . Integer(noteId) . " LIMIT 1;"
-    if !NotesStoreQuery(sql, &table) || table.RowCount < 1
+    if !NotesStoreQuery(sql, &table)
         return 0
+    if table.RowCount < 1 {
+        status := "missing"
+        return 0
+    }
     raw := table.Rows[1]
     tags := []
-    if NotesStoreQuery("SELECT t.name FROM note_tags nt JOIN tags t ON t.id=nt.tag_id WHERE nt.note_id=" . Integer(noteId) . " ORDER BY t.name;", &tagTable)
-        for tagRow in tagTable.Rows
-            tags.Push(tagRow[1])
+    if !NotesStoreQuery("SELECT t.name FROM note_tags nt JOIN tags t ON t.id=nt.tag_id WHERE nt.note_id=" . Integer(noteId) . " ORDER BY t.name;", &tagTable)
+        return 0
+    for tagRow in tagTable.Rows
+        tags.Push(tagRow[1])
     assets := NotesStoreAssets(noteId)
+    if !IsObject(assets)
+        return 0
+    status := "ok"
     return Map(
         "id", Integer(raw[1]),
         "title", raw[2],
@@ -412,7 +414,7 @@ NotesStoreReadNote(noteId) {
 NotesStoreAssets(noteId) {
     assets := []
     if !NotesStoreQuery("SELECT id,relative_path,mime,original_name FROM note_assets WHERE note_id=" . Integer(noteId) . " ORDER BY created_at,id;", &table)
-        return assets
+        return 0
     for raw in table.Rows
         assets.Push(Map(
             "id", raw[1],
@@ -425,9 +427,10 @@ NotesStoreAssets(noteId) {
 
 NotesStoreGetAssetRows(noteId) {
     rows := []
-    if NotesStoreQuery("SELECT id,relative_path,mime,original_name FROM note_assets WHERE note_id=" . Integer(noteId) . ";", &table)
-        for raw in table.Rows
-            rows.Push(Map("id", raw[1], "path", raw[2], "mime", raw[3], "name", raw[4]))
+    if !NotesStoreQuery("SELECT id,relative_path,mime,original_name FROM note_assets WHERE note_id=" . Integer(noteId) . ";", &table)
+        return 0
+    for raw in table.Rows
+        rows.Push(Map("id", raw[1], "path", raw[2], "mime", raw[3], "name", raw[4]))
     return rows
 }
 
@@ -456,13 +459,15 @@ NotesStoreSaveNote(noteId, title, content, tagNames, editorId, &savedId := 0) {
     if !NotesValidateAssetReferences(noteId, editorId, referenced)
         return false
     oldAssets := noteId != "" ? NotesStoreGetAssetRows(noteId) : []
+    if !IsObject(oldAssets)
+        return false
     oldAssetMap := Map()
     for oldAsset in oldAssets
         oldAssetMap[oldAsset["id"]] := oldAsset
     now := NotesStoreNow()
     criticalState := Critical("On")
     try {
-        if !NotesStoreExec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("NotesStoreSaveNote"))
             return false
         try {
             if noteId = "" {
@@ -478,6 +483,8 @@ NotesStoreSaveNote(noteId, title, content, tagNames, editorId, &savedId := 0) {
                     . ",updated_at=" . now . " WHERE id=" . Integer(noteId) . ";"
                 if !NotesStoreExec(sql)
                     throw Error(NotesStoreError)
+                if NotesDB.Changes() != 1
+                    throw Error("笔记已不存在，请返回列表后重试。")
             }
             if !NotesStoreExec("DELETE FROM note_tags WHERE note_id=" . Integer(noteId) . ";")
                 throw Error(NotesStoreError)
@@ -504,10 +511,10 @@ NotesStoreSaveNote(noteId, title, content, tagNames, editorId, &savedId := 0) {
                     . "," . NotesStoreSql(asset["mime"]) . "," . NotesStoreSql(asset["name"]) . "," . now . ");")
                     throw Error(NotesStoreError)
             }
-            if !NotesStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(NotesStoreError)
         } catch as saveError {
-            try NotesStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             NotesStoreError := saveError.Message
             return false
         }
@@ -535,22 +542,25 @@ NotesStoreDeleteNotes(noteIds) {
     for noteId in noteIds {
         if !RegExMatch(String(noteId), "^\d+$")
             continue
-        for asset in NotesStoreGetAssetRows(noteId)
+        assets := NotesStoreGetAssetRows(noteId)
+        if !IsObject(assets)
+            return false
+        for asset in assets
             oldAssets.Push(asset["path"])
     }
     criticalState := Critical("On")
     try {
-        if !NotesStoreExec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("NotesStoreDeleteNotes"))
             return false
         try {
             for noteId in noteIds
                 if RegExMatch(String(noteId), "^\d+$")
                     if !NotesStoreExec("DELETE FROM notes WHERE id=" . Integer(noteId) . ";")
                         throw Error(NotesStoreError)
-            if !NotesStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(NotesStoreError)
         } catch as deleteError {
-            try NotesStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             NotesStoreError := deleteError.Message
             return false
         }
@@ -569,17 +579,17 @@ NotesStoreSetPinned(noteIds, value) {
     pin := value ? 1 : 0
     criticalState := Critical("On")
     try {
-        if !NotesStoreExec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("NotesStoreSetPinned"))
             return false
         try {
             for noteId in noteIds
                 if RegExMatch(String(noteId), "^\d+$")
                     if !NotesStoreExec("UPDATE notes SET pinned=" . pin . ",updated_at=updated_at WHERE id=" . Integer(noteId) . ";")
                         throw Error(NotesStoreError)
-            if !NotesStoreExec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(NotesStoreError)
         } catch as pinError {
-            try NotesStoreExec("ROLLBACK;")
+            try transaction.Rollback()
             NotesStoreError := pinError.Message
             return false
         }
@@ -615,22 +625,50 @@ NotesStoreTagList() {
     return tags
 }
 
-NotesStoreAddTag(name) {
+NotesStoreSaveTag(tagId, name, &errorText, &previousName := "") {
+    global NotesDB
+    errorText := "无法保存标签，请重试。"
+    previousName := ""
     name := Trim(String(name))
-    if name = "" || !NotesStoreInit()
+    if name = "" {
+        errorText := "请输入标签名称。"
         return false
-    return NotesStoreExec("INSERT OR IGNORE INTO tags(name,created_at,updated_at) VALUES(" . NotesStoreSql(name) . "," . NotesStoreNow() . "," . NotesStoreNow() . ");")
-}
-
-NotesStoreRenameTag(tagId, name) {
-    name := Trim(String(name))
-    if name = "" || !RegExMatch(String(tagId), "^\d+$") || !NotesStoreInit()
+    }
+    if (tagId != "" && !RegExMatch(String(tagId), "^[1-9]\d*$")) || !NotesStoreInit()
         return false
-    return NotesStoreExec("UPDATE tags SET name=" . NotesStoreSql(name) . ",updated_at=" . NotesStoreNow() . " WHERE id=" . Integer(tagId) . ";")
+    transaction := AppStoreBegin("notes-tag")
+    if !IsObject(transaction)
+        return false
+    try {
+        if !NotesStoreQuery("SELECT id FROM tags WHERE name=" . NotesStoreSql(name) . ";", &duplicates)
+            return false
+        if duplicates.RowCount && (tagId = "" || String(duplicates.Rows[1][1]) != String(tagId)) {
+            errorText := "这个标签名称已存在，请换一个名称。"
+            return false
+        }
+        if tagId = "" {
+            sql := "INSERT INTO tags(name,created_at,updated_at) VALUES(" . NotesStoreSql(name)
+                . "," . NotesStoreNow() . "," . NotesStoreNow() . ");"
+        } else {
+            if !NotesStoreQuery("SELECT name FROM tags WHERE id=" . Integer(tagId) . ";", &current)
+                return false
+            if current.RowCount != 1 {
+                errorText := "标签已不存在，请关闭后刷新列表。"
+                return false
+            }
+            previousName := current.Rows[1][1]
+            sql := "UPDATE tags SET name=" . NotesStoreSql(name) . ",updated_at=" . NotesStoreNow()
+                . " WHERE id=" . Integer(tagId) . ";"
+        }
+        return NotesStoreExec(sql) && NotesDB.Changes() = 1 && transaction.Commit()
+    } finally {
+        transaction.Rollback()
+    }
 }
 
 NotesStoreDeleteTag(tagId) {
+    global NotesDB
     if !RegExMatch(String(tagId), "^\d+$") || !NotesStoreInit()
         return false
-    return NotesStoreExec("DELETE FROM tags WHERE id=" . Integer(tagId) . ";")
+    return NotesStoreExec("DELETE FROM tags WHERE id=" . Integer(tagId) . ";") && NotesDB.Changes() = 1
 }

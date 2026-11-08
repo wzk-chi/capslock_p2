@@ -5,7 +5,6 @@
 global AiChatStoreDb := 0
 global AiChatStoreReady := false
 global AiChatStoreError := ""
-global AiChatStoreVersion := 1
 global AiChatStoreRoot := A_ScriptDir . "\data"
 
 AiChatStoreEnsureSchema(db) {
@@ -34,10 +33,9 @@ AiChatStorePath() {
 AiChatStoreInit() {
     global AiChatStoreDb, AiChatStoreReady, AiChatStoreError, AppStoreDb
     if AiChatStoreReady && IsObject(AiChatStoreDb)
-        return true
+        return AppStoreConnectionIsUsable(AiChatStoreDb)
 
     AiChatStoreError := ""
-    db := 0
     try {
         if !AppStoreInit()
             throw Error(AppStoreError != "" ? AppStoreError : "无法初始化应用数据库")
@@ -165,7 +163,7 @@ AiChatStoreBeginTurn(sessionId, fallbackTitle, question,
     now := AiChatStoreNow()
     criticalState := Critical("On")
     try {
-        if !AiChatStoreDb.Exec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("AiChatStoreBeginTurn"))
             return AiChatStoreSetError(AiChatStoreDb.ErrorMsg, "AI chat begin turn failed")
         try {
             if !sessionId {
@@ -218,10 +216,10 @@ AiChatStoreBeginTurn(sessionId, fallbackTitle, question,
             } finally {
                 AiChatStoreDb.StatementFinalize(statement)
             }
-            if !AiChatStoreDb.Exec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(AiChatStoreDb.ErrorMsg != "" ? AiChatStoreDb.ErrorMsg : "提交问题失败")
         } catch as beginError {
-            try AiChatStoreDb.Exec("ROLLBACK;")
+            try transaction.Rollback()
             AiChatStoreError := beginError.Message
             DebugLog("AI chat store begin turn failed error=" . beginError.Message)
             return false
@@ -248,7 +246,7 @@ AiChatStoreSaveAnswer(sessionId, turnId, answer, status, updateActivity := false
     completedAt := status = "generating" ? 0 : now
     criticalState := Critical("On")
     try {
-        if !AiChatStoreDb.Exec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("AiChatStoreSaveAnswer"))
             return AiChatStoreSetError(AiChatStoreDb.ErrorMsg, "AI chat answer update failed")
         try {
             statement := AiChatStoreDb.Prepare(
@@ -282,10 +280,10 @@ AiChatStoreSaveAnswer(sessionId, turnId, answer, status, updateActivity := false
                     AiChatStoreDb.StatementFinalize(statement)
                 }
             }
-            if !AiChatStoreDb.Exec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(AiChatStoreDb.ErrorMsg != "" ? AiChatStoreDb.ErrorMsg : "提交回答失败")
         } catch as updateError {
-            try AiChatStoreDb.Exec("ROLLBACK;")
+            try transaction.Rollback()
             AiChatStoreError := updateError.Message
             DebugLog("AI chat store answer update failed")
             return false
@@ -389,16 +387,16 @@ AiChatStoreDeleteSessions(sessionIds) {
         return false
     criticalState := Critical("On")
     try {
-        if !AiChatStoreDb.Exec("BEGIN IMMEDIATE;")
+        if !IsObject(transaction := AppStoreBegin("AiChatStoreDeleteSessions"))
             return AiChatStoreSetError(AiChatStoreDb.ErrorMsg, "AI chat delete failed")
         try {
             for sessionId in ids
                 if !AiChatStoreDb.Exec("DELETE FROM ai_chat_sessions WHERE id=" . sessionId . ";")
                     throw Error(AiChatStoreDb.ErrorMsg != "" ? AiChatStoreDb.ErrorMsg : "删除会话失败")
-            if !AiChatStoreDb.Exec("COMMIT;")
+            if !transaction.Commit()
                 throw Error(AiChatStoreDb.ErrorMsg != "" ? AiChatStoreDb.ErrorMsg : "提交会话删除失败")
         } catch as deleteError {
-            try AiChatStoreDb.Exec("ROLLBACK;")
+            try transaction.Rollback()
             AiChatStoreError := deleteError.Message
             DebugLog("AI chat store delete failed")
             return false
