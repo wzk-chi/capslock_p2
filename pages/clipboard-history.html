@@ -50,6 +50,8 @@ button { cursor: pointer; }
 .preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 14; max-height: 18.9em; overflow: hidden; color: var(--ui-text); font-size: 13px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .app-dialog.history-view-dialog { width: min(740px, calc(100% - 32px)); max-width: none; }
 .history-view-text { height: min(420px, calc(100vh - 220px)); min-height: 100px; margin: 0; padding: 14px; overflow: auto; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-text); font: 13px/1.6 Consolas, "Microsoft YaHei", monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; user-select: text; }
+.history-view-edit { height: min(420px, calc(100vh - 250px)); min-height: 160px; resize: none; outline: none; }
+.history-view-edit:focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-ring); }
 .history-view-loading { margin: 0; padding: 22px 0; color: var(--ui-muted); text-align: center; font-size: 12px; }
 .history-view-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .history-view-tool { min-width: 30px; height: 29px; padding: 0 9px; border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-control); background: var(--ui-surface-soft); color: var(--ui-text); font-size: 12px; }

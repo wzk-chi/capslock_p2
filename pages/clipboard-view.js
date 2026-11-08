@@ -2,6 +2,10 @@
 (function () {
   'use strict';
 
+  /* Plain text can be corrected in place. The host enforces the same limit
+     (UTF-16 code units on both sides) before it rewrites the stored payload. */
+  const EDIT_LIMIT = 1000000;
+
   let active = null;
   let sequence = 0;
   const post = message => {
@@ -21,7 +25,9 @@
     const viewer = {
       id: String(row.id), kind: row.type === 'rich' ? 'text' : row.type,
       sessionId, requestId: ++sequence, dialog: null, api: null,
-      root: null, cleanup: null, files: null, selection: null, opening: false
+      root: null, cleanup: null, files: null, selection: null, opening: false,
+      text: '', richText: false, editable: false, editing: false, saving: false,
+      editor: null
     };
     const isFile = viewer.kind === 'file';
     viewer.dialog = AppDialog.open({
@@ -30,6 +36,8 @@
       initialFocus: false,
       actions: [
         { id: isFile ? 'open' : 'copy', text: isFile ? '打开' : '复制', disabled: true },
+        { id: 'edit', text: '编辑', hidden: true },
+        { id: 'save', text: '保存', hidden: true },
         { id: 'close', text: '关闭', role: 'cancel', kind: 'ghost' }
       ],
       render(root, api) {
@@ -40,6 +48,10 @@
       onAction(action, api) {
         if (action === 'copy') {
           post({ type: 'copy', sessionId, id: viewer.id });
+        } else if (action === 'edit') {
+          beginEdit(viewer);
+        } else if (action === 'save') {
+          saveEdit(viewer);
         } else if (action === 'open' && viewer.selection) {
           if (viewer.opening) return api.keepOpen();
           viewer.opening = true;
@@ -55,20 +67,78 @@
         post({ type: 'cancelView', sessionId, requestId: viewer.requestId });
         if (viewer.cleanup) viewer.cleanup();
         viewer.root.replaceChildren();
-        if (result?.action === 'close' || result?.action === 'cancel') onClose?.();
+        if (result?.action === 'close' || result?.action === 'cancel'
+          || result?.action === 'saved') onClose?.(result);
       }
     });
     active = viewer;
     post({ type: 'view', sessionId, id: viewer.id, requestId: viewer.requestId });
   }
 
-  function renderText(viewer, text) {
+  function renderText(viewer, text, richText) {
+    viewer.text = text;
+    viewer.richText = !!richText;
+    viewer.editable = text.length > 0 && text.length <= EDIT_LIMIT;
     const content = element('pre', 'history-view-text', text);
     content.tabIndex = 0;
     content.setAttribute('aria-label', '完整文本');
     viewer.root.replaceChildren(content);
+    if (!viewer.editable && text.length)
+      viewer.root.append(element('p', 'history-view-hint',
+        '这段文字超过 100 万字符，不能直接编辑，可以复制后在其他应用中修改。'));
     viewer.api.setActionEnabled('copy', true);
+    viewer.api.setActionVisible('edit', viewer.editable);
     content.focus();
+  }
+
+  function beginEdit(viewer) {
+    if (viewer.editing || !viewer.editable) return;
+    viewer.editing = true;
+    const parts = [];
+    if (viewer.richText)
+      parts.push(element('p', 'history-view-hint',
+        '保存后只保留纯文本，原来的格式会被移除。'));
+    const editor = element('textarea', 'history-view-text history-view-edit');
+    editor.value = viewer.text;
+    editor.spellcheck = false;
+    editor.wrap = 'soft';
+    editor.setAttribute('aria-label', '编辑文本内容');
+    editor.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        viewer.api.submit('save');
+      }
+    });
+    viewer.editor = editor;
+    parts.push(editor);
+    viewer.root.replaceChildren(...parts);
+    viewer.api.setError('');
+    viewer.api.setActionVisible('copy', false);
+    viewer.api.setActionVisible('edit', false);
+    viewer.api.setActionVisible('save', true);
+    viewer.api.setActionText('close', '取消');
+    editor.focus();
+    editor.scrollTop = 0;
+  }
+
+  function saveEdit(viewer) {
+    if (!viewer.editor || viewer.saving) return;
+    const text = viewer.editor.value;
+    if (text.length === 0) {
+      viewer.api.setError('内容不能为空。');
+      viewer.editor.focus();
+      return;
+    }
+    if (text.length > EDIT_LIMIT) {
+      viewer.api.setError('内容超过 100 万字符，无法保存。');
+      viewer.editor.focus();
+      return;
+    }
+    viewer.saving = true;
+    viewer.api.setError('');
+    viewer.api.setBusy(true, '保存中…', 'save');
+    post({ type: 'editText', sessionId: viewer.sessionId, id: viewer.id,
+      requestId: viewer.requestId, text });
   }
 
   function renderFiles(viewer, files) {
@@ -235,8 +305,19 @@
   }
 
   function handleHostMessage(data) {
-    if (data.type !== 'viewError' && data.type !== 'viewOpened') return false;
+    if (data.type !== 'viewError' && data.type !== 'viewOpened'
+      && data.type !== 'editResult') return false;
     if (!matches(data)) return true;
+    if (data.type === 'editResult') {
+      active.saving = false;
+      if (data.ok) active.dialog.close({ action: 'saved' });
+      else {
+        active.api.setBusy(false, '', 'save');
+        active.api.setError(data.message || '保存失败，请稍后重试。');
+        active.editor?.focus();
+      }
+      return true;
+    }
     if (data.type === 'viewOpened') active.dialog.close({ action: 'opened' });
     else {
       active.opening = false;
@@ -259,7 +340,7 @@
       else {
         const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(buffer);
         if (data.kind === 'file') renderFiles(viewer, JSON.parse(text));
-        else renderText(viewer, text);
+        else renderText(viewer, text, data.rich);
       }
     } catch (error) {
       console.error('Clipboard content view failed', error);

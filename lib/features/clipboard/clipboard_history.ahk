@@ -15,6 +15,9 @@ global ClipboardHistoryMaxCaptureBytes := 256 * 1024 * 1024
 global ClipboardHistoryRetentionDays := 30
 global ClipboardHistoryRetainedSnapshotBytes := 0
 global ClipboardHistoryMaxRetainedSnapshotBytes := 256 * 1024 * 1024
+; Plain-text edits are rewritten from scratch, so the limit also bounds memory
+; and the page round trip. The viewer applies the same limit in UTF-16 units.
+global ClipboardHistoryEditTextLimit := 1000000
 
 ClipboardHistoryInitialize() {
     global ClipboardHistoryLoaded, ClipboardHistoryEnabled
@@ -706,6 +709,82 @@ ClipboardHistorySetNoteItem(id, noteText) {
 
 ClipboardHistorySetNotesItems(ids, noteText) {
     return ClipboardHistoryStoreSetNotes(ids, SubStr(String(noteText), 1, 4000))
+}
+
+; Overwrite a text item in place. The stored payload is rebuilt from the new
+; text alone, so rich formats and every other format of the old item are gone:
+; keeping them would paste the previous content. Capture time, favorite, note
+; and pin state are preserved so the edit does not reorder the list.
+ClipboardHistorySetTextItem(id, text, &errorMessage := "") {
+    errorMessage := ""
+    if !ClipboardHistoryStoreInit() {
+        errorMessage := "剪贴板历史数据库不可用，请重新启动应用。"
+        return false
+    }
+    item := ClipboardHistoryStoreGetTextItem(id)
+    if !IsObject(item) {
+        errorMessage := "这条历史已不存在，请刷新列表后重试。"
+        return false
+    }
+    if item["primary_type"] != "text" {
+        errorMessage := "只能编辑文本内容。"
+        return false
+    }
+    normalized := ClipboardHistoryNormalizeEditedText(text, item["text_plain"])
+    if normalized = "" {
+        errorMessage := "内容不能为空。"
+        return false
+    }
+    if normalized = item["text_plain"] && item["is_rich_text"] = "0"
+        return true
+    entry := Map("id", 13, "name", "", "kind", "text",
+        "data", ClipboardHistoryTextBuffer(normalized))
+    record := ClipboardHistoryBuildRecord([entry])
+    if !IsObject(record) {
+        errorMessage := "无法保存这次修改。"
+        return false
+    }
+    conflict := ClipboardHistoryStoreFindByHash(record["contentHash"])
+    if IsObject(conflict) && String(conflict["id"]) != String(id) {
+        errorMessage := "已有一条内容相同的历史记录，请先删除那条记录。"
+        return false
+    }
+    record["id"] := String(id)
+    record["isFavorite"] := item["is_favorite"] != "0"
+    record["noteText"] := item["note_text"]
+    record["isPinned"] := item["is_pinned"] != "0"
+    record["pinOrder"] := Integer(item["pin_order"])
+    record["lastCapturedAtUtc"] := item["last_captured_at_utc"]
+    if !ClipboardHistoryPayloadEncode(record["snapshot"], &payloadVersion, &storedPayload) {
+        errorMessage := "剪贴板历史存储失败。"
+        return false
+    }
+    if !ClipboardHistoryStoreSave(record, storedPayload, record["manifestJson"], "", 0,
+        payloadVersion) {
+        ; SQLite detail stays in the log; the viewer only gets actionable text.
+        DebugLog("Clipboard history text edit save failed: " . ClipboardHistoryStoreError)
+        errorMessage := InStr(ClipboardHistoryStoreError, "容量已满")
+            ? "剪贴板历史容量不足，无法保存这次修改。"
+            : "保存失败，请稍后重试。"
+        return false
+    }
+    return true
+}
+
+ClipboardHistoryNormalizeEditedText(text, originalText) {
+    text := StrReplace(String(text), Chr(0), "")
+    text := StrReplace(StrReplace(text, "`r`n", "`n"), "`r", "`n")
+    ; A textarea can only submit LF. Restore CRLF only when the stored text used
+    ; it, so pasting into older editors keeps one line per row.
+    if InStr(String(originalText), "`r`n")
+        text := StrReplace(text, "`n", "`r`n")
+    return text
+}
+
+ClipboardHistoryTextBuffer(text) {
+    textBuffer := Buffer((StrLen(text) + 1) * 2, 0)
+    StrPut(text, textBuffer, StrLen(text) + 1, "UTF-16")
+    return textBuffer
 }
 
 ClipboardHistorySetPinnedItem(id, desiredState) {

@@ -139,6 +139,13 @@
         button.dataset.defaultText = text || '';
       }
     };
+    const setActionVisible = (id, visible) => {
+      const descriptor = descriptors.find(item => item.id === id);
+      if (descriptor) descriptor.hidden = !visible;
+      const button = currentShell.buttons.get(id);
+      if (button) button.hidden = !visible;
+      currentShell.actions.hidden = !descriptors.some(item => !item.hidden);
+    };
     const focusAction = id => {
       const button = currentShell.buttons.get(id);
       if (button && !button.disabled && !button.hidden) button.focus();
@@ -172,6 +179,7 @@
       setBusy,
       setActionEnabled,
       setActionText,
+      setActionVisible,
       focusAction,
       submit,
       isOpen() { return currentShell.dialog.open && !settled; }
@@ -185,6 +193,7 @@
       setBusy,
       setActionEnabled,
       setActionText,
+      setActionVisible,
       focusAction,
       isOpen: api.isOpen,
       settled: false

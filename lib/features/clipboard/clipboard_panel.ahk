@@ -437,7 +437,8 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             LLMMsgNumber(msg, "page", &pageValid, 1, true),
             LLMMsgNumber(msg, "pageSize", &pageSizeValid, 20, true), sessionId,
             LLMMsgNumber(msg, "queryId", &queryValid, 0, true)), -1)
-    } else if messageType = "view" || messageType = "fileOpen" || messageType = "cancelView" {
+    } else if (messageType = "view" || messageType = "fileOpen" || messageType = "cancelView"
+        || messageType = "editText") {
         requestId := LLMMsgNumber(msg, "requestId", &requestValid, 0, true)
         if !requestValid || requestId < 1 || requestId > 2147483647
             return
@@ -453,6 +454,9 @@ ClipboardHistoryWebMessageReceived(sender, args) {
             if messageType = "cancelView" {
                 ClipboardHistoryViewRequestId := 0
                 ClipboardHistoryViewItemId := ""
+            } else if messageType = "editText" {
+                SetTimer(ClipboardHistoryPanelEditText.Bind(LLMMsgField(msg, "id"),
+                    LLMMsgField(msg, "text"), sessionId, requestId), -1)
             } else {
                 fileIndex := LLMMsgNumber(msg, "fileIndex", &indexValid, 0, true)
                 if indexValid && fileIndex >= 1
@@ -556,15 +560,27 @@ ClipboardHistoryPanelView(id, sessionId, requestId, *) {
                         "这条历史没有可查看的文字，请复制后在支持原格式的应用中粘贴。")
                     return
                 }
-            } else
+            } else {
+                ; Current capture never produces primary_type='rich'; an old row
+                ; of that kind has no viewable text, so fail visibly instead of
+                ; leaving the viewer waiting on content that will not arrive.
+                ClipboardHistoryViewError(id, sessionId, requestId,
+                    "这条历史的内容类型不支持查看，请复制后在支持原格式的应用中粘贴。")
                 return
+            }
             data := Buffer(StrPut(text, "UTF-8"), 0)
             StrPut(text, data, "UTF-8")
             size := data.Size - 1
         }
-        ClipboardHistorySendViewBuffer(data, size,
-            Map("type", "historyViewContent", "sessionId", sessionId,
-                "requestId", requestId, "id", id, "kind", kind))
+        metadata := Map("type", "historyViewContent", "sessionId", sessionId,
+            "requestId", requestId, "id", id, "kind", kind)
+        ; Only text can be edited in place; rich items keep the flag so the
+        ; viewer can warn that saving drops the original formats.
+        if kind = "text" {
+            richText := item.Has("is_rich_text") && item["is_rich_text"] != "0"
+            metadata["rich"] := richText ? JSON.true : JSON.false
+        }
+        ClipboardHistorySendViewBuffer(data, size, metadata)
     } catch as viewError {
         DebugLog("Clipboard history view failed: " . viewError.Message)
         ClipboardHistoryViewError(id, sessionId, requestId, "无法查看这条历史，请稍后重试。")
@@ -591,6 +607,30 @@ ClipboardHistoryViewError(id, sessionId, requestId, message) {
     if ClipboardHistoryViewCurrent(sessionId, requestId, id)
         ClipboardHistoryPost(Map("type", "viewError", "id", id,
             "sessionId", sessionId, "requestId", requestId, "message", message))
+}
+
+ClipboardHistoryPanelEditText(id, text, sessionId, requestId, *) {
+    global ClipboardHistoryEditTextLimit
+    if !ClipboardHistoryViewCurrent(sessionId, requestId, id)
+        return
+    ok := false
+    message := ""
+    try {
+        if StrLen(text) > ClipboardHistoryEditTextLimit
+            message := "内容超过 100 万字符，无法保存。"
+        else
+            ok := ClipboardHistorySetTextItem(id, text, &message)
+    } catch as editError {
+        DebugLog("Clipboard history text edit failed: " . editError.Message)
+        ok := false
+        message := "保存失败，请稍后重试。"
+    }
+    ; The viewer may have closed while the save was running; its state is gone.
+    if !ClipboardHistoryViewCurrent(sessionId, requestId, id)
+        return
+    ClipboardHistoryPost(Map("type", "editResult", "id", id, "sessionId", sessionId,
+        "requestId", requestId, "ok", ok ? JSON.true : JSON.false,
+        "message", ok ? "" : message))
 }
 
 ClipboardHistoryPanelOpenFile(id, fileIndex, sessionId, requestId, *) {

@@ -374,7 +374,7 @@ ClipboardHistoryStoreList(searchText := "", primaryType := "", favoriteOnly := f
 }
 
 ClipboardHistoryStoreGetItem(id, forView := false) {
-    sql := "SELECT id,primary_type" . (forView ? ",text_plain " : " ")
+    sql := "SELECT id,primary_type" . (forView ? ",text_plain,is_rich_text " : " ")
         . "FROM clipboard_items WHERE id="
         . ClipboardHistoryStoreSql(id) . ";"
     if !ClipboardHistoryStoreRows(sql, &table) || table.RowCount < 1
@@ -389,6 +389,17 @@ ClipboardHistoryStoreGetItem(id, forView := false) {
     row["snapshot"] := payload
     row["manifestJson"] := manifest
     return row
+}
+
+; Metadata an in-place text edit must preserve. The payload is not read: the
+; edited item is rebuilt from the new text alone.
+ClipboardHistoryStoreGetTextItem(id) {
+    sql := "SELECT id,primary_type,is_rich_text,is_favorite,note_text,is_pinned,"
+        . "pin_order,last_captured_at_utc,text_plain FROM clipboard_items WHERE id="
+        . ClipboardHistoryStoreSql(id) . ";"
+    if !ClipboardHistoryStoreRows(sql, &table) || table.RowCount < 1
+        return 0
+    return ClipboardHistoryStoreRowMap(table, table.Rows[1])
 }
 
 ClipboardHistoryStoreGetThumbnail(id) {

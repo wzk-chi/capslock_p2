@@ -38,6 +38,7 @@ const state = {
   counts: {},
   selectedId: '',
   contextId: '',
+  pendingFocusId: '',
   multiSelectMode: false,
   selectedIds: new Set(),
   bulkBusy: false,
@@ -549,8 +550,14 @@ async function contextAction(action) {
   hideMenu();
   if (!id || !row) return;
 
-  if (action === 'view') ClipboardView.open(row, sessionId, () => {
+  if (action === 'view') ClipboardView.open(row, sessionId, result => {
     if (state.sessionId !== sessionId) return;
+    if (result?.action === 'saved') {
+      toast('已保存', 'success');
+      state.pendingFocusId = id;
+      requestQuery(false, state.page);
+      return;
+    }
     const article = findRowElement(id);
     if (article) article.focus();
     else list.focus();
@@ -712,6 +719,12 @@ window.handleHostMessage=function(message){
     const resetScroll=state.page!==state.renderedPage||state.pageSize!==state.renderedPageSize;
     list.inert=false; list.setAttribute('aria-busy','false'); render();
     if(resetScroll)list.scrollTop=0;
+    if(state.pendingFocusId){
+      const target=findRowElement(state.pendingFocusId);
+      state.pendingFocusId='';
+      if(target){selectRow(target.dataset.id);target.focus();target.scrollIntoView({block:'nearest'});}
+      else list.focus();
+    }
     state.renderedPage=state.page; state.renderedPageSize=state.pageSize;
   } else if(data.type==='imagePreview'){
     if(data.sessionId!==state.sessionId)return; applyImagePreview(data.id,data.data);
